@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ subject }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: {% if is_overdue %}#f44336{% elif notification_type == 'anniversary' %}#4CAF50{% else %}#2196F3{% endif %};
+            color: white;
+            padding: 15px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 5px 5px;
+        }
+        .footer {
+            margin-top: 20px;
+            font-size: 12px;
+            text-align: center;
+            color: #777;
+        }
+        .button {
+            display: inline-block;
+            background-color: {% if is_overdue %}#f44336{% elif notification_type == 'anniversary' %}#4CAF50{% else %}#2196F3{% endif %};
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+        .anniversary-badge {
+            background-color: #4CAF50;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 14px;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        {% if notification_type == 'anniversary' %}
+            <h2>🎉 ¡Felicidades por tu Aniversario!</h2>
+        {% elif is_overdue %}
+            <h2>⚠️ Reinducción Vencida</h2>
+        {% else %}
+            <h2>📚 Reinducción Anual Requerida</h2>
+        {% endif %}
+    </div>
+    <div class="content">
+        {% if notification_type == 'anniversary' %}
+            <div class="anniversary-badge">{{ years_in_company }} año{{ 's' if years_in_company > 1 else '' }} en la empresa</div>
+            <p>Estimado/a <strong>{{ worker_name }}</strong>,</p>
+            <p>¡Felicidades! Hoy {{ anniversary_date }} cumples <strong>{{ years_in_company }} año{{ 's' if years_in_company > 1 else '' }}</strong> trabajando con nosotros.</p>
+            <p>Como parte de nuestro compromiso con la seguridad y el desarrollo profesional, es necesario que completes tu <strong>curso de reinducción anual</strong>.</p>
+        {% else %}
+            <p>Estimado/a <strong>{{ worker_name }}</strong>,</p>
+            {% if is_overdue %}
+                <p><strong>URGENTE:</strong> Tu reinducción anual del año {{ year }} está vencida desde el {{ due_date }}. Han pasado {{ abs(days_left) }} días desde la fecha límite.</p>
+            {% elif days_left <= 7 %}
+                <p><strong>RECORDATORIO:</strong> Tu reinducción anual del año {{ year }} debe completarse antes del {{ due_date }}. Quedan solo {{ days_left }} día{{ 's' if days_left != 1 else '' }}.</p>
+            {% else %}
+                <p>Te recordamos que tu reinducción anual del año {{ year }} debe completarse antes del {{ due_date }}. Quedan {{ days_left }} días.</p>
+            {% endif %}
+        {% endif %}
+        
+        <h3>¿Qué necesitas hacer?</h3>
+        <ul>
+            <li>Acceder al sistema de capacitación</li>
+            <li>Completar el curso de reinducción asignado</li>
+            <li>Aprobar la evaluación correspondiente</li>
+        </ul>
+        
+        {% if course_name %}
+            <p><strong>Curso asignado:</strong> {{ course_name }}</p>
+        {% endif %}
+        
+        <p>Si tienes alguna pregunta o necesitas ayuda, no dudes en contactar al departamento de Recursos Humanos.</p>
+        
+        <a href="{{ system_url }}" class="button">Acceder al Sistema</a>
+    </div>
+    <div class="footer">
+        <p>Este es un mensaje automático del Sistema de Gestión de Capacitación.</p>
+        <p>Por favor, no respondas a este correo.</p>
+    </div>
+</body>
+</html>

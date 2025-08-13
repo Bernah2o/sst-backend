@@ -1,0 +1,41 @@
+"""restore_admin_config_table
+
+Revision ID: 30d1676cc33b
+Revises: 909947a78069
+Create Date: 2025-08-11 13:07:04.978588
+
+"""
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+from sqlalchemy import text
+
+
+# revision identifiers, used by Alembic.
+revision = '30d1676cc33b'
+down_revision = '909947a78069'
+branch_labels = None
+depends_on = None
+
+
+def upgrade() -> None:
+    # Recrear la tabla admin_config que fue eliminada en la migración anterior
+    op.create_table('admin_config',
+    sa.Column('id', sa.INTEGER(), autoincrement=True, nullable=False),
+    sa.Column('category', sa.VARCHAR(length=50), autoincrement=False, nullable=False),
+    sa.Column('display_name', sa.VARCHAR(length=200), autoincrement=False, nullable=False),
+    sa.Column('emo_periodicity', sa.VARCHAR(length=50), autoincrement=False, nullable=True),
+    sa.Column('is_active', sa.BOOLEAN(), autoincrement=False, nullable=False),
+    sa.Column('created_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), autoincrement=False, nullable=True),
+    sa.Column('updated_at', sa.TIMESTAMP(timezone=True), server_default=sa.text('now()'), autoincrement=False, nullable=True),
+    sa.PrimaryKeyConstraint('id', name=op.f('admin_config_pkey'))
+    )
+    op.create_index(op.f('ix_admin_config_id'), 'admin_config', ['id'], unique=False)
+    op.create_index(op.f('ix_admin_config_category'), 'admin_config', ['category'], unique=False)
+
+
+def downgrade() -> None:
+    # Eliminar la tabla admin_config si se revierte la migración
+    op.drop_index(op.f('ix_admin_config_category'), table_name='admin_config')
+    op.drop_index(op.f('ix_admin_config_id'), table_name='admin_config')
+    op.drop_table('admin_config')

@@ -1,0 +1,705 @@
+from typing import Any, List
+from datetime import datetime, date
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import and_, or_, func
+import os
+
+from app.dependencies import get_current_active_user
+from app.database import get_db
+from app.models.user import User
+from app.models.certificate import Certificate, CertificateStatus
+from app.models.course import Course
+from app.schemas.certificate import (
+    CertificateCreate, CertificateUpdate, CertificateResponse,
+    CertificateListResponse, CertificateVerification,
+    CertificateVerificationResponse, CertificateGeneration,
+    CertificatePDFGeneration
+)
+from app.schemas.common import MessageResponse, PaginatedResponse
+from app.services.certificate_generator import CertificateGenerator
+
+router = APIRouter()
+
+
+@router.get("/", response_model=PaginatedResponse[CertificateListResponse])
+async def get_certificates(
+    skip: int = 0,
+    limit: int = 100,
+    user_id: int = None,
+    course_id: int = None,
+    status: str = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get certificates with optional filtering
+    """
+    query = db.query(Certificate).options(
+        joinedload(Certificate.user),
+        joinedload(Certificate.course)
+    )
+    
+    # Apply filters
+    if user_id:
+        # Users can only see their own certificates unless they are admin
+        if current_user.role.value != "admin" and current_user.id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not enough permissions"
+            )
+        query = query.filter(Certificate.user_id == user_id)
+    elif current_user.role.value != "admin":
+        # Non-admin users can only see their own certificates
+        query = query.filter(Certificate.user_id == current_user.id)
+    
+    if course_id:
+        query = query.filter(Certificate.course_id == course_id)
+    
+    if status:
+        # Convert string status to enum
+        try:
+            status_enum = CertificateStatus(status)
+            query = query.filter(Certificate.status == status_enum)
+        except ValueError:
+            # If invalid status, ignore filter
+            pass
+    else:
+        # Only show issued certificates for non-admin users
+        if current_user.role.value not in ["admin", "capacitador"]:
+            query = query.filter(Certificate.status == CertificateStatus.ISSUED)
+    
+    # Get total count
+    total = query.count()
+    
+    # Apply pagination
+    certificates = query.offset(skip).limit(limit).all()
+    
+    # Calculate pagination info
+    page = (skip // limit) + 1
+    pages = (total + limit - 1) // limit  # Ceiling division
+    has_next = skip + limit < total
+    has_prev = skip > 0
+    
+    return PaginatedResponse(
+        items=certificates,
+        total=total,
+        page=page,
+        size=limit,
+        pages=pages,
+        has_next=has_next,
+        has_prev=has_prev
+    )
+
+
+@router.post("/", response_model=CertificateResponse)
+async def create_certificate(
+    certificate_data: CertificateCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Create new certificate (admin and capacitador roles only)
+    """
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    # Check if course exists
+    course = db.query(Course).filter(Course.id == certificate_data.course_id).first()
+    if not course:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Course not found"
+        )
+    
+    # Check if user exists
+    user = db.query(User).filter(User.id == certificate_data.user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Check if certificate already exists for this user and course
+    existing_certificate = db.query(Certificate).filter(
+        and_(
+            Certificate.user_id == certificate_data.user_id,
+            Certificate.course_id == certificate_data.course_id
+        )
+    ).first()
+    
+    if existing_certificate:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Certificate already exists for this user and course"
+        )
+    
+    # Generate certificate number
+    import uuid
+    certificate_number = f"CERT-{datetime.now().year}-{str(uuid.uuid4())[:8].upper()}"
+    
+    # Generate verification code
+    verification_code = str(uuid.uuid4())
+    
+    # Create new certificate
+    certificate = Certificate(
+        **certificate_data.dict(),
+        certificate_number=certificate_number,
+        verification_code=verification_code,
+        issued_by=current_user.id,
+        issue_date=datetime.utcnow()
+    )
+    
+    db.add(certificate)
+    db.commit()
+    db.refresh(certificate)
+    
+    return certificate
+
+
+@router.get("/my-certificates", response_model=PaginatedResponse[CertificateListResponse])
+async def get_my_certificates(
+    skip: int = 0,
+    limit: int = 100,
+    status: str = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get current user's certificates
+    """
+    query = db.query(Certificate).options(
+        joinedload(Certificate.user),
+        joinedload(Certificate.course)
+    ).filter(Certificate.user_id == current_user.id)
+    
+    if status:
+        # Convert string status to enum
+        try:
+            status_enum = CertificateStatus(status)
+            query = query.filter(Certificate.status == status_enum)
+        except ValueError:
+            # If invalid status, ignore filter
+            pass
+    else:
+        # Only show issued certificates by default
+        query = query.filter(Certificate.status == CertificateStatus.ISSUED)
+    
+    # Order by issue date descending (newest first)
+    query = query.order_by(Certificate.issue_date.desc())
+    
+    # Get total count
+    total = query.count()
+    
+    # Apply pagination
+    certificates = query.offset(skip).limit(limit).all()
+    
+    # Calculate pagination info
+    page = (skip // limit) + 1
+    pages = (total + limit - 1) // limit  # Ceiling division
+    has_next = skip + limit < total
+    has_prev = skip > 0
+    
+    return PaginatedResponse(
+        items=certificates,
+        total=total,
+        page=page,
+        size=limit,
+        pages=pages,
+        has_next=has_next,
+        has_prev=has_prev
+    )
+
+
+@router.get("/{certificate_id}", response_model=CertificateResponse)
+async def get_certificate(
+    certificate_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get certificate by ID
+    """
+    certificate = db.query(Certificate).options(
+        joinedload(Certificate.user),
+        joinedload(Certificate.course)
+    ).filter(Certificate.id == certificate_id).first()
+    
+    if not certificate:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Certificate not found"
+        )
+    
+    # Users can only see their own certificates unless they are admin
+    if current_user.role.value != "admin" and certificate.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    return certificate
+
+
+@router.put("/{certificate_id}", response_model=CertificateResponse)
+async def update_certificate(
+    certificate_id: int,
+    certificate_data: CertificateUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Update certificate (admin only)
+    """
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    certificate = db.query(Certificate).filter(Certificate.id == certificate_id).first()
+    
+    if not certificate:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Certificate not found"
+        )
+    
+    # Update certificate fields
+    update_data = certificate_data.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(certificate, field, value)
+    
+    db.commit()
+    db.refresh(certificate)
+    
+    return certificate
+
+
+@router.delete("/{certificate_id}", response_model=MessageResponse)
+async def delete_certificate(
+    certificate_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Delete certificate (admin only)
+    """
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    certificate = db.query(Certificate).filter(Certificate.id == certificate_id).first()
+    
+    if not certificate:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Certificate not found"
+        )
+    
+    db.delete(certificate)
+    db.commit()
+    
+    return MessageResponse(message="Certificate deleted successfully")
+
+
+@router.post("/generate", response_model=CertificateResponse)
+async def generate_certificate(
+    generation_data: CertificateGeneration,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Generate certificate for course completion (admin and capacitador roles only)
+    """
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    # Check if course exists
+    course = db.query(Course).filter(Course.id == generation_data.course_id).first()
+    if not course:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Course not found"
+        )
+    
+    # Check if user exists
+    user = db.query(User).filter(User.id == generation_data.user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Check if certificate already exists
+    existing_certificate = db.query(Certificate).filter(
+        and_(
+            Certificate.user_id == generation_data.user_id,
+            Certificate.course_id == generation_data.course_id
+        )
+    ).first()
+    
+    if existing_certificate:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Certificate already exists for this user and course"
+        )
+    
+    # Generate certificate details
+    import uuid
+    certificate_number = f"CERT-{datetime.now().year}-{str(uuid.uuid4())[:8].upper()}"
+    verification_code = str(uuid.uuid4())
+    
+    # Create certificate
+    certificate = Certificate(
+        user_id=generation_data.user_id,
+        course_id=generation_data.course_id,
+        certificate_number=certificate_number,
+        title=f"Certificate of Completion - {course.title}",
+        description=f"This certifies that {user.full_name} has successfully completed the course {course.title}",
+        score_achieved=generation_data.score_achieved,
+        completion_date=generation_data.completion_date or datetime.now(),
+        issue_date=datetime.now(),
+        expiry_date=generation_data.expiry_date,
+        status=CertificateStatus.VALID,
+        verification_code=verification_code,
+        template_used=generation_data.template_used or "default",
+        issued_by=current_user.id
+    )
+    
+    db.add(certificate)
+    db.commit()
+    db.refresh(certificate)
+    
+    return certificate
+
+
+@router.post("/verify", response_model=CertificateVerificationResponse)
+async def verify_certificate(
+    verification_data: CertificateVerification,
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Verify certificate by certificate number or verification code
+    """
+    query = db.query(Certificate)
+    
+    if verification_data.certificate_number:
+        query = query.filter(Certificate.certificate_number == verification_data.certificate_number)
+    elif verification_data.verification_code:
+        query = query.filter(Certificate.verification_code == verification_data.verification_code)
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Either certificate_number or verification_code must be provided"
+        )
+    
+    certificate = query.first()
+    
+    if not certificate:
+        return CertificateVerificationResponse(
+            is_valid=False,
+            message="Certificate not found"
+        )
+    
+    # Check if certificate is valid
+    if certificate.status != CertificateStatus.VALID:
+        return CertificateVerificationResponse(
+            is_valid=False,
+            message=f"Certificate is {certificate.status.value}",
+            certificate=certificate
+        )
+    
+    # Check if certificate is expired
+    if certificate.expiry_date and certificate.expiry_date < datetime.now():
+        return CertificateVerificationResponse(
+            is_valid=False,
+            message="Certificate has expired",
+            certificate=certificate
+        )
+    
+    return CertificateVerificationResponse(
+        is_valid=True,
+        message="Certificate is valid",
+        certificate=certificate
+    )
+
+
+@router.post("/{certificate_id}/revoke", response_model=MessageResponse)
+async def revoke_certificate(
+    certificate_id: int,
+    reason: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Revoke certificate (admin only)
+    """
+    if current_user.role.value != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    certificate = db.query(Certificate).filter(Certificate.id == certificate_id).first()
+    
+    if not certificate:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Certificate not found"
+        )
+    
+    if certificate.status == CertificateStatus.REVOKED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Certificate is already revoked"
+        )
+    
+    # Revoke certificate
+    certificate.status = CertificateStatus.REVOKED
+    certificate.revoked_by = current_user.id
+    certificate.revoked_at = datetime.utcnow()
+    certificate.revocation_reason = reason
+    
+    db.commit()
+    
+    return MessageResponse(message="Certificate revoked successfully")
+
+
+@router.get("/user/{user_id}/summary")
+async def get_user_certificates_summary(
+    user_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get certificate summary for a user
+    """
+    # Users can only see their own summary unless they are admin
+    if current_user.role.value != "admin" and current_user.id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    query = db.query(Certificate).filter(Certificate.user_id == user_id)
+    
+    # Get certificate statistics
+    total_certificates = query.count()
+    valid_certificates = query.filter(Certificate.status == CertificateStatus.VALID).count()
+    revoked_certificates = query.filter(Certificate.status == CertificateStatus.REVOKED).count()
+    expired_certificates = query.filter(
+        and_(
+            Certificate.expiry_date < datetime.now(),
+            Certificate.status == CertificateStatus.VALID
+        )
+    ).count()
+    
+    return {
+        "user_id": user_id,
+        "total_certificates": total_certificates,
+        "valid_certificates": valid_certificates,
+        "revoked_certificates": revoked_certificates,
+        "expired_certificates": expired_certificates
+    }
+
+
+@router.post("/{certificate_id}/generate-pdf", response_model=MessageResponse)
+async def generate_certificate_pdf(
+    certificate_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Generate PDF for an existing certificate (admin and capacitador roles only)
+    """
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    # Check if certificate exists
+    certificate = db.query(Certificate).filter(Certificate.id == certificate_id).first()
+    if not certificate:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Certificate not found"
+        )
+    
+    # Generate PDF
+    try:
+        generator = CertificateGenerator(db)
+        file_path = generator.generate_certificate_pdf(certificate_id)
+        
+        # Update certificate status to issued if it was pending
+        if certificate.status == CertificateStatus.PENDING:
+            certificate.status = CertificateStatus.ISSUED
+            db.commit()
+        
+        return MessageResponse(message=f"Certificate PDF generated successfully: {file_path}")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating certificate PDF: {str(e)}"
+        )
+
+
+@router.get("/{certificate_id}/download")
+async def download_certificate(
+    certificate_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> FileResponse:
+    """
+    Download certificate PDF
+    """
+    # Check if certificate exists
+    certificate = db.query(Certificate).filter(Certificate.id == certificate_id).first()
+    if not certificate:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Certificate not found"
+        )
+    
+    # Users can only download their own certificates unless they are admin
+    if current_user.role.value not in ["admin", "capacitador"] and certificate.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    # Check if certificate is issued
+    if certificate.status != CertificateStatus.ISSUED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Certificate is not issued yet"
+        )
+    
+    # Generate PDF if it doesn't exist
+    generator = CertificateGenerator(db)
+    file_path = generator.get_certificate_path(certificate_id)
+    
+    if not file_path:
+        try:
+            file_path = generator.generate_certificate_pdf(certificate_id)
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error generating certificate PDF: {str(e)}"
+            )
+    
+    if not os.path.exists(file_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Certificate file not found"
+        )
+    
+    # Get course information for filename
+    course = db.query(Course).filter(Course.id == certificate.course_id).first()
+    course_name = course.title if course else "Curso"
+    
+    # Clean course name for filename (remove special characters)
+    import re
+    clean_course_name = re.sub(r'[^\w\s-]', '', course_name).strip()
+    clean_course_name = re.sub(r'[-\s]+', '_', clean_course_name)
+    
+    # Return file with course name
+    filename = f"Certificado_{clean_course_name}_{certificate.certificate_number}.pdf"
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type="application/pdf"
+    )
+
+
+@router.post("/generate-from-course", response_model=CertificateResponse)
+async def generate_certificate_from_course(
+    certificate_data: CertificatePDFGeneration,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Generate certificate for a user who completed a course (admin and capacitador roles only)
+    """
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    # Check if course exists
+    course = db.query(Course).filter(Course.id == certificate_data.course_id).first()
+    if not course:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Course not found"
+        )
+    
+    # Check if user exists
+    user = db.query(User).filter(User.id == certificate_data.user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Check if certificate already exists
+    existing_certificate = db.query(Certificate).filter(
+        and_(
+            Certificate.user_id == certificate_data.user_id,
+            Certificate.course_id == certificate_data.course_id
+        )
+    ).first()
+    
+    if existing_certificate:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Certificate already exists for this user and course"
+        )
+    
+    # TODO: Verificar que el usuario realmente completó el curso
+    # Aquí deberías agregar lógica para verificar el progreso del curso
+    
+    # Generate certificate details
+    import uuid
+    certificate_number = f"CERT-{datetime.now().year}-{str(uuid.uuid4())[:8].upper()}"
+    verification_code = str(uuid.uuid4())
+    
+    # Create certificate
+    certificate = Certificate(
+        user_id=certificate_data.user_id,
+        course_id=certificate_data.course_id,
+        certificate_number=certificate_number,
+        title=f"Certificado de Finalización - {course.title}",
+        description=f"Certifica que {user.full_name} Ha completado satisfactoriamente el curso {course.title}",
+        completion_date=datetime.now(),
+        issue_date=datetime.now(),
+        status=CertificateStatus.ISSUED,
+        verification_code=verification_code,
+        template_used="default",
+        issued_by=current_user.id
+    )
+    
+    db.add(certificate)
+    db.commit()
+    db.refresh(certificate)
+    
+    # Generate PDF
+    try:
+        generator = CertificateGenerator(db)
+        generator.generate_certificate_pdf(certificate.id)
+    except Exception as e:
+        # Si falla la generación del PDF, no fallar la creación del certificado
+        print(f"Warning: Failed to generate PDF for certificate {certificate.id}: {str(e)}")
+    
+    return certificate

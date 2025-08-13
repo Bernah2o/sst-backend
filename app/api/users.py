@@ -1,0 +1,306 @@
+import os
+from typing import Any, List
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.dependencies import get_current_active_user
+from app.models.user import User
+from app.schemas.user import UserResponse, UserRegister, UserUpdate, UserProfile, PasswordChange
+from app.schemas.common import MessageResponse
+from app.services.auth import AuthService
+from app.config import settings
+
+security = HTTPBearer()
+
+router = APIRouter()
+
+
+@router.get("/me", response_model=UserResponse)
+async def get_current_user_profile(
+    current_user: User = Depends(get_current_active_user)
+) -> Any:
+    """
+    Get current user profile
+    """
+    return current_user
+
+
+@router.put("/profile", response_model=UserResponse)
+async def update_current_user_profile(
+    profile_update: UserProfile,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Update current user profile
+    """
+    # Update user fields
+    update_data = profile_update.dict(exclude_unset=True)
+    
+    # Handle profile picture deletion
+    if "profile_picture" in update_data and update_data["profile_picture"] is None:
+        # Delete old profile picture file if exists
+        if current_user.profile_picture:
+            old_file_path = os.path.join(settings.upload_dir, current_user.profile_picture)
+            if os.path.exists(old_file_path):
+                try:
+                    os.remove(old_file_path)
+                except Exception as e:
+                    # Log error but don't fail the request
+                    print(f"Error deleting profile picture file: {e}")
+    
+    for field, value in update_data.items():
+        setattr(current_user, field, value)
+    
+    db.commit()
+    db.refresh(current_user)
+    
+    return current_user
+
+
+@router.put("/change-password", response_model=MessageResponse)
+async def change_password(
+    password_change: PasswordChange,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Change current user password
+    """
+    auth_service = AuthService()
+    
+    # Verify current password
+    if not auth_service.verify_password(password_change.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect"
+        )
+    
+    # Update password
+    current_user.hashed_password = auth_service.get_password_hash(password_change.new_password)
+    db.commit()
+    
+    return MessageResponse(message="Password changed successfully")
+
+
+@router.get("/", response_model=List[UserResponse])
+async def get_users(
+    skip: int = 0,
+    limit: int = 100,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get all users (admin only)
+    """
+    if current_user.role.value != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    users = db.query(User).offset(skip).limit(limit).all()
+    return users
+
+
+@router.get("/{user_id}", response_model=UserResponse)
+async def get_user(
+    user_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get user by ID
+    """
+    if current_user.role.value != "admin" and current_user.id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    return user
+
+
+@router.delete("/{user_id}", response_model=MessageResponse)
+async def delete_user(
+    user_id: int,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Delete user (admin only)
+    """
+    from sqlalchemy import text
+    import logging
+    from jose import jwt, JWTError
+    from app.config import settings
+    
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Decode token directly without using auth service to avoid User object loading
+        token = credentials.credentials
+        try:
+            payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+            current_user_id_str = payload.get("sub")
+            current_user_role = payload.get("role")
+            
+            if not current_user_id_str or not current_user_role:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid token"
+                )
+            
+            current_user_id = int(current_user_id_str)
+            
+        except (JWTError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials"
+            )
+        
+        # Check if current user is admin
+        if current_user_role != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not enough permissions"
+            )
+        
+        # Check if target user exists using raw SQL
+        result = db.execute(text("SELECT id FROM users WHERE id = :user_id"), {"user_id": user_id})
+        user_exists = result.fetchone()
+        
+        if not user_exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Prevent deleting the current admin user
+        if user_id == current_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot delete your own account"
+            )
+        logger.info(f"Starting deletion process for user_id: {user_id}")
+        
+        # Delete related records first using raw SQL to avoid ORM relationship issues
+        logger.info(f"Deleting related records for user {user_id}")
+        
+        # Delete user_answers (they depend on user_evaluations)
+        result = db.execute(text("""
+            DELETE FROM user_answers 
+            WHERE user_evaluation_id IN (
+                SELECT id FROM user_evaluations WHERE user_id = :user_id
+            )
+        """), {"user_id": user_id})
+        logger.info(f"Deleted {result.rowcount} user answers")
+        
+        # Delete user_evaluations
+        result = db.execute(text("DELETE FROM user_evaluations WHERE user_id = :user_id"), {"user_id": user_id})
+        logger.info(f"Deleted {result.rowcount} user evaluations")
+        
+        # Delete user_survey_answers (they depend on user_surveys)
+        result = db.execute(text("""
+            DELETE FROM user_survey_answers 
+            WHERE user_survey_id IN (
+                SELECT id FROM user_surveys WHERE user_id = :user_id
+            )
+        """), {"user_id": user_id})
+        logger.info(f"Deleted {result.rowcount} user survey answers")
+        
+        # Delete user_surveys
+        result = db.execute(text("DELETE FROM user_surveys WHERE user_id = :user_id"), {"user_id": user_id})
+        logger.info(f"Deleted {result.rowcount} user surveys")
+        
+        # Delete enrollments
+        result = db.execute(text("DELETE FROM enrollments WHERE user_id = :user_id"), {"user_id": user_id})
+        logger.info(f"Deleted {result.rowcount} enrollments")
+        
+        # Delete certificates
+        result = db.execute(text("DELETE FROM certificates WHERE user_id = :user_id"), {"user_id": user_id})
+        logger.info(f"Deleted {result.rowcount} certificates")
+        
+        # Delete attendances
+        result = db.execute(text("DELETE FROM attendances WHERE user_id = :user_id"), {"user_id": user_id})
+        logger.info(f"Deleted {result.rowcount} attendances")
+        
+        # Delete notifications
+        result = db.execute(text("DELETE FROM notifications WHERE user_id = :user_id"), {"user_id": user_id})
+        logger.info(f"Deleted {result.rowcount} notifications")
+        
+        # Delete audit_logs
+        result = db.execute(text("DELETE FROM audit_logs WHERE user_id = :user_id"), {"user_id": user_id})
+        logger.info(f"Deleted {result.rowcount} audit logs")
+        
+        # Finally delete the user using raw SQL to avoid ORM relationship issues
+        logger.info(f"Deleting user {user_id}")
+        result = db.execute(text("DELETE FROM users WHERE id = :user_id"), {"user_id": user_id})
+        logger.info(f"Deleted {result.rowcount} users")
+        
+        db.commit()
+        logger.info("User deletion completed successfully")
+        
+        return MessageResponse(message="User deleted successfully")
+        
+    except Exception as e:
+        logger.error(f"Error during user deletion: {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
+        import traceback
+        error_traceback = traceback.format_exc()
+        logger.error(f"Traceback: {error_traceback}")
+        db.rollback()
+        
+        # Return detailed error information for debugging
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error_message": str(e),
+                "error_type": type(e).__name__,
+                "operation": "delete_user"
+            }
+        )
+
+
+@router.put("/{user_id}", response_model=UserResponse)
+async def update_user(
+    user_id: int,
+    user_update: UserUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Update user (admin only)
+    """
+    if current_user.role.value != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Update user fields
+    update_data = user_update.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(user, field, value)
+    
+    db.commit()
+    db.refresh(user)
+    
+    return user
