@@ -686,3 +686,81 @@ async def delete_course_material(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al eliminar el material: {str(e)}",
         )
+
+
+@router.get("/{course_id}/validation")
+async def validate_course_requirements(
+    course_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Validate if course has required surveys and evaluations for publication
+    """
+    # Check if course exists
+    course = db.query(Course).filter(Course.id == course_id).first()
+    if not course:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Course not found"
+        )
+    
+    # Check if user has permission to validate this course
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    # Check for associated surveys
+    from app.models.survey import Survey, SurveyStatus
+    surveys = db.query(Survey).filter(
+        and_(
+            Survey.course_id == course_id,
+            Survey.status == SurveyStatus.PUBLISHED
+        )
+    ).all()
+    
+    # Check for associated evaluations
+    from app.models.evaluation import Evaluation
+    from app.schemas.evaluation import EvaluationStatus
+    evaluations = db.query(Evaluation).filter(
+        and_(
+            Evaluation.course_id == course_id,
+            Evaluation.status == EvaluationStatus.PUBLISHED
+        )
+    ).all()
+    
+    # Determine if course requires full process
+    requires_full_process = (
+        course.course_type in [CourseType.INDUCTION, CourseType.REINDUCTION] or 
+        course.is_mandatory
+    )
+    
+    has_surveys = len(surveys) > 0
+    has_evaluations = len(evaluations) > 0
+    
+    return {
+        "course_id": course_id,
+        "course_title": course.title,
+        "requires_full_process": requires_full_process,
+        "has_surveys": has_surveys,
+        "has_evaluations": has_evaluations,
+        "surveys_count": len(surveys),
+        "evaluations_count": len(evaluations),
+        "can_publish": not requires_full_process or (has_surveys and has_evaluations),
+        "missing_requirements": [
+            "surveys" if requires_full_process and not has_surveys else None,
+            "evaluations" if requires_full_process and not has_evaluations else None
+        ],
+        "surveys": [{
+            "id": survey.id,
+            "title": survey.title,
+            "status": survey.status.value
+        } for survey in surveys],
+        "evaluations": [{
+            "id": evaluation.id,
+            "title": evaluation.title,
+            "status": evaluation.status.value
+        } for evaluation in evaluations]
+    }
