@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, DateTime, Enum as SQLEnum, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Enum as SQLEnum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -30,6 +30,7 @@ class User(Base):
     position = Column(String(100))
     hire_date = Column(DateTime)
     role = Column(SQLEnum(UserRole), default=UserRole.EMPLOYEE, nullable=False)
+    custom_role_id = Column(Integer, ForeignKey("custom_roles.id"), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     is_verified = Column(Boolean, default=False, nullable=False)
     profile_picture = Column(String(255))
@@ -45,6 +46,7 @@ class User(Base):
     email_verification_expires = Column(DateTime)
 
     # Relationships
+    custom_role = relationship("CustomRole", back_populates="users")
     user_evaluations = relationship("UserEvaluation", back_populates="user")
     user_surveys = relationship("UserSurvey", back_populates="user")
     certificates = relationship("Certificate", foreign_keys="Certificate.user_id", back_populates="user")

@@ -21,6 +21,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from sqlalchemy.orm import Session
 from app.database import engine
 from app.models.user import User, UserRole
+from app.models.custom_role import CustomRole
 from app.services.auth import auth_service
 
 def create_default_admin():
@@ -78,6 +79,15 @@ def create_default_admin():
             
             return True
         
+        # Buscar el custom role de admin
+        admin_custom_role = db.query(CustomRole).filter(
+            CustomRole.name == "admin"
+        ).first()
+        
+        if not admin_custom_role:
+            print("❌ No se encontró el custom role 'admin'. Ejecute primero create_default_roles.py")
+            return False
+        
         # Crear el usuario administrador
         hashed_password = auth_service.get_password_hash(admin_data['password'])
         
@@ -92,6 +102,7 @@ def create_default_admin():
             department=admin_data['department'],
             position=admin_data['position'],
             role=UserRole.ADMIN,
+            custom_role_id=admin_custom_role.id,
             is_active=True,
             is_verified=True
         )
@@ -107,6 +118,7 @@ def create_default_admin():
         print(f"  Email: {admin_user.email}")
         print(f"  Nombre: {admin_user.full_name}")
         print(f"  Rol: {admin_user.role.value}")
+        print(f"  Custom Role: {admin_custom_role.display_name}")
         print(f"  Documento: {admin_user.document_number}")
         print()
         print("🔐 Credenciales de acceso:")

@@ -1,4 +1,5 @@
 from .user import User, UserRole
+from .custom_role import CustomRole
 from .worker import Worker, WorkerContract, Gender, DocumentType, ContractType, RiskLevel, BloodType, EPS, AFP, ARL
 from .cargo import Cargo
 from .seguridad_social import SeguridadSocial
@@ -19,6 +20,7 @@ from .user_progress import UserMaterialProgress, UserModuleProgress, MaterialPro
 __all__ = [
     "User",
     "UserRole",
+    "CustomRole",
     "Worker",
     "WorkerContract",
     "Gender",
