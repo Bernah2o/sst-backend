@@ -48,6 +48,38 @@ class UserCreate(UserBase):
     @validator('document_number')
     def validate_document_number(cls, v):
         if not v.isdigit():
+            raise ValueError('El número de documento debe contener solo números')
+        return v
+
+
+class UserCreateByAdmin(UserBase):
+    password: Optional[str] = None
+    hire_date: Optional[datetime] = None
+    
+    @validator('password', pre=True, always=True)
+    def validate_password(cls, v):
+        if v is None:
+            return v
+        if len(v) < 8:
+            raise ValueError('La contraseña debe tener al menos 8 caracteres')
+        
+        # Check for at least one letter
+        if not re.search(r'[a-zA-Z]', v):
+            raise ValueError('La contraseña debe contener al menos una letra')
+        
+        # Check for at least one number
+        if not re.search(r'\d', v):
+            raise ValueError('La contraseña debe contener al menos un número')
+        
+        # Check for at least one special character
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
+            raise ValueError('La contraseña debe contener al menos un carácter especial (!@#$%^&*(),.?":{}|<>)')
+        
+        return v
+    
+    @validator('document_number')
+    def validate_document_number(cls, v):
+        if not v.isdigit():
             raise ValueError('Document number must contain only digits')
         return v
 
@@ -99,6 +131,27 @@ class UserRegister(BaseModel):
     phone: Optional[str] = None
     department: Optional[str] = None
     position: Optional[str] = None
+    
+    @validator('password')
+    def validate_password(cls, v):
+        if len(v) < 8:
+            raise ValueError('La contraseña debe tener al menos 8 caracteres')
+        
+        # Check for at least one letter
+        if not re.search(r'[a-zA-Z]', v):
+            raise ValueError('La contraseña debe contener al menos una letra')
+        
+        # Check for at least one number
+        if not re.search(r'\d', v):
+            raise ValueError('La contraseña debe contener al menos un número')
+        
+        return v
+    
+    @validator('document_number')
+    def validate_document_number(cls, v):
+        if not v.isdigit():
+            raise ValueError('El número de documento debe contener solo dígitos')
+        return v
     
     @validator('password')
     def validate_password(cls, v):

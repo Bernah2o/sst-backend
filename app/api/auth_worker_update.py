@@ -22,12 +22,15 @@ def update_worker_after_registration(db: Session, user: User) -> None:
             detail="No se encontró un trabajador activo con ese número de documento y correo electrónico. Solo los empleados registrados por el administrador pueden crear una cuenta."
         )
     
-    # Check if worker is already registered
-    if worker.is_registered:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Este trabajador ya tiene una cuenta registrada en el sistema."
-        )
+    # Check if worker is already registered with a verified account
+    if worker.is_registered and worker.user_id:
+        # Check if the existing user is already verified
+        existing_user = db.query(User).filter(User.id == worker.user_id).first()
+        if existing_user and existing_user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Este empleado ya tiene una cuenta registrada en el sistema. Puede iniciar sesión directamente."
+            )
     
     # Update worker to mark as registered and link to user
     worker.is_registered = True

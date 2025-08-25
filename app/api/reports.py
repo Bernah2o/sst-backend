@@ -297,7 +297,6 @@ async def get_user_reports(
         
         user_reports.append(UserReportResponse(
             user_id=user.id,
-            username=user.username,
             email=user.email,
             full_name=user.full_name,
             role=user.role.value,
@@ -547,7 +546,7 @@ async def get_certificate_reports(
     # Build query with joins
     query = db.query(
         Certificate,
-        User.username,
+        User.email,
         User.first_name,
         User.last_name,
         Course.title.label('course_title')
@@ -582,13 +581,13 @@ async def get_certificate_reports(
     # Build report data
     certificate_reports = []
     for record in certificate_records:
-        certificate, username, first_name, last_name, course_title = record
+        certificate, email, first_name, last_name, course_title = record
         full_name = f"{first_name} {last_name}"
         
         certificate_reports.append(CertificateReportResponse(
             certificate_id=certificate.id,
             user_id=certificate.user_id,
-            username=username,
+            email=email,
             full_name=full_name,
             course_title=course_title,
             certificate_number=certificate.certificate_number,
@@ -788,7 +787,7 @@ async def get_performance_analytics(
         
         analytics = {
             "user_id": user_id,
-            "username": user.username,
+            "email": user.email,
             "total_enrollments": total_enrollments,
             "completed_courses": completed_courses,
             "completion_rate": (completed_courses / total_enrollments * 100) if total_enrollments > 0 else 0,
@@ -818,7 +817,7 @@ async def get_evaluation_ranking(
     # Base query for evaluation responses with user and course info
     query = db.query(
         User.id.label('user_id'),
-        User.username,
+        User.email,
         User.first_name,
         User.last_name,
         Course.title.label('course_title'),
@@ -840,7 +839,7 @@ async def get_evaluation_ranking(
     
     # Group by user and course, order by average score
     results = query.group_by(
-        User.id, User.username, User.first_name, User.last_name, Course.title
+        User.id, User.email, User.first_name, User.last_name, Course.title
     ).order_by(
         func.avg(UserEvaluation.score).desc()
     ).limit(limit).all()
@@ -850,7 +849,7 @@ async def get_evaluation_ranking(
         ranking.append({
             "rank": i,
             "user_id": result.user_id,
-            "username": result.username,
+            "email": result.email,
             "full_name": f"{result.first_name} {result.last_name}",
             "course_title": result.course_title,
             "average_score": round(result.average_score, 2),

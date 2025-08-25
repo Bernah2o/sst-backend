@@ -2,14 +2,15 @@ import os
 from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import or_
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_active_user
 from app.models.user import User
-from app.schemas.user import UserResponse, UserRegister, UserUpdate, UserProfile, PasswordChange
-from app.schemas.common import MessageResponse
+from app.schemas.user import UserResponse, UserRegister, UserUpdate, UserProfile, PasswordChange, UserCreate, UserCreateByAdmin
+from app.schemas.common import MessageResponse, PaginatedResponse
 from app.services.auth import AuthService
 from app.config import settings
 
@@ -86,10 +87,11 @@ async def change_password(
     return MessageResponse(message="Password changed successfully")
 
 
-@router.get("/", response_model=List[UserResponse])
+@router.get("/", response_model=PaginatedResponse[UserResponse])
 async def get_users(
     skip: int = 0,
     limit: int = 100,
+    search: str = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:
@@ -102,8 +104,127 @@ async def get_users(
             detail="Not enough permissions"
         )
     
-    users = db.query(User).offset(skip).limit(limit).all()
-    return users
+    query = db.query(User)
+    
+    # Apply search filter if provided
+    if search:
+        search_filter = f"%{search}%"
+        query = query.filter(
+            or_(
+                User.first_name.ilike(search_filter),
+                User.last_name.ilike(search_filter),
+                User.email.ilike(search_filter),
+                User.document_number.ilike(search_filter)
+            )
+        )
+    
+    # Get total count
+    total = query.count()
+    
+    # Apply pagination
+    users = query.offset(skip).limit(limit).all()
+    
+    # Calculate pagination info
+    page = (skip // limit) + 1 if limit > 0 else 1
+    pages = (total + limit - 1) // limit if limit > 0 else 1
+    has_next = skip + limit < total
+    has_prev = skip > 0
+    
+    return PaginatedResponse(
+        items=users,
+        total=total,
+        page=page,
+        size=limit,
+        pages=pages,
+        has_next=has_next,
+        has_prev=has_prev
+    )
+
+
+@router.post("/", response_model=UserResponse)
+async def create_user(
+    user_data: UserCreateByAdmin,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Create a new user (admin only)
+    """
+    if current_user.role.value != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    # Check if worker exists and is already registered
+    from app.models.worker import Worker
+    worker = db.query(Worker).filter(
+        Worker.email == user_data.email,
+        Worker.document_number == user_data.document_number,
+        Worker.is_active == True
+    ).first()
+    
+    if not worker:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se encontró un trabajador activo con este correo y número de documento"
+        )
+    
+    if worker.is_registered:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Este trabajador ya tiene una cuenta de usuario registrada"
+        )
+    
+    # Check if user already exists by email (additional safety check)
+    existing_user = db.query(User).filter(User.email == user_data.email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ya existe un usuario con este correo electrónico"
+        )
+    
+    # Create new user
+    from app.services.auth import auth_service
+    
+    # Hash password only if provided
+    if user_data.password:
+        hashed_password = auth_service.get_password_hash(user_data.password)
+        is_verified = True
+    else:
+        # Set a temporary password that will be changed during registration
+        hashed_password = auth_service.get_password_hash('temp_password_123!')
+        is_verified = False
+    
+    user = User(
+        email=user_data.email,
+        hashed_password=hashed_password,
+        first_name=user_data.first_name,
+        last_name=user_data.last_name,
+        document_type=user_data.document_type,
+        document_number=user_data.document_number,
+        phone=user_data.phone,
+        department=user_data.department,
+        position=user_data.position,
+        role=user_data.role,
+        emergency_contact_name=user_data.emergency_contact_name,
+        emergency_contact_phone=user_data.emergency_contact_phone,
+        notes=user_data.notes,
+        hire_date=user_data.hire_date,
+        is_active=True,
+        is_verified=is_verified
+    )
+    
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    
+    # Mark worker as registered and link to user
+    worker.is_registered = True
+    worker.user_id = user.id
+    db.commit()
+    
+    return user
 
 
 @router.get("/{user_id}", response_model=UserResponse)

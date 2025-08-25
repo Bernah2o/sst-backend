@@ -104,6 +104,38 @@ async def create_worker(
     return worker
 
 
+@router.get("/basic", response_model=List[WorkerList])
+async def get_workers_basic(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    search: str = Query(None, description="Buscar por nombre, documento o email"),
+    is_active: bool = Query(None, description="Filtrar por estado activo"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """
+    Obtener lista básica de trabajadores (sin restricciones de rol)
+    """
+    query = db.query(Worker)
+    
+    # Filtro de búsqueda
+    if search:
+        search_filter = or_(
+            Worker.first_name.ilike(f"%{search}%"),
+            Worker.last_name.ilike(f"%{search}%"),
+            Worker.document_number.ilike(f"%{search}%"),
+            Worker.email.ilike(f"%{search}%")
+        )
+        query = query.filter(search_filter)
+    
+    # Filtro por estado activo
+    if is_active is not None:
+        query = query.filter(Worker.is_active == is_active)
+    
+    workers = query.offset(skip).limit(limit).all()
+    return workers
+
+
 @router.get("/{worker_id}", response_model=WorkerSchema)
 async def get_worker(
     worker_id: int,
@@ -299,7 +331,7 @@ async def check_worker_document(
 ) -> Any:
     """
     Verificar si un número de documento corresponde a un trabajador registrado
-    y si ya está registrado como usuario
+    y devolver sus datos completos
     """
     worker = db.query(Worker).filter(
         Worker.document_number == document_number,
@@ -307,15 +339,27 @@ async def check_worker_document(
     ).first()
     
     if not worker:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No se encontró un trabajador activo con ese número de documento"
-        )
+        return {
+            "exists": False,
+            "worker": None
+        }
     
     return {
         "exists": True,
         "is_registered": worker.is_registered,
-        "assigned_role": worker.assigned_role
+        "assigned_role": worker.assigned_role,
+        "worker": {
+            "id": worker.id,
+            "first_name": worker.first_name,
+            "last_name": worker.last_name,
+            "email": worker.email,
+            "phone": worker.phone,
+            "department": worker.department,
+            "position": worker.position,
+            "fecha_de_ingreso": worker.fecha_de_ingreso.isoformat() if worker.fecha_de_ingreso else None,
+            "document_type": worker.document_type,
+            "document_number": worker.document_number
+        }
     }
 
 
@@ -349,11 +393,16 @@ async def validate_employee_credentials(
             detail="No se encontró un trabajador activo con ese número de documento y correo electrónico. Solo los empleados registrados por el administrador pueden crear una cuenta."
         )
     
-    if worker.is_registered:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Este trabajador ya tiene una cuenta registrada en el sistema."
-        )
+    # Check if worker is already registered with a verified account
+    if worker.is_registered and worker.user_id:
+        # Check if the existing user is already verified
+        from app.models.user import User
+        existing_user = db.query(User).filter(User.id == worker.user_id).first()
+        if existing_user and existing_user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Este empleado ya tiene una cuenta registrada en el sistema. Puede iniciar sesión directamente."
+            )
     
     return {
         "valid": True,

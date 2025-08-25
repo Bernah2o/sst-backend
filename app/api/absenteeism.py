@@ -17,7 +17,7 @@ from app.schemas.absenteeism import (
 )
 from app.models.absenteeism import EventMonth, EventType
 
-router = APIRouter(prefix="/absenteeism", tags=["absenteeism"])
+router = APIRouter(tags=["absenteeism"])
 
 
 @router.post("/", response_model=AbsenteeismResponse, status_code=status.HTTP_201_CREATED)

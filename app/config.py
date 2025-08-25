@@ -18,6 +18,9 @@ class Settings:
         # Configuración de CORS
         self.allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
         
+        # Configuración del frontend
+        self.frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        
         # Configuración de directorios
         self.certificate_output_dir = os.getenv("CERTIFICATE_OUTPUT_DIR", "certificates")
         self.upload_dir = os.getenv("UPLOAD_DIR", "uploads")

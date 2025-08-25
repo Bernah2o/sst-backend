@@ -148,6 +148,7 @@ class WorkerList(BaseModel):
     department: Optional[str] = None
     age: int
     risk_level: RiskLevel
+    fecha_de_ingreso: Optional[date] = None
     is_active: bool
     assigned_role: UserRole
     is_registered: bool

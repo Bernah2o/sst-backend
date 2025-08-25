@@ -44,7 +44,6 @@ class CourseReportResponse(BaseModel):
 
 class UserReportResponse(BaseModel):
     user_id: int
-    username: str
     email: str
     full_name: str
     role: str
@@ -84,13 +83,13 @@ class EvaluationReportResponse(BaseModel):
 class CertificateReportResponse(BaseModel):
     certificate_id: int
     user_id: int
-    username: str
+    email: str
     full_name: str
     course_title: str
     certificate_number: str
     issued_at: datetime
     status: str
-    verification_code: str
+    verification_code: Optional[str] = None
 
 
 class TrendDataPoint(BaseModel):
