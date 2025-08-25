@@ -139,6 +139,14 @@ from .occupational_exam import (
     OccupationalExamResponse,
     OccupationalExamListResponse,
 )
+from .absenteeism import (
+    AbsenteeismCreate,
+    AbsenteeismUpdate,
+    AbsenteeismResponse,
+    AbsenteeismWithWorker,
+    AbsenteeismList,
+    AbsenteeismStats,
+)
 
 __all__ = [
     # User schemas
@@ -271,4 +279,11 @@ __all__ = [
     "OccupationalExamUpdate",
     "OccupationalExamResponse",
     "OccupationalExamListResponse",
+    # Absenteeism
+    "AbsenteeismCreate",
+    "AbsenteeismUpdate",
+    "AbsenteeismResponse",
+    "AbsenteeismWithWorker",
+    "AbsenteeismList",
+    "AbsenteeismStats",
 ]

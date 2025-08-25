@@ -105,11 +105,12 @@ class Worker(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     
-    # Datos Básicos
+    # Información Personal
     photo = Column(String(255))  # URL de la foto
     gender = Column(SQLEnum(Gender), nullable=False)
     document_type = Column(SQLEnum(DocumentType), nullable=False)
     document_number = Column(String(50), unique=True, nullable=False, index=True)
+    cedula = Column(String(50), unique=True, nullable=True, index=True)  # Alias para document_number
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
     birth_date = Column(Date, nullable=False)
@@ -122,8 +123,10 @@ class Worker(Base):
     profession = Column(String(100))
     risk_level = Column(SQLEnum(RiskLevel), nullable=False)
     position = Column(String(100), nullable=False)
+    cargo = Column(String(100), nullable=True)  # Alias para position
     occupation = Column(String(100))
     salary_ibc = Column(Numeric(12, 2))  # Salario/IBC
+    salario = Column(Numeric(12, 2), nullable=True)  # Alias para salary_ibc
     fecha_de_ingreso = Column(Date, nullable=True)  # Fecha de ingreso del trabajador
     fecha_de_retiro = Column(Date, nullable=True)  # Fecha de retiro del trabajador
     
@@ -164,6 +167,7 @@ class Worker(Base):
     occupational_exams = relationship("OccupationalExam", back_populates="worker", cascade="all, delete-orphan")
     reinduction_records = relationship("ReinductionRecord", back_populates="worker", cascade="all, delete-orphan")
     seguimientos = relationship("Seguimiento", back_populates="worker", cascade="all, delete-orphan")
+    absenteeism_records = relationship("Absenteeism", back_populates="worker", cascade="all, delete-orphan")
     user = relationship("User", foreign_keys=[user_id])
     
     @hybrid_property

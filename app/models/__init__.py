@@ -3,6 +3,7 @@ from .custom_role import CustomRole
 from .worker import Worker, WorkerContract, Gender, DocumentType, ContractType, RiskLevel, BloodType, EPS, AFP, ARL
 from .cargo import Cargo
 from .seguridad_social import SeguridadSocial
+from .absenteeism import Absenteeism, EventMonth, EventType
 from .occupational_exam import OccupationalExam, ExamType, MedicalAptitude
 from .seguimiento import Seguimiento, EstadoSeguimiento, ValoracionRiesgo
 from .reinduction import ReinductionRecord, ReinductionStatus
@@ -64,4 +65,7 @@ __all__ = [
     "ReinductionStatus",
     "Cargo",
     "SeguridadSocial",
+    "Absenteeism",
+    "EventMonth",
+    "EventType",
 ]

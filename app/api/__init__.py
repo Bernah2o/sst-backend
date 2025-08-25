@@ -18,6 +18,7 @@ from .admin_attendance import router as admin_attendance_router
 from .reinduction import router as reinduction_router
 from .seguimientos import router as seguimientos_router
 from .permissions import router as permissions_router
+from .absenteeism import router as absenteeism_router
 
 
 api_router = APIRouter()
@@ -41,3 +42,4 @@ api_router.include_router(admin_attendance_router, prefix="/admin/attendance", t
 api_router.include_router(reinduction_router, prefix="/reinduction", tags=["reinduction"])
 api_router.include_router(seguimientos_router, prefix="/seguimientos", tags=["seguimientos"])
 api_router.include_router(permissions_router, prefix="/permissions", tags=["permissions"])
+api_router.include_router(absenteeism_router, prefix="/absenteeism", tags=["absenteeism"])
