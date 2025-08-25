@@ -43,10 +43,7 @@ def create_admin_user():
         print("❌ El email es obligatorio")
         return False
     
-    username = input("Nombre de usuario: ").strip()
-    if not username:
-        print("❌ El nombre de usuario es obligatorio")
-        return False
+    # Username field removed - using email as identifier
     
     first_name = input("Nombre: ").strip()
     if not first_name:
@@ -105,8 +102,7 @@ def create_admin_user():
     try:
         # Verificar si el usuario ya existe
         existing_user = db.query(User).filter(
-            (User.email == email) | 
-            (User.username == username) |
+            (User.email == email) |
             (User.document_number == document_number)
         ).first()
         
@@ -119,7 +115,6 @@ def create_admin_user():
         
         admin_user = User(
             email=email,
-            username=username,
             hashed_password=hashed_password,
             first_name=first_name,
             last_name=last_name,
@@ -143,7 +138,7 @@ def create_admin_user():
         print("Detalles del usuario:")
         print(f"  ID: {admin_user.id}")
         print(f"  Email: {admin_user.email}")
-        print(f"  Usuario: {admin_user.username}")
+        print(f"  Email: {admin_user.email}")
         print(f"  Nombre: {admin_user.full_name}")
         print(f"  Rol: {admin_user.role.value}")
         print(f"  Documento: {admin_user.document_number}")

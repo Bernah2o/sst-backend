@@ -21,7 +21,7 @@ from app.api.auth_worker_update import update_worker_after_registration
 router = APIRouter()
 
 
-@router.post("/login", response_model=Token)
+@router.post("/login")
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
@@ -33,12 +33,31 @@ async def login(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
     tokens = auth_service.create_user_tokens(user)
-    return tokens
+    
+    # Add user information to the response
+    response = {
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens["refresh_token"],
+        "token_type": tokens["token_type"],
+        "expires_in": tokens["expires_in"],
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "role": user.role.value,
+            "full_name": user.full_name,
+            "is_active": user.is_active,
+            "is_verified": user.is_verified
+        }
+    }
+    
+    return response
 
 
 @router.post("/register", response_model=MessageResponse)
@@ -50,10 +69,7 @@ async def register(
     Register a new user (simplified version)
     """
     # Check if user already exists
-    existing_user = db.query(User).filter(
-        (User.email == user_data.email) | 
-        (User.username == user_data.username)
-    ).first()
+    existing_user = db.query(User).filter(User.email == user_data.email).first()
     
     if existing_user:
         raise HTTPException(
@@ -64,7 +80,6 @@ async def register(
     # Create new user
     hashed_password = auth_service.get_password_hash(user_data.password)
     user = User(
-        username=user_data.username,
         email=user_data.email,
         hashed_password=hashed_password,
         first_name=user_data.first_name,

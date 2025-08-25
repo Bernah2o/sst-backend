@@ -1,5 +1,7 @@
 from .user import User, UserRole
 from .worker import Worker, WorkerContract, Gender, DocumentType, ContractType, RiskLevel, BloodType, EPS, AFP, ARL
+from .cargo import Cargo
+from .seguridad_social import SeguridadSocial
 from .occupational_exam import OccupationalExam, ExamType, MedicalAptitude
 from .seguimiento import Seguimiento, EstadoSeguimiento, ValoracionRiesgo
 from .reinduction import ReinductionRecord, ReinductionStatus
@@ -58,4 +60,6 @@ __all__ = [
     "ValoracionRiesgo",
     "ReinductionRecord",
     "ReinductionStatus",
+    "Cargo",
+    "SeguridadSocial",
 ]

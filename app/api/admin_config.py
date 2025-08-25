@@ -1,10 +1,12 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
 from app.database import get_db
 from app.models.admin_config import AdminConfig, Programas
+from app.models.cargo import Cargo
+from app.models.seguridad_social import SeguridadSocial
 from app.schemas.admin_config import (
     AdminConfigCreate,
     AdminConfigUpdate,
@@ -14,7 +16,9 @@ from app.schemas.admin_config import (
     ProgramasUpdate,
     Programas as ProgramasSchema
 )
-from app.dependencies import require_admin
+from app.schemas.cargo import CargoCreate, CargoUpdate, Cargo as CargoSchema
+from app.schemas.seguridad_social import SeguridadSocialCreate, SeguridadSocialUpdate, SeguridadSocial as SeguridadSocialSchema
+from app.dependencies import require_admin, get_current_active_user
 from app.models.user import User
 
 router = APIRouter()
@@ -37,6 +41,27 @@ async def get_configs_by_category(
     db: Session = Depends(get_db)
 ):
     """Get all configurations for a specific category"""
+    if category == "position":
+        # Redirigir a cargos para mantener compatibilidad
+        cargos = db.query(Cargo).all()
+        # Convertir cargos a formato AdminConfig para compatibilidad
+        configs = [
+            AdminConfigSchema(
+                id=cargo.id,
+                category="position",
+                display_name=cargo.nombre_cargo,
+                emo_periodicity=cargo.periodicidad_emo,
+                is_active=cargo.activo,
+                created_at=cargo.created_at,
+                updated_at=cargo.updated_at
+            )
+            for cargo in cargos
+        ]
+        return AdminConfigList(
+            category=category,
+            configs=configs
+        )
+    
     configs = db.query(AdminConfig).filter(
         AdminConfig.category == category
     ).order_by(AdminConfig.display_name).all()
@@ -168,6 +193,302 @@ async def delete_config(
         )
     
     db.delete(db_config)
+    db.commit()
+    
+    return None
+
+
+# Endpoints para Seguridad Social
+@router.get("/seguridad-social", response_model=List[SeguridadSocialSchema])
+def get_seguridad_social(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    is_active: Optional[bool] = Query(None, description="Filtrar por estado activo"),
+    tipo: Optional[str] = Query(None, description="Filtrar por tipo (eps, afp, arl)"),
+    search: Optional[str] = Query(None, description="Buscar por nombre"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Obtener lista de entidades de seguridad social"""
+    query = db.query(SeguridadSocial)
+    
+    if is_active is not None:
+        query = query.filter(SeguridadSocial.is_active == is_active)
+    
+    if tipo:
+        query = query.filter(SeguridadSocial.tipo == tipo)
+    
+    if search:
+        query = query.filter(SeguridadSocial.nombre.ilike(f"%{search}%"))
+    
+    return query.offset(skip).limit(limit).all()
+
+
+@router.get("/seguridad-social/active", response_model=List[SeguridadSocialSchema])
+def get_active_seguridad_social(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Obtener entidades de seguridad social activas"""
+    return db.query(SeguridadSocial).filter(SeguridadSocial.is_active == True).all()
+
+
+@router.get("/seguridad-social/tipo/{tipo}", response_model=List[SeguridadSocialSchema])
+def get_seguridad_social_by_tipo(
+    tipo: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Obtener entidades de seguridad social activas por tipo (eps, afp, arl)"""
+    return db.query(SeguridadSocial).filter(
+        and_(
+            SeguridadSocial.tipo == tipo,
+            SeguridadSocial.is_active == True
+        )
+    ).all()
+
+
+@router.get("/seguridad-social/{seguridad_social_id}", response_model=SeguridadSocialSchema)
+def get_seguridad_social_by_id(
+    seguridad_social_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Obtener una entidad de seguridad social por ID"""
+    seguridad_social = db.query(SeguridadSocial).filter(SeguridadSocial.id == seguridad_social_id).first()
+    if not seguridad_social:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entidad de seguridad social no encontrada"
+        )
+    return seguridad_social
+
+
+@router.post("/seguridad-social", response_model=SeguridadSocialSchema, status_code=status.HTTP_201_CREATED)
+def create_seguridad_social(
+    seguridad_social_data: SeguridadSocialCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Crear nueva entidad de seguridad social"""
+    # Verificar si ya existe una entidad con el mismo nombre y tipo
+    existing = db.query(SeguridadSocial).filter(
+        and_(
+            SeguridadSocial.nombre == seguridad_social_data.nombre,
+            SeguridadSocial.tipo == seguridad_social_data.tipo
+        )
+    ).first()
+    
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Ya existe una entidad {seguridad_social_data.tipo.upper()} con el nombre '{seguridad_social_data.nombre}'"
+        )
+    
+    seguridad_social = SeguridadSocial(**seguridad_social_data.dict())
+    db.add(seguridad_social)
+    db.commit()
+    db.refresh(seguridad_social)
+    return seguridad_social
+
+
+@router.put("/seguridad-social/{seguridad_social_id}", response_model=SeguridadSocialSchema)
+def update_seguridad_social(
+    seguridad_social_id: int,
+    seguridad_social_data: SeguridadSocialUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Actualizar entidad de seguridad social"""
+    seguridad_social = db.query(SeguridadSocial).filter(SeguridadSocial.id == seguridad_social_id).first()
+    if not seguridad_social:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entidad de seguridad social no encontrada"
+        )
+    
+    # Verificar duplicados si se está actualizando el nombre
+    if seguridad_social_data.nombre and seguridad_social_data.nombre != seguridad_social.nombre:
+        existing = db.query(SeguridadSocial).filter(
+            and_(
+                SeguridadSocial.nombre == seguridad_social_data.nombre,
+                SeguridadSocial.tipo == seguridad_social.tipo,
+                SeguridadSocial.id != seguridad_social_id
+            )
+        ).first()
+        
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Ya existe una entidad {seguridad_social.tipo.upper()} con el nombre '{seguridad_social_data.nombre}'"
+            )
+    
+    # Actualizar campos
+    update_data = seguridad_social_data.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(seguridad_social, field, value)
+    
+    db.commit()
+    db.refresh(seguridad_social)
+    return seguridad_social
+
+
+@router.delete("/seguridad-social/{seguridad_social_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_seguridad_social(
+    seguridad_social_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Eliminar entidad de seguridad social"""
+    seguridad_social = db.query(SeguridadSocial).filter(SeguridadSocial.id == seguridad_social_id).first()
+    if not seguridad_social:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entidad de seguridad social no encontrada"
+        )
+    
+    db.delete(seguridad_social)
+    db.commit()
+    return None
+
+
+# Endpoints específicos para cargos bajo /admin/config/cargos
+@router.get("/cargos", response_model=List[CargoSchema])
+def get_cargos(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    activo: Optional[bool] = Query(None, description="Filtrar por estado activo"),
+    search: Optional[str] = Query(None, description="Buscar por nombre de cargo"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Obtener lista de cargos"""
+    query = db.query(Cargo)
+    
+    # Filtros
+    if activo is not None:
+        query = query.filter(Cargo.activo == activo)
+    
+    if search:
+        query = query.filter(Cargo.nombre_cargo.ilike(f"%{search}%"))
+    
+    # Ordenar por nombre
+    query = query.order_by(Cargo.nombre_cargo)
+    
+    # Paginación
+    cargos = query.offset(skip).limit(limit).all()
+    
+    return cargos
+
+
+@router.get("/cargos/active", response_model=List[CargoSchema])
+def get_active_cargos(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Obtener solo cargos activos"""
+    cargos = db.query(Cargo).filter(Cargo.activo == True).order_by(Cargo.nombre_cargo).all()
+    return cargos
+
+
+@router.get("/cargos/{cargo_id}", response_model=CargoSchema)
+def get_cargo(
+    cargo_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Obtener un cargo específico"""
+    cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
+    if not cargo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cargo no encontrado"
+        )
+    return cargo
+
+
+@router.post("/cargos", response_model=CargoSchema, status_code=status.HTTP_201_CREATED)
+def create_cargo(
+    cargo_data: CargoCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Crear un nuevo cargo"""
+    # Verificar que no exista un cargo con el mismo nombre
+    existing_cargo = db.query(Cargo).filter(Cargo.nombre_cargo == cargo_data.nombre_cargo).first()
+    if existing_cargo:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ya existe un cargo con este nombre"
+        )
+    
+    # Crear el cargo
+    cargo = Cargo(**cargo_data.model_dump())
+    db.add(cargo)
+    db.commit()
+    db.refresh(cargo)
+    
+    return cargo
+
+
+@router.put("/cargos/{cargo_id}", response_model=CargoSchema)
+def update_cargo(
+    cargo_id: int,
+    cargo_data: CargoUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Actualizar un cargo existente"""
+    cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
+    if not cargo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cargo no encontrado"
+        )
+    
+    # Verificar nombre único si se está actualizando
+    if cargo_data.nombre_cargo and cargo_data.nombre_cargo != cargo.nombre_cargo:
+        existing_cargo = db.query(Cargo).filter(
+            and_(
+                Cargo.nombre_cargo == cargo_data.nombre_cargo,
+                Cargo.id != cargo_id
+            )
+        ).first()
+        if existing_cargo:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ya existe un cargo con este nombre"
+            )
+    
+    # Actualizar campos
+    update_data = cargo_data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(cargo, field, value)
+    
+    db.commit()
+    db.refresh(cargo)
+    
+    return cargo
+
+
+@router.delete("/cargos/{cargo_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_cargo(
+    cargo_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Eliminar un cargo"""
+    cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
+    if not cargo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cargo no encontrado"
+        )
+    
+    # TODO: Verificar si el cargo está siendo usado por trabajadores
+    # antes de permitir la eliminación
+    
+    db.delete(cargo)
     db.commit()
     
     return None

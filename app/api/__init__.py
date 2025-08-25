@@ -18,6 +18,7 @@ from .admin_attendance import router as admin_attendance_router
 from .reinduction import router as reinduction_router
 from .seguimientos import router as seguimientos_router
 
+
 api_router = APIRouter()
 
 # Include available routers

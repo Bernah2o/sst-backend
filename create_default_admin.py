@@ -35,7 +35,6 @@ def create_default_admin():
     # Datos predefinidos del administrador
     admin_data = {
         "email": "admin@sst.com",
-        "username": "admin",
         "password": "Admin123!",  # Contraseña que cumple con los nuevos requisitos
         "first_name": "Administrador",
         "last_name": "Sistema",
@@ -47,7 +46,6 @@ def create_default_admin():
     
     print("Datos del administrador:")
     print(f"  Email: {admin_data['email']}")
-    print(f"  Usuario: {admin_data['username']}")
     print(f"  Contraseña: {admin_data['password']}")
     print(f"  Nombre: {admin_data['first_name']} {admin_data['last_name']}")
     print()
@@ -59,7 +57,6 @@ def create_default_admin():
         # Verificar si el usuario ya existe
         existing_user = db.query(User).filter(
             (User.email == admin_data['email']) | 
-            (User.username == admin_data['username']) |
             (User.document_number == admin_data['document_number'])
         ).first()
         
@@ -67,7 +64,6 @@ def create_default_admin():
             print(f"⚠️  Ya existe un usuario administrador:")
             print(f"   ID: {existing_user.id}")
             print(f"   Email: {existing_user.email}")
-            print(f"   Usuario: {existing_user.username}")
             print(f"   Rol: {existing_user.role.value}")
             print()
             
@@ -87,7 +83,6 @@ def create_default_admin():
         
         admin_user = User(
             email=admin_data['email'],
-            username=admin_data['username'],
             hashed_password=hashed_password,
             first_name=admin_data['first_name'],
             last_name=admin_data['last_name'],
@@ -110,13 +105,12 @@ def create_default_admin():
         print("Detalles del usuario:")
         print(f"  ID: {admin_user.id}")
         print(f"  Email: {admin_user.email}")
-        print(f"  Usuario: {admin_user.username}")
         print(f"  Nombre: {admin_user.full_name}")
         print(f"  Rol: {admin_user.role.value}")
         print(f"  Documento: {admin_user.document_number}")
         print()
         print("🔐 Credenciales de acceso:")
-        print(f"   Usuario: {admin_data['username']}")
+        print(f"   Email: {admin_data['email']}")
         print(f"   Contraseña: {admin_data['password']}")
         print()
         print("⚠️  IMPORTANTE: Cambie la contraseña después del primer inicio de sesión")

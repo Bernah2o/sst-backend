@@ -28,12 +28,10 @@ class AuthService:
         """Hash a password"""
         return self.pwd_context.hash(password)
 
-    def authenticate_user(self, db: Session, username: str, password: str) -> Optional[User]:
-        """Authenticate a user by username/email and password"""
-        # Try to find user by username or email
-        user = db.query(User).filter(
-            (User.username == username) | (User.email == username)
-        ).first()
+    def authenticate_user(self, db: Session, email: str, password: str) -> Optional[User]:
+        """Authenticate a user by email and password"""
+        # Find user by email only
+        user = db.query(User).filter(User.email == email).first()
         
         if not user:
             return None
@@ -85,7 +83,7 @@ class AuthService:
         try:
             payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
             user_id_str: str = payload.get("sub")
-            username: str = payload.get("username")
+            email: str = payload.get("email")
             role: str = payload.get("role")
             token_type_payload: str = payload.get("type")
             
@@ -100,7 +98,7 @@ class AuthService:
             
             token_data = TokenData(
                 user_id=user_id,
-                username=username,
+                email=email,
                 role=role
             )
             return token_data
@@ -132,7 +130,7 @@ class AuthService:
         
         new_token_data = {
             "sub": str(token_data.user_id),  # JWT standard requires sub to be a string
-            "username": token_data.username,
+            "email": token_data.email,
             "role": token_data.role
         }
         
@@ -150,7 +148,7 @@ class AuthService:
         """Create both access and refresh tokens for a user"""
         token_data = {
             "sub": str(user.id),  # JWT standard requires sub to be a string
-            "username": user.username,
+            "email": user.email,
             "role": user.role.value
         }
         

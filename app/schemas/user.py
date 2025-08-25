@@ -9,7 +9,6 @@ from app.models.user import UserRole
 
 class UserBase(BaseModel):
     email: EmailStr
-    username: str
     first_name: str
     last_name: str
     document_type: str
@@ -55,7 +54,6 @@ class UserCreate(UserBase):
 
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
-    username: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     document_type: Optional[str] = None
@@ -87,13 +85,12 @@ class UserResponse(UserBase):
 
 
 class UserLogin(BaseModel):
-    username: str  # Can be username or email
+    email: EmailStr
     password: str
 
 
 class UserRegister(BaseModel):
     email: EmailStr
-    username: str
     password: str
     first_name: str
     last_name: str
@@ -132,7 +129,7 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     user_id: Optional[int] = None
-    username: Optional[str] = None
+    email: Optional[str] = None
     role: Optional[UserRole] = None
 
 
