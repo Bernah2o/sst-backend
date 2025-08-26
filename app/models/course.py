@@ -36,10 +36,7 @@ class CourseStatus(str, Enum):
 class MaterialType(str, Enum):
     PDF = "pdf"
     VIDEO = "video"
-    PRESENTATION = "presentation"
-    DOCUMENT = "document"
     LINK = "link"
-    QUIZ = "quiz"
 
 
 class Course(Base):
@@ -108,11 +105,7 @@ class CourseMaterial(Base):
     title = Column(String(255), nullable=False)
     description = Column(Text)
     material_type = Column(SQLEnum(MaterialType), nullable=False)
-    file_path = Column(String(500))  # Path to uploaded file
-    file_url = Column(String(500))  # External URL
-    file_size = Column(Integer)  # File size in bytes
-    mime_type = Column(String(100))
-    duration_seconds = Column(Integer)  # For videos
+    file_url = Column(String(500))  # External URL or uploaded file URL
     order_index = Column(Integer, default=0)
     is_downloadable = Column(Boolean, default=True)
     is_required = Column(Boolean, default=True)

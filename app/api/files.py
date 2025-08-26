@@ -245,10 +245,7 @@ async def upload_course_material(
             title=os.path.splitext(file.filename)[0],  # Use original filename without extension as title
             description=f"Material uploaded: {file.filename}",
             material_type=material_type,
-            file_path=file_path,
             file_url=file_url,
-            file_size=len(file_content),
-            mime_type=file.content_type,
             order_index=0  # Will be updated by frontend if needed
         )
         
@@ -317,9 +314,11 @@ async def delete_course_material(
             user_ids.append(progress.user_id)
             db.delete(progress)
         
-        # Delete physical file
-        if material.file_path and os.path.exists(material.file_path):
-            os.remove(material.file_path)
+        # Delete physical file if it exists locally
+        if material.file_url and not material.file_url.startswith('http'):
+            file_path = os.path.join(settings.upload_dir, material.file_url)
+            if os.path.exists(file_path):
+                os.remove(file_path)
         
         # Delete database record
         db.delete(material)
@@ -413,9 +412,6 @@ async def view_course_material(
         "description": material.description,
         "material_type": material.material_type.value,
         "file_url": file_url,
-        "mime_type": material.mime_type,
-        "file_size": material.file_size,
-        "duration_seconds": material.duration_seconds,
         "can_download": can_download
     }
 
@@ -463,6 +459,5 @@ async def download_course_material(
     
     return FileResponse(
         path=file_path,
-        filename=os.path.basename(file_path),
-        media_type=material.mime_type
+        filename=os.path.basename(file_path)
     )

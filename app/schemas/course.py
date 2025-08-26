@@ -22,10 +22,7 @@ class CourseStatus(str, Enum):
 class MaterialType(str, Enum):
     PDF = "pdf"
     VIDEO = "video"
-    PRESENTATION = "presentation"
-    DOCUMENT = "document"
     LINK = "link"
-    QUIZ = "quiz"
 
 
 # Course Material Schemas
@@ -33,11 +30,7 @@ class CourseMaterialBase(BaseModel):
     title: str = Field(..., max_length=255)
     description: Optional[str] = None
     material_type: MaterialType
-    file_path: Optional[str] = Field(None, max_length=500)
     file_url: Optional[str] = Field(None, max_length=500)
-    file_size: Optional[int] = None
-    mime_type: Optional[str] = Field(None, max_length=100)
-    duration_seconds: Optional[int] = None
     order_index: int = 0
     is_downloadable: bool = True
     is_required: bool = True
@@ -51,11 +44,7 @@ class CourseMaterialUpdate(BaseModel):
     title: Optional[str] = Field(None, max_length=255)
     description: Optional[str] = None
     material_type: Optional[MaterialType] = None
-    file_path: Optional[str] = Field(None, max_length=500)
     file_url: Optional[str] = Field(None, max_length=500)
-    file_size: Optional[int] = None
-    mime_type: Optional[str] = Field(None, max_length=100)
-    duration_seconds: Optional[int] = None
     order_index: Optional[int] = None
     is_downloadable: Optional[bool] = None
     is_required: Optional[bool] = None
