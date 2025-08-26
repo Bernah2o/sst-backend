@@ -22,8 +22,14 @@ class EnrollmentBase(BaseModel):
     notes: Optional[str] = None
 
 
-class EnrollmentCreate(EnrollmentBase):
-    pass
+class EnrollmentCreate(BaseModel):
+    user_id: Optional[int] = None
+    worker_id: Optional[int] = None  # Support both user_id and worker_id
+    course_id: int
+    status: EnrollmentStatus = EnrollmentStatus.PENDING
+    progress: float = Field(0.0, ge=0.0, le=100.0)
+    grade: Optional[float] = Field(None, ge=0.0, le=100.0)
+    notes: Optional[str] = None
 
 
 class EnrollmentUpdate(BaseModel):

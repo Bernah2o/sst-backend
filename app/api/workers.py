@@ -30,6 +30,10 @@ from app.schemas.occupational_exam import (
     OccupationalExamListResponse
 )
 from app.schemas.common import MessageResponse
+from app.models.enrollment import Enrollment
+from app.models.course import Course
+from app.models.survey import Survey, UserSurvey
+from app.models.evaluation import Evaluation, UserEvaluation
 
 router = APIRouter()
 
@@ -152,6 +156,104 @@ async def get_worker(
             detail="Trabajador no encontrado"
         )
     return worker
+
+
+@router.get("/{worker_id}/detailed-info")
+async def get_worker_detailed_info(
+    worker_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> Any:
+    """
+    Obtener información detallada de un trabajador incluyendo cursos, encuestas y evaluaciones
+    """
+    # Obtener información del trabajador
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trabajador no encontrado"
+        )
+    
+    # Get course enrollments with progress
+    enrollments = db.query(Enrollment).filter(Enrollment.user_id == worker.user_id).all()
+    courses = []
+    for enrollment in enrollments:
+        course = enrollment.course
+        
+        courses.append({
+            "id": course.id,
+            "title": course.title,
+            "description": course.description,
+            "overall_progress": enrollment.progress or 0
+        })
+    
+    # Obtener encuestas del trabajador
+    surveys_query = db.query(
+        UserSurvey.id.label('user_survey_id'),
+        Survey.id.label('survey_id'),
+        Survey.title.label('survey_title'),
+        UserSurvey.completed_at,
+        UserSurvey.status
+    ).join(
+        Survey, UserSurvey.survey_id == Survey.id
+    ).filter(
+        UserSurvey.user_id == worker.user_id
+    ).all()
+    
+    surveys = []
+    for survey in surveys_query:
+        surveys.append({
+            "id": survey.survey_id,
+            "title": survey.survey_title,
+            "status": survey.status,
+            "completed_at": survey.completed_at.isoformat() if survey.completed_at else None
+        })
+    
+    # Obtener evaluaciones del trabajador
+    evaluations_query = db.query(
+        UserEvaluation.id.label('user_evaluation_id'),
+        Evaluation.id.label('evaluation_id'),
+        Evaluation.title.label('evaluation_title'),
+        UserEvaluation.score,
+        UserEvaluation.max_points,
+        UserEvaluation.passed,
+        UserEvaluation.completed_at,
+        UserEvaluation.status
+    ).join(
+        Evaluation, UserEvaluation.evaluation_id == Evaluation.id
+    ).filter(
+        UserEvaluation.user_id == worker.user_id
+    ).all()
+    
+    evaluations = []
+    for evaluation in evaluations_query:
+        evaluations.append({
+            "user_evaluation_id": evaluation.user_evaluation_id,
+            "evaluation_id": evaluation.evaluation_id,
+            "evaluation_title": evaluation.evaluation_title,
+            "score": evaluation.score,
+            "max_score": evaluation.max_points,
+            "passed": evaluation.passed,
+            "completed_at": evaluation.completed_at.isoformat() if evaluation.completed_at else None,
+            "status": evaluation.status
+        })
+    
+    return {
+        "worker": {
+            "id": worker.id,
+            "full_name": f"{worker.first_name} {worker.last_name}",
+            "document_number": worker.document_number,
+            "email": worker.email,
+            "position": worker.position,
+            "department": worker.department,
+            "is_active": worker.is_active,
+            "user_id": worker.user_id
+        },
+        "courses": courses,
+        "surveys": surveys,
+        "evaluations": evaluations
+    }
 
 
 @router.put("/{worker_id}", response_model=WorkerSchema)

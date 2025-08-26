@@ -432,6 +432,51 @@ async def check_permission(
         return {"has_permission": False}
 
 
+@router.post("/check-batch")
+async def check_permissions_batch(
+    permissions_data: List[dict],
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Verificar múltiples permisos en una sola llamada para optimizar rendimiento"""
+    if not permissions_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Se requiere al menos un permiso para verificar"
+        )
+    
+    # Validar que todos los elementos tengan resource_type y action
+    for perm in permissions_data:
+        if not perm.get("resource_type") or not perm.get("action"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cada permiso debe tener 'resource_type' y 'action'"
+            )
+    
+    # Usar la lógica de PermissionChecker para verificar cada permiso
+    from app.dependencies import PermissionChecker
+    
+    results = []
+    for perm in permissions_data:
+        try:
+            checker = PermissionChecker(perm["resource_type"], perm["action"])
+            has_permission = checker._has_permission(current_user, perm["resource_type"], perm["action"])
+            results.append({
+                "resource_type": perm["resource_type"],
+                "action": perm["action"],
+                "has_permission": has_permission
+            })
+        except Exception as e:
+            # En caso de error, denegar el permiso por seguridad
+            results.append({
+                "resource_type": perm["resource_type"],
+                "action": perm["action"],
+                "has_permission": False
+            })
+    
+    return {"permissions": results}
+
+
 @router.get("/my-pages")
 async def get_my_pages(
     current_user: User = Depends(get_current_active_user),

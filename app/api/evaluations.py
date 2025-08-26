@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, func
 
 from app.dependencies import get_current_active_user
 from app.database import get_db
@@ -100,6 +100,43 @@ async def get_available_evaluations(
     ).all()
     
     return available_evaluations
+
+
+@router.get("/stats")
+async def get_evaluation_stats(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get evaluation statistics by status
+    """
+    # Check permissions
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    # Get counts by status
+    stats_query = db.query(
+        Evaluation.status,
+        func.count(Evaluation.id).label('count')
+    ).group_by(Evaluation.status).all()
+    
+    # Initialize stats with default values
+    stats = {
+        "total": 0,
+        "draft": 0,
+        "published": 0,
+        "archived": 0
+    }
+    
+    # Populate stats from query results
+    for status_result, count in stats_query:
+        stats[status_result.value] = count
+        stats["total"] += count
+    
+    return stats
 
 
 @router.post("/", response_model=EvaluationResponse)
@@ -685,7 +722,7 @@ async def reassign_evaluation(
     
     return {
         "success": True,
-        "message": f"Evaluation reassigned successfully to user {user.username}",
+        "message": f"Evaluation reassigned successfully to user {user.email}",
         "user_id": user_id,
         "evaluation_id": evaluation_id
     }
@@ -964,10 +1001,10 @@ async def get_all_evaluation_results(
         # Build query with joins to get user, evaluation and course information
         query = db.query(
             UserEvaluation,
-            User.username,
+            User.email,
             User.first_name,
             User.last_name,
-            User.email,
+            User.email.label('user_email'),
             Evaluation.title.label('evaluation_title'),
             Course.title.label('course_title')
         ).join(
@@ -997,14 +1034,14 @@ async def get_all_evaluation_results(
         # Build response data
         evaluation_results = []
         for result in results:
-            user_eval, username, first_name, last_name, email, evaluation_title, course_title = result
+            user_eval, email, first_name, last_name, user_email, evaluation_title, course_title = result
             
             evaluation_results.append({
                 "id": int(user_eval.id),
                 "user_id": int(user_eval.user_id),
-                "username": username,
-                "full_name": f"{first_name} {last_name}",
                 "email": email,
+                "full_name": f"{first_name} {last_name}",
+                "user_email": user_email,
                 "evaluation_id": int(user_eval.evaluation_id),
                 "evaluation_title": evaluation_title,
                 "course_title": course_title,

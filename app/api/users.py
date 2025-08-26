@@ -344,6 +344,24 @@ async def delete_user(
         result = db.execute(text("DELETE FROM user_surveys WHERE user_id = :user_id"), {"user_id": user_id})
         logger.info(f"Deleted {result.rowcount} user surveys")
         
+        # Delete user_material_progress (depends on enrollments)
+        result = db.execute(text("""
+            DELETE FROM user_material_progress 
+            WHERE enrollment_id IN (
+                SELECT id FROM enrollments WHERE user_id = :user_id
+            )
+        """), {"user_id": user_id})
+        logger.info(f"Deleted {result.rowcount} user material progress records")
+        
+        # Delete user_module_progress (depends on enrollments)
+        result = db.execute(text("""
+            DELETE FROM user_module_progress 
+            WHERE enrollment_id IN (
+                SELECT id FROM enrollments WHERE user_id = :user_id
+            )
+        """), {"user_id": user_id})
+        logger.info(f"Deleted {result.rowcount} user module progress records")
+        
         # Delete enrollments
         result = db.execute(text("DELETE FROM enrollments WHERE user_id = :user_id"), {"user_id": user_id})
         logger.info(f"Deleted {result.rowcount} enrollments")
