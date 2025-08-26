@@ -4,7 +4,7 @@ from typing import Any, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.dependencies import get_current_active_user
@@ -104,7 +104,7 @@ async def get_users(
             detail="Not enough permissions"
         )
     
-    query = db.query(User)
+    query = db.query(User).options(joinedload(User.custom_role))
     
     # Apply search filter if provided
     if search:
@@ -242,7 +242,7 @@ async def get_user(
             detail="Not enough permissions"
         )
     
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).options(joinedload(User.custom_role)).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

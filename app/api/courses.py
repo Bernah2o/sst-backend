@@ -181,13 +181,25 @@ async def get_course(
         )
 
     # Check if user can access this course
-    if (
-        current_user.role.value not in ["admin", "capacitador"]
-        and course.status != CourseStatus.PUBLISHED
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Course not available"
-        )
+    if current_user.role.value not in ["admin", "capacitador"]:
+        # For non-admin users, check if course is published AND user is enrolled
+        if course.status != CourseStatus.PUBLISHED:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Course not available"
+            )
+        
+        # Check if user is enrolled in the course
+        enrollment = db.query(Enrollment).filter(
+            and_(
+                Enrollment.user_id == current_user.id,
+                Enrollment.course_id == course_id
+            )
+        ).first()
+        
+        if not enrollment:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Not enrolled in this course"
+            )
 
     return course
 
@@ -332,13 +344,25 @@ async def get_course_modules(
         )
 
     # Check if user can access this course
-    if (
-        current_user.role.value not in ["admin", "capacitador"]
-        and course.status != CourseStatus.PUBLISHED
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Course not available"
-        )
+    if current_user.role.value not in ["admin", "capacitador"]:
+        # For non-admin users, check if course is published AND user is enrolled
+        if course.status != CourseStatus.PUBLISHED:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Course not available"
+            )
+        
+        # Check if user is enrolled in the course
+        enrollment = db.query(Enrollment).filter(
+            and_(
+                Enrollment.user_id == current_user.id,
+                Enrollment.course_id == course_id
+            )
+        ).first()
+        
+        if not enrollment:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Not enrolled in this course"
+            )
 
     modules = (
         db.query(CourseModule)
@@ -511,13 +535,25 @@ async def get_module_materials(
 
     # Check if user can access this course
     course = db.query(Course).filter(Course.id == module.course_id).first()
-    if (
-        current_user.role.value not in ["admin", "capacitador"]
-        and course.status != CourseStatus.PUBLISHED
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Course not available"
-        )
+    if current_user.role.value not in ["admin", "capacitador"]:
+        # For non-admin users, check if course is published AND user is enrolled
+        if course.status != CourseStatus.PUBLISHED:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Course not available"
+            )
+        
+        # Check if user is enrolled in the course
+        enrollment = db.query(Enrollment).filter(
+            and_(
+                Enrollment.user_id == current_user.id,
+                Enrollment.course_id == module.course_id
+            )
+        ).first()
+        
+        if not enrollment:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Not enrolled in this course"
+            )
 
     materials = (
         db.query(CourseMaterial)

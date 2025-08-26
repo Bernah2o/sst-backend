@@ -5,6 +5,7 @@ import re
 from pydantic import BaseModel, EmailStr, validator
 
 from app.models.user import UserRole
+from app.schemas.custom_role import CustomRoleResponse
 
 
 class UserBase(BaseModel):
@@ -17,6 +18,7 @@ class UserBase(BaseModel):
     department: Optional[str] = None
     position: Optional[str] = None
     role: UserRole = UserRole.EMPLOYEE
+    custom_role_id: Optional[int] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
     notes: Optional[str] = None
@@ -94,6 +96,7 @@ class UserUpdate(BaseModel):
     department: Optional[str] = None
     position: Optional[str] = None
     role: Optional[UserRole] = None
+    custom_role_id: Optional[int] = None
     is_active: Optional[bool] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
@@ -111,6 +114,7 @@ class UserResponse(UserBase):
     updated_at: datetime
     last_login: Optional[datetime] = None
     full_name: str
+    custom_role: Optional[CustomRoleResponse] = None
     
     class Config:
         from_attributes = True

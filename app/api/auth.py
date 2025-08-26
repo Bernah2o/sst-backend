@@ -57,7 +57,8 @@ async def login(
             "role": user.role.value,
             "full_name": user.full_name,
             "is_active": user.is_active,
-            "is_verified": user.is_verified
+            "is_verified": user.is_verified,
+            "custom_role_id": user.custom_role_id
         }
     }
     

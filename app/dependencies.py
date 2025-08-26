@@ -141,31 +141,84 @@ class PermissionChecker:
         if user.is_admin():
             return True
         
-        # Define permission matrix
+        # Check custom role permissions first
+        if user.custom_role_id:
+            return self._check_custom_role_permission(user, resource_type, action)
+        
+        # Fallback to hardcoded role permissions
+        return self._check_hardcoded_role_permission(user, resource_type, action)
+    
+    def _check_custom_role_permission(self, user: User, resource_type: str, action: str) -> bool:
+        """Check permission based on custom role"""
+        from sqlalchemy.orm import Session
+        from app.database import get_db
+        from app.models.custom_role import role_permissions
+        from app.api.permissions import PERMISSIONS_DATA
+        
+        # Get database session
+        db = next(get_db())
+        
+        try:
+            # Get permission IDs for this custom role
+            permission_ids_result = db.execute(
+                role_permissions.select().where(role_permissions.c.role_id == user.custom_role_id)
+            ).fetchall()
+            
+            permission_ids = [row.permission_id for row in permission_ids_result]
+            
+            # Check if the required permission exists
+            required_permission = next(
+                (p for p in PERMISSIONS_DATA 
+                 if p["resource_type"] == resource_type and p["action"] == action),
+                None
+            )
+            
+            if required_permission and required_permission["id"] in permission_ids:
+                return True
+                
+            return False
+        except Exception:
+            # If there's any error with custom role checking, fallback to hardcoded roles
+            return self._check_hardcoded_role_permission(user, resource_type, action)
+        finally:
+            db.close()
+    
+    def _check_hardcoded_role_permission(self, user: User, resource_type: str, action: str) -> bool:
+        """Check permission based on hardcoded role matrix"""
+        # Matriz de permisos para roles hardcodeados (basada en páginas/módulos)
         permissions = {
             UserRole.TRAINER: {
-                "course": ["create", "read", "update", "delete"],
-                "evaluation": ["create", "read", "update", "delete"],
-                "survey": ["create", "read", "update", "delete"],
-                "certificate": ["create", "read"],
-                "attendance": ["create", "read", "update"],
-                "report": ["read"],
+                "dashboard": ["view"],
+                "courses": ["view", "create", "read", "update", "delete", "enroll"],
+                "evaluations": ["view", "create", "read", "update", "delete"],
+                "surveys": ["view", "create", "read", "update", "delete"],
+                "certificates": ["view", "create", "read", "download"],
+                "attendance": ["view", "create", "read", "update"],
+                "reports": ["view", "read"],
+                "users": ["view", "read"],
+                "notifications": ["view", "read"]
             },
             UserRole.SUPERVISOR: {
-                "user": ["read", "update"],
-                "course": ["read"],
-                "evaluation": ["read"],
-                "survey": ["read"],
-                "certificate": ["read"],
-                "attendance": ["read"],
-                "report": ["read"],
+                "dashboard": ["view"],
+                "courses": ["view", "read", "enroll"],
+                "evaluations": ["view", "read", "submit"],
+                "surveys": ["view", "read", "submit"],
+                "certificates": ["view", "read", "download"],
+                "attendance": ["view", "read"],
+                "reports": ["view", "read"],
+                "users": ["view", "read"],
+                "notifications": ["view", "read"]
             },
             UserRole.EMPLOYEE: {
-                "course": ["read"],
-                "evaluation": ["read", "submit"],
-                "survey": ["read", "submit"],
-                "certificate": ["read"],
-                "attendance": ["read"],
+                "dashboard": ["view"],
+                "courses": ["view", "read", "enroll"],
+                "modules": ["view", "read"],
+                "materials": ["view", "read"],
+                "evaluations": ["view", "read", "submit"],
+                "surveys": ["view", "read", "submit"],
+                "certificates": ["view", "read", "download"],
+                "attendance": ["view", "read"],
+                "notifications": ["view", "read"]
             },
         }
         
