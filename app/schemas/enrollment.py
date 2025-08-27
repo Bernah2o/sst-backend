@@ -56,11 +56,10 @@ class EnrollmentResponse(EnrollmentBase):
 
 
 class EnrollmentListResponse(BaseModel):
-    enrollments: list[EnrollmentResponse]
+    items: list[EnrollmentResponse]  # Changed from 'enrollments' to 'items' for frontend consistency
     total: int
-    page: int
-    size: int
-    pages: int
+    skip: int = 0  # Changed from 'page' to match API response
+    limit: int = 10  # Changed from 'size' to match API response
 
 
 # Enrollment Statistics
@@ -98,6 +97,48 @@ class CourseEnrollmentSummary(BaseModel):
     completion_rate: float
     average_grade: Optional[float] = None
     average_progress: float
+
+
+# User Progress Schema
+class UserProgressStatus(str, Enum):
+    NOT_STARTED = "not_started"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    BLOCKED = "blocked"
+    EXPIRED = "expired"  # Added to match frontend states
+
+
+class CourseProgressDetail(BaseModel):
+    overall_progress: float = Field(0.0, ge=0.0, le=100.0)
+    can_take_survey: bool = False
+    can_take_evaluation: bool = False
+    pending_surveys: list[dict] = []
+    evaluation_status: str = "not_started"
+    survey_status: str = "not_started"
+
+
+class UserProgress(BaseModel):
+    user_id: int
+    course_id: int
+    user_name: str  # Added to match frontend expectation
+    course_name: str  # Added to match frontend expectation
+    status: UserProgressStatus
+    progress_percentage: float = Field(0.0, ge=0.0, le=100.0)
+    enrolled_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    grade: Optional[float] = Field(None, ge=0.0, le=100.0)
+    course_details: Optional[CourseProgressDetail] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class UserProgressListResponse(BaseModel):
+    items: list[UserProgress]
+    total: int
+    skip: int = 0
+    limit: int = 10
 
 
 # Bulk Enrollment

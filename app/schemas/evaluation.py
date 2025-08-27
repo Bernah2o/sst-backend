@@ -237,3 +237,11 @@ class EvaluationListResponse(BaseModel):
 # Evaluation Submission Schema
 class EvaluationSubmission(BaseModel):
     user_answers: List[UserAnswerBase]
+
+
+# Answer Submission Schema
+class AnswerSubmission(BaseModel):
+    question_id: int
+    selected_option_id: Optional[int] = None
+    text_answer: Optional[str] = None
+    boolean_answer: Optional[bool] = None

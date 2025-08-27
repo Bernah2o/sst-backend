@@ -12,12 +12,12 @@ from app.models.user import User
 from app.models.course import Course
 from app.models.evaluation import (
     Evaluation, Question, Answer, UserEvaluation, UserAnswer,
-    EvaluationStatus, UserEvaluationStatus
+    EvaluationStatus, UserEvaluationStatus, QuestionType
 )
 from app.schemas.evaluation import (
     EvaluationCreate, EvaluationUpdate, EvaluationResponse,
     EvaluationListResponse, EvaluationSubmission,
-    UserEvaluationResponse
+    UserEvaluationResponse, AnswerSubmission
 )
 from app.schemas.common import MessageResponse, PaginatedResponse
 from app.models.certificate import Certificate, CertificateStatus
@@ -193,251 +193,10 @@ async def create_evaluation(
     return evaluation
 
 
-@router.get("/{evaluation_id}", response_model=EvaluationResponse)
-async def get_evaluation(
-    evaluation_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-) -> Any:
-    """
-    Get evaluation by ID
-    """
-    from sqlalchemy.orm import joinedload
-    
-    evaluation = db.query(Evaluation).options(
-        joinedload(Evaluation.questions).joinedload(Question.answers)
-    ).filter(Evaluation.id == evaluation_id).first()
-    
-    if not evaluation:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evaluation not found"
-        )
-    
-    # Check if user can access this evaluation
-    if current_user.role.value not in ["admin", "capacitador"] and evaluation.status != EvaluationStatus.PUBLISHED:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Evaluation not available"
-        )
-    
-    return evaluation
+# Routes with path parameters will be moved to the end of the file
 
 
-@router.put("/{evaluation_id}", response_model=EvaluationResponse)
-async def update_evaluation(
-    evaluation_id: int,
-    evaluation_data: EvaluationUpdate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-) -> Any:
-    """
-    Update evaluation (admin and capacitador roles only)
-    """
-    if current_user.role.value not in ["admin", "capacitador"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
-        )
-    
-    evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
-    
-    if not evaluation:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evaluation not found"
-        )
-    
-    # Update evaluation fields
-    update_data = evaluation_data.dict(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(evaluation, field, value)
-    
-    db.commit()
-    db.refresh(evaluation)
-    
-    return evaluation
-
-
-@router.get("/{evaluation_id}/delete-validation")
-async def validate_evaluation_deletion(
-    evaluation_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-) -> Any:
-    """
-    Validate if evaluation can be deleted (check for associated courses and user submissions)
-    """
-    if current_user.role.value not in ["admin", "capacitador"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
-        )
-    
-    evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
-    
-    if not evaluation:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evaluation not found"
-        )
-    
-    # Check for user submissions
-    user_submissions_count = db.query(UserEvaluation).filter(
-        UserEvaluation.evaluation_id == evaluation_id
-    ).count()
-    
-    # Check if evaluation has a course associated
-    has_course = evaluation.course_id is not None
-    course_name = None
-    if has_course:
-        from app.models.course import Course
-        course = db.query(Course).filter(Course.id == evaluation.course_id).first()
-        course_name = course.title if course else None
-    
-    return {
-        "can_delete": user_submissions_count == 0,
-        "has_course": has_course,
-        "course_name": course_name,
-        "user_submissions_count": user_submissions_count,
-        "warnings": [
-            f"Esta evaluación tiene {user_submissions_count} respuestas de empleados" if user_submissions_count > 0 else None,
-            f"Esta evaluación está asociada al curso '{course_name}'" if has_course else None
-        ]
-    }
-
-
-@router.delete("/{evaluation_id}", response_model=MessageResponse)
-async def delete_evaluation(
-    evaluation_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-) -> Any:
-    """
-    Delete evaluation (admin and capacitador roles only)
-    """
-    if current_user.role.value not in ["admin", "capacitador"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
-        )
-    
-    evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
-    
-    if not evaluation:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evaluation not found"
-        )
-    
-    # Delete related user_answers first
-    user_evaluations = db.query(UserEvaluation).filter(UserEvaluation.evaluation_id == evaluation_id).all()
-    for user_eval in user_evaluations:
-        # Delete user answers for this user evaluation
-        db.query(UserAnswer).filter(UserAnswer.user_evaluation_id == user_eval.id).delete()
-    
-    # Delete user_evaluations
-    db.query(UserEvaluation).filter(UserEvaluation.evaluation_id == evaluation_id).delete()
-    
-    # Now delete the evaluation (questions and answers will be deleted by cascade)
-    db.delete(evaluation)
-    db.commit()
-    
-    return MessageResponse(message="Evaluation deleted successfully")
-
-
-@router.post("/{evaluation_id}/start", response_model=UserEvaluationResponse)
-async def start_evaluation(
-    evaluation_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-) -> Any:
-    """
-    Start an evaluation attempt
-    """
-    evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
-    
-    if not evaluation:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evaluation not found"
-        )
-    
-    if evaluation.status != EvaluationStatus.PUBLISHED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Evaluation is not active"
-        )
-    
-    # Check for existing in-progress attempt
-    existing_in_progress = db.query(UserEvaluation).filter(
-        and_(
-            UserEvaluation.user_id == current_user.id,
-            UserEvaluation.evaluation_id == evaluation_id,
-            UserEvaluation.status == UserEvaluationStatus.IN_PROGRESS
-        )
-    ).first()
-    
-    if existing_in_progress:
-        # Return existing in-progress attempt
-        return existing_in_progress
-    
-    # Check existing attempts count
-    existing_attempts = db.query(UserEvaluation).filter(
-        and_(
-            UserEvaluation.user_id == current_user.id,
-            UserEvaluation.evaluation_id == evaluation_id
-        )
-    ).count()
-    
-    # Check if user has exceeded max attempts
-    if existing_attempts >= evaluation.max_attempts:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Maximum attempts ({evaluation.max_attempts}) exceeded"
-        )
-    
-    # Get enrollment if this evaluation is associated with a course
-    enrollment_id = None
-    if evaluation.course_id:
-        from app.models.enrollment import Enrollment
-        enrollment = db.query(Enrollment).filter(
-            and_(
-                Enrollment.user_id == current_user.id,
-                Enrollment.course_id == evaluation.course_id
-            )
-        ).first()
-        
-        if enrollment:
-            enrollment_id = enrollment.id
-    
-    # Create new evaluation attempt
-    from datetime import datetime, timedelta
-    current_time = datetime.utcnow()
-    
-    # Calculate expires_at if time_limit_minutes is set
-    expires_at = None
-    if evaluation.time_limit_minutes:
-        expires_at = current_time + timedelta(minutes=evaluation.time_limit_minutes)
-    
-    user_evaluation = UserEvaluation(
-        user_id=current_user.id,
-        evaluation_id=evaluation_id,
-        enrollment_id=enrollment_id,
-        attempt_number=existing_attempts + 1,
-        status=UserEvaluationStatus.IN_PROGRESS,
-        started_at=current_time,
-        expires_at=expires_at
-    )
-    
-    db.add(user_evaluation)
-    db.commit()
-    db.refresh(user_evaluation)
-    
-    return user_evaluation
-
-
-@router.post("/{evaluation_id}/submit", response_model=UserEvaluationResponse)
+@router.post("/{evaluation_id}/submit")
 async def submit_evaluation(
     evaluation_id: int,
     submission: EvaluationSubmission,
@@ -640,92 +399,7 @@ def update_user_best_score(db: Session, user_id: int, evaluation_id: int):
     db.commit()
 
 
-@router.get("/{evaluation_id}/attempts")
-async def get_user_attempts(
-    evaluation_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-) -> Any:
-    """
-    Get user's attempts count for a specific evaluation
-    """
-    attempts_count = db.query(UserEvaluation).filter(
-        and_(
-            UserEvaluation.user_id == current_user.id,
-            UserEvaluation.evaluation_id == evaluation_id
-        )
-    ).count()
-    
-    return {"attempts_count": attempts_count}
-
-
-@router.post("/{evaluation_id}/reassign/{user_id}")
-async def reassign_evaluation(
-    evaluation_id: int,
-    user_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-) -> Any:
-    """
-    Reassign evaluation to a user (admin only) - resets attempts
-    """
-    # Only admin and capacitador can reassign evaluations
-    if current_user.role.value not in ["admin", "capacitador"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
-        )
-    
-    # Check if evaluation exists
-    evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
-    if not evaluation:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evaluation not found"
-        )
-    
-    # Check if user exists
-    from app.models.user import User as UserModel
-    user = db.query(UserModel).filter(UserModel.id == user_id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    # First, get the user evaluation IDs that will be deleted
-    user_evaluations_to_delete = db.query(UserEvaluation.id).filter(
-        and_(
-            UserEvaluation.user_id == user_id,
-            UserEvaluation.evaluation_id == evaluation_id
-        )
-    ).all()
-    
-    user_evaluation_ids = [ue.id for ue in user_evaluations_to_delete]
-    
-    # Delete related user answers first (to avoid foreign key constraint violation)
-    if user_evaluation_ids:
-        from app.models.evaluation import UserAnswer
-        db.query(UserAnswer).filter(
-            UserAnswer.user_evaluation_id.in_(user_evaluation_ids)
-        ).delete(synchronize_session=False)
-    
-    # Then delete the user evaluations
-    db.query(UserEvaluation).filter(
-        and_(
-            UserEvaluation.user_id == user_id,
-            UserEvaluation.evaluation_id == evaluation_id
-        )
-    ).delete()
-    
-    db.commit()
-    
-    return {
-        "success": True,
-        "message": f"Evaluation reassigned successfully to user {user.email}",
-        "user_id": user_id,
-        "evaluation_id": evaluation_id
-    }
+# Routes with path parameters moved to end of file
 
 
 @router.get("/results")
@@ -784,6 +458,191 @@ async def get_user_evaluation_results(
                 "data": []
             }
         )
+
+
+@router.post("/{evaluation_id}/submit")
+async def submit_evaluation(
+    evaluation_id: int,
+    answers: List[AnswerSubmission],
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Submit evaluation answers
+    """
+    from datetime import datetime
+    from app.models.evaluation import UserAnswer
+    
+    # Get the evaluation
+    evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
+    if not evaluation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation not found"
+        )
+    
+    # Get the user's current evaluation attempt
+    user_evaluation = db.query(UserEvaluation).filter(
+        and_(
+            UserEvaluation.user_id == current_user.id,
+            UserEvaluation.evaluation_id == evaluation_id,
+            UserEvaluation.status == UserEvaluationStatus.IN_PROGRESS
+        )
+    ).first()
+    
+    if not user_evaluation:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active evaluation attempt found"
+        )
+    
+    # Check if evaluation has expired
+    if user_evaluation.expires_at and datetime.utcnow() > user_evaluation.expires_at:
+        # Mark as expired and don't allow submission
+        user_evaluation.status = UserEvaluationStatus.EXPIRED
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Evaluation time has expired"
+        )
+    
+    # Get all questions for this evaluation
+    questions = db.query(Question).filter(Question.evaluation_id == evaluation_id).all()
+    questions_dict = {q.id: q for q in questions}
+    
+    # Validate that all required questions are answered
+    answered_question_ids = {answer.question_id for answer in answers}
+    required_question_ids = {q.id for q in questions}
+    
+    if answered_question_ids != required_question_ids:
+        missing_questions = required_question_ids - answered_question_ids
+        extra_questions = answered_question_ids - required_question_ids
+        
+        error_details = []
+        if missing_questions:
+            error_details.append(f"Missing answers for questions: {list(missing_questions)}")
+        if extra_questions:
+            error_details.append(f"Extra answers for non-existent questions: {list(extra_questions)}")
+        
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid answers: " + "; ".join(error_details)
+        )
+    
+    # Delete existing answers for this attempt (in case of resubmission)
+    db.query(UserAnswer).filter(
+        UserAnswer.user_evaluation_id == user_evaluation.id
+    ).delete()
+    
+    # Save new answers
+    total_points = 0
+    max_points = 0
+    
+    for answer_submission in answers:
+        question = questions_dict[answer_submission.question_id]
+        max_points += question.points
+        
+        # Calculate points for this answer
+        points_earned = 0
+        is_correct = False
+        
+        if question.question_type == QuestionType.MULTIPLE_CHOICE:
+            # For multiple choice, check if the selected option is correct
+            if answer_submission.selected_option_id:
+                answer_option = db.query(Answer).filter(
+                    and_(
+                        Answer.id == answer_submission.selected_option_id,
+                        Answer.question_id == question.id
+                    )
+                ).first()
+                
+                if answer_option and answer_option.is_correct:
+                    points_earned = question.points
+                    is_correct = True
+        
+        elif question.question_type == QuestionType.TRUE_FALSE:
+            # For true/false, check if the answer matches the correct answer
+            if answer_submission.boolean_answer is not None:
+                # Assuming the correct answer is stored in the question's correct_answer field
+                # You might need to adjust this based on your data model
+                if hasattr(question, 'correct_answer') and answer_submission.boolean_answer == question.correct_answer:
+                    points_earned = question.points
+                    is_correct = True
+        
+        elif question.question_type == QuestionType.SHORT_ANSWER:
+            # For short answer, you might want to implement fuzzy matching or manual grading
+            # For now, we'll mark it as requiring manual review
+            points_earned = 0  # Will need manual grading
+            is_correct = False
+        
+        total_points += points_earned
+        
+        # Create user answer record
+        user_answer = UserAnswer(
+            user_evaluation_id=user_evaluation.id,
+            question_id=question.id,
+            selected_option_id=answer_submission.selected_option_id,
+            text_answer=answer_submission.text_answer,
+            boolean_answer=answer_submission.boolean_answer,
+            points_earned=points_earned,
+            is_correct=is_correct
+        )
+        
+        db.add(user_answer)
+    
+    # Calculate final score and percentage
+    percentage = (total_points / max_points * 100) if max_points > 0 else 0
+    passed = percentage >= evaluation.passing_score
+    
+    # Calculate time spent
+    current_time = datetime.utcnow()
+    time_spent_minutes = None
+    if user_evaluation.started_at:
+        time_spent_delta = current_time - user_evaluation.started_at
+        time_spent_minutes = int(time_spent_delta.total_seconds() / 60)
+    
+    # Update user evaluation with results
+    user_evaluation.status = UserEvaluationStatus.COMPLETED
+    user_evaluation.completed_at = current_time
+    user_evaluation.score = total_points
+    user_evaluation.total_points = total_points
+    user_evaluation.max_points = max_points
+    user_evaluation.percentage = percentage
+    user_evaluation.passed = passed
+    user_evaluation.time_spent_minutes = time_spent_minutes
+    
+    db.commit()
+    
+    # Generate certificate if passed and evaluation has certificate template
+    certificate_url = None
+    if passed and evaluation.certificate_template:
+        try:
+            from app.services.certificate_service import generate_certificate
+            certificate_url = await generate_certificate(
+                user_evaluation.id,
+                current_user,
+                evaluation,
+                db
+            )
+        except Exception as e:
+            logger.warning(f"Failed to generate certificate for user_evaluation {user_evaluation.id}: {str(e)}")
+    
+    return {
+        "success": True,
+        "message": "Evaluation submitted successfully",
+        "results": {
+            "user_evaluation_id": user_evaluation.id,
+            "score": total_points,
+            "max_points": max_points,
+            "percentage": percentage,
+            "passed": passed,
+            "time_spent_minutes": time_spent_minutes,
+            "certificate_url": certificate_url
+        }
+    }
+
+
+# Specific routes without path parameters
 
 
 @router.get("/my-results", response_class=JSONResponse)
@@ -858,79 +717,7 @@ async def get_my_evaluation_results(
         )
 
 
-@router.get("/{evaluation_id}/results")
-async def get_evaluation_results(
-    evaluation_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Get current user's results for a specific evaluation
-    """
-    from fastapi.responses import JSONResponse
-    
-    try:
-        # Build query with joins to get evaluation and course information
-        query = db.query(
-            UserEvaluation,
-            Evaluation.title.label('evaluation_title'),
-            Course.title.label('course_title')
-        ).join(
-            Evaluation, UserEvaluation.evaluation_id == Evaluation.id
-        ).join(
-            Course, Evaluation.course_id == Course.id
-        ).filter(
-            and_(
-                UserEvaluation.user_id == current_user.id,
-                UserEvaluation.evaluation_id == evaluation_id
-            )
-        )
-        
-        results = query.all()
-        
-        # Return simple dictionary to avoid Pydantic validation issues
-        result = []
-        for user_eval, evaluation_title, course_title in results:
-            # Ensure all values are of the correct type
-            result.append({
-                "id": int(user_eval.id),
-                "user_id": int(user_eval.user_id),
-                "evaluation_id": int(user_eval.evaluation_id),
-                "evaluation_title": evaluation_title,
-                "course_title": course_title,
-                "enrollment_id": int(user_eval.enrollment_id) if user_eval.enrollment_id else None,
-                "attempt_number": int(user_eval.attempt_number),
-                "status": user_eval.status.value if user_eval.status else None,
-                "score": float(user_eval.score) if user_eval.score is not None else None,
-                "total_points": float(user_eval.total_points) if user_eval.total_points is not None else None,
-                "max_points": float(user_eval.max_points) if user_eval.max_points is not None else None,
-                "percentage": float(user_eval.percentage) if user_eval.percentage is not None else None,
-                "time_spent_minutes": int(user_eval.time_spent_minutes) if user_eval.time_spent_minutes is not None else None,
-                "passed": bool(user_eval.passed),
-                "started_at": user_eval.started_at.isoformat() if user_eval.started_at else None,
-                "completed_at": user_eval.completed_at.isoformat() if user_eval.completed_at else None,
-                "expires_at": user_eval.expires_at.isoformat() if user_eval.expires_at else None,
-                "created_at": user_eval.created_at.isoformat() if user_eval.created_at else None,
-                "updated_at": user_eval.updated_at.isoformat() if user_eval.updated_at else None
-            })
-        
-        # Return a direct JSONResponse to bypass FastAPI validation
-        return JSONResponse(
-            content={
-                "success": True,
-                "data": result
-            }
-        )
-    except Exception as e:
-        logger.error(f"Error getting evaluation results for evaluation {evaluation_id}: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "message": f"Error retrieving evaluation results: {str(e)}",
-                "data": []
-            }
-        )
+# Route /{evaluation_id}/results moved to end of file
 
 
 @router.get("/user/{user_id}", response_model=PaginatedResponse[UserEvaluationResponse])
@@ -1069,6 +856,414 @@ async def get_all_evaluation_results(
         )
     except Exception as e:
         logger.error(f"Error getting all evaluation results: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"Error retrieving evaluation results: {str(e)}",
+                "data": []
+            }
+        )
+
+
+# Routes with path parameters - defined at the end to avoid conflicts with specific routes
+@router.get("/{evaluation_id}", response_model=EvaluationResponse)
+async def get_evaluation(
+    evaluation_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get evaluation by ID
+    """
+    from sqlalchemy.orm import joinedload
+    
+    evaluation = db.query(Evaluation).options(
+        joinedload(Evaluation.questions).joinedload(Question.answers)
+    ).filter(Evaluation.id == evaluation_id).first()
+    
+    if not evaluation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation not found"
+        )
+    
+    # Check if user can access this evaluation
+    if current_user.role.value not in ["admin", "capacitador"] and evaluation.status != EvaluationStatus.PUBLISHED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Evaluation not available"
+        )
+    
+    return evaluation
+
+
+@router.put("/{evaluation_id}", response_model=EvaluationResponse)
+async def update_evaluation(
+    evaluation_id: int,
+    evaluation_data: EvaluationUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Update evaluation (admin and capacitador roles only)
+    """
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
+    
+    if not evaluation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation not found"
+        )
+    
+    # Update evaluation fields
+    update_data = evaluation_data.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(evaluation, field, value)
+    
+    db.commit()
+    db.refresh(evaluation)
+    
+    return evaluation
+
+
+@router.delete("/{evaluation_id}", response_model=MessageResponse)
+async def delete_evaluation(
+    evaluation_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Delete evaluation (admin and capacitador roles only)
+    """
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
+    
+    if not evaluation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation not found"
+        )
+    
+    # Delete related user_answers first
+    user_evaluations = db.query(UserEvaluation).filter(UserEvaluation.evaluation_id == evaluation_id).all()
+    for user_eval in user_evaluations:
+        # Delete user answers for this user evaluation
+        db.query(UserAnswer).filter(UserAnswer.user_evaluation_id == user_eval.id).delete()
+    
+    # Delete user_evaluations
+    db.query(UserEvaluation).filter(UserEvaluation.evaluation_id == evaluation_id).delete()
+    
+    # Now delete the evaluation (questions and answers will be deleted by cascade)
+    db.delete(evaluation)
+    db.commit()
+    
+    return MessageResponse(message="Evaluation deleted successfully")
+
+
+@router.get("/{evaluation_id}/delete-validation")
+async def validate_evaluation_deletion(
+    evaluation_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Validate if evaluation can be deleted (check for associated courses and user submissions)
+    """
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
+    
+    if not evaluation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation not found"
+        )
+    
+    # Check for user submissions
+    user_submissions_count = db.query(UserEvaluation).filter(
+        UserEvaluation.evaluation_id == evaluation_id
+    ).count()
+    
+    # Check if evaluation has a course associated
+    has_course = evaluation.course_id is not None
+    course_name = None
+    if has_course:
+        from app.models.course import Course
+        course = db.query(Course).filter(Course.id == evaluation.course_id).first()
+        course_name = course.title if course else None
+    
+    return {
+        "can_delete": user_submissions_count == 0,
+        "has_course": has_course,
+        "course_name": course_name,
+        "user_submissions_count": user_submissions_count,
+        "warnings": [
+            f"Esta evaluación tiene {user_submissions_count} respuestas de empleados" if user_submissions_count > 0 else None,
+            f"Esta evaluación está asociada al curso '{course_name}'" if has_course else None
+        ]
+    }
+
+
+@router.post("/{evaluation_id}/start", response_model=UserEvaluationResponse)
+async def start_evaluation(
+    evaluation_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Start an evaluation attempt
+    """
+    evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
+    
+    if not evaluation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation not found"
+        )
+    
+    if evaluation.status != EvaluationStatus.PUBLISHED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Evaluation is not active"
+        )
+    
+    # Check for existing in-progress attempt
+    existing_in_progress = db.query(UserEvaluation).filter(
+        and_(
+            UserEvaluation.user_id == current_user.id,
+            UserEvaluation.evaluation_id == evaluation_id,
+            UserEvaluation.status == UserEvaluationStatus.IN_PROGRESS
+        )
+    ).first()
+    
+    if existing_in_progress:
+        # Return existing in-progress attempt
+        return existing_in_progress
+    
+    # Check existing attempts count
+    existing_attempts = db.query(UserEvaluation).filter(
+        and_(
+            UserEvaluation.user_id == current_user.id,
+            UserEvaluation.evaluation_id == evaluation_id
+        )
+    ).count()
+    
+    # Check if user has exceeded max attempts
+    if existing_attempts >= evaluation.max_attempts:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Maximum attempts ({evaluation.max_attempts}) exceeded"
+        )
+    
+    # Get enrollment if this evaluation is associated with a course
+    enrollment_id = None
+    if evaluation.course_id:
+        from app.models.enrollment import Enrollment
+        enrollment = db.query(Enrollment).filter(
+            and_(
+                Enrollment.user_id == current_user.id,
+                Enrollment.course_id == evaluation.course_id
+            )
+        ).first()
+        
+        if enrollment:
+            enrollment_id = enrollment.id
+    
+    # Create new evaluation attempt
+    from datetime import datetime, timedelta
+    current_time = datetime.utcnow()
+    
+    # Calculate expires_at if time_limit_minutes is set
+    expires_at = None
+    if evaluation.time_limit_minutes:
+        expires_at = current_time + timedelta(minutes=evaluation.time_limit_minutes)
+    
+    user_evaluation = UserEvaluation(
+        user_id=current_user.id,
+        evaluation_id=evaluation_id,
+        enrollment_id=enrollment_id,
+        attempt_number=existing_attempts + 1,
+        status=UserEvaluationStatus.IN_PROGRESS,
+        started_at=current_time,
+        expires_at=expires_at
+    )
+    
+    db.add(user_evaluation)
+    db.commit()
+    db.refresh(user_evaluation)
+    
+    return user_evaluation
+
+
+@router.get("/{evaluation_id}/attempts")
+async def get_user_attempts(
+    evaluation_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get user's attempts count for a specific evaluation
+    """
+    attempts_count = db.query(UserEvaluation).filter(
+        and_(
+            UserEvaluation.user_id == current_user.id,
+            UserEvaluation.evaluation_id == evaluation_id
+        )
+    ).count()
+    
+    return {"attempts_count": attempts_count}
+
+
+@router.post("/{evaluation_id}/reassign/{user_id}")
+async def reassign_evaluation(
+    evaluation_id: int,
+    user_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Reassign evaluation to a user (admin only) - resets attempts
+    """
+    # Only admin and capacitador can reassign evaluations
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    # Check if evaluation exists
+    evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
+    if not evaluation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation not found"
+        )
+    
+    # Check if user exists
+    from app.models.user import User as UserModel
+    user = db.query(UserModel).filter(UserModel.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # First, get the user evaluation IDs that will be deleted
+    user_evaluations_to_delete = db.query(UserEvaluation.id).filter(
+        and_(
+            UserEvaluation.user_id == user_id,
+            UserEvaluation.evaluation_id == evaluation_id
+        )
+    ).all()
+    
+    user_evaluation_ids = [ue.id for ue in user_evaluations_to_delete]
+    
+    # Delete related user answers first (to avoid foreign key constraint violation)
+    if user_evaluation_ids:
+        from app.models.evaluation import UserAnswer
+        db.query(UserAnswer).filter(
+            UserAnswer.user_evaluation_id.in_(user_evaluation_ids)
+        ).delete(synchronize_session=False)
+    
+    # Then delete the user evaluations
+    db.query(UserEvaluation).filter(
+        and_(
+            UserEvaluation.user_id == user_id,
+            UserEvaluation.evaluation_id == evaluation_id
+        )
+    ).delete()
+    
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": f"Evaluation reassigned successfully to user {user.email}",
+        "user_id": user_id,
+        "evaluation_id": evaluation_id
+    }
+
+
+@router.get("/{evaluation_id}/results")
+async def get_evaluation_results(
+    evaluation_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get current user's results for a specific evaluation
+    """
+    from fastapi.responses import JSONResponse
+    
+    try:
+        # Build query with joins to get evaluation and course information
+        query = db.query(
+            UserEvaluation,
+            Evaluation.title.label('evaluation_title'),
+            Course.title.label('course_title')
+        ).join(
+            Evaluation, UserEvaluation.evaluation_id == Evaluation.id
+        ).join(
+            Course, Evaluation.course_id == Course.id
+        ).filter(
+            and_(
+                UserEvaluation.user_id == current_user.id,
+                UserEvaluation.evaluation_id == evaluation_id
+            )
+        )
+        
+        results = query.all()
+        
+        # Return simple dictionary to avoid Pydantic validation issues
+        result = []
+        for user_eval, evaluation_title, course_title in results:
+            # Ensure all values are of the correct type
+            result.append({
+                "id": int(user_eval.id),
+                "user_id": int(user_eval.user_id),
+                "evaluation_id": int(user_eval.evaluation_id),
+                "evaluation_title": evaluation_title,
+                "course_title": course_title,
+                "enrollment_id": int(user_eval.enrollment_id) if user_eval.enrollment_id else None,
+                "attempt_number": int(user_eval.attempt_number),
+                "status": user_eval.status.value if user_eval.status else None,
+                "score": float(user_eval.score) if user_eval.score is not None else None,
+                "total_points": float(user_eval.total_points) if user_eval.total_points is not None else None,
+                "max_points": float(user_eval.max_points) if user_eval.max_points is not None else None,
+                "percentage": float(user_eval.percentage) if user_eval.percentage is not None else None,
+                "time_spent_minutes": int(user_eval.time_spent_minutes) if user_eval.time_spent_minutes is not None else None,
+                "passed": bool(user_eval.passed),
+                "started_at": user_eval.started_at.isoformat() if user_eval.started_at else None,
+                "completed_at": user_eval.completed_at.isoformat() if user_eval.completed_at else None,
+                "expires_at": user_eval.expires_at.isoformat() if user_eval.expires_at else None,
+                "created_at": user_eval.created_at.isoformat() if user_eval.created_at else None,
+                "updated_at": user_eval.updated_at.isoformat() if user_eval.updated_at else None
+            })
+        
+        # Return a direct JSONResponse to bypass FastAPI validation
+        return JSONResponse(
+            content={
+                "success": True,
+                "data": result
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error getting evaluation results for evaluation {evaluation_id}: {str(e)}")
         return JSONResponse(
             status_code=500,
             content={

@@ -175,9 +175,10 @@ async def complete_material(
     enrollment = db.query(Enrollment).filter(Enrollment.id == progress.enrollment_id).first()
     enrollment.update_progress(course_progress_percentage)
     
-    if course_progress_percentage >= 100:
+    if course_progress_percentage >= 95:  # Complete enrollment when progress reaches 95%
         enrollment.complete_enrollment()
     
+    # Commit all changes including module and course progress updates
     db.commit()
     
     return {
@@ -185,7 +186,7 @@ async def complete_material(
         "material_progress": progress.progress_percentage,
         "module_progress": module_progress.progress_percentage,
         "course_progress": course_progress_percentage,
-        "course_completed": course_progress_percentage >= 100
+        "course_completed": course_progress_percentage >= 95  # Course considered complete at 95%
     }
 
 
@@ -267,7 +268,7 @@ async def get_course_progress(
             def __init__(self):
                 self.id = 0
                 self.progress = 100 if all_enrollments else 0  # Show 100% to enable admin features
-                self.status = EnrollmentStatus.ACTIVE
+                self.status = EnrollmentStatus.ACTIVE.value
         enrollment = MockEnrollment()
     
     # Get course modules
@@ -464,10 +465,10 @@ async def get_course_progress(
         "overall_progress": course_progress_percentage,
         "status": enrollment.status,
         "modules": modules_progress,
-        "can_take_survey": course_progress_percentage >= 100,
-        "can_take_evaluation": course_progress_percentage >= 100 and len(pending_surveys) == 0 and not evaluation_completed,  # Can only take evaluation after completing required surveys and if not already completed
+        "can_take_survey": course_progress_percentage >= 95,  # Allow surveys when progress is 95% or higher
+        "can_take_evaluation": course_progress_percentage >= 95 and len(pending_surveys) == 0 and not evaluation_completed,  # Can only take evaluation after completing required surveys and if not already completed
         "pending_surveys": pending_surveys,
-        "course_completed": course_progress_percentage >= 100 and len(pending_surveys) == 0,
+        "course_completed": course_progress_percentage >= 95 and len(pending_surveys) == 0,  # Course considered complete at 95% with all surveys done
         "evaluation_completed": evaluation_completed,
         "evaluation_score": evaluation_score,
         "evaluation_status": evaluation_status,

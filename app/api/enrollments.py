@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any, List, Optional
 from datetime import datetime
 import secrets
 import string
@@ -17,7 +17,7 @@ from app.models.attendance import Attendance
 from app.models.evaluation import UserEvaluation
 from app.models.user_progress import UserMaterialProgress
 from app.models.survey import UserSurvey
-from app.schemas.enrollment import EnrollmentResponse, EnrollmentCreate, BulkEnrollmentCreate, BulkEnrollmentResponse
+from app.schemas.enrollment import EnrollmentResponse, EnrollmentCreate, EnrollmentUpdate, BulkEnrollmentCreate, BulkEnrollmentResponse
 from app.schemas.common import MessageResponse
 from app.api.auth_worker_update import update_worker_after_registration
 from app.services.auth import auth_service
@@ -49,11 +49,12 @@ async def enroll_in_course(
             detail="Only published courses are available for enrollment"
         )
     
-    # Check if user is already enrolled
+    # Check if user is already enrolled (excluding cancelled enrollments)
     existing_enrollment = db.query(Enrollment).filter(
         and_(
             Enrollment.user_id == current_user.id,
-            Enrollment.course_id == course_id
+            Enrollment.course_id == course_id,
+            Enrollment.status != EnrollmentStatus.CANCELLED
         )
     ).first()
     
@@ -67,7 +68,7 @@ async def enroll_in_course(
     enrollment = Enrollment(
         user_id=current_user.id,
         course_id=course_id,
-        status=EnrollmentStatus.ACTIVE
+        status=EnrollmentStatus.ACTIVE.value
     )
     enrollment.start_enrollment()
     
@@ -307,7 +308,7 @@ async def start_course(
         )
     
     # Start the enrollment if it's pending
-    if enrollment.status == EnrollmentStatus.PENDING:
+    if enrollment.status == EnrollmentStatus.PENDING.value:
         enrollment.start_enrollment()
         db.commit()
         db.refresh(enrollment)
@@ -415,11 +416,12 @@ async def bulk_assign_courses_to_workers(
                     worker.is_registered = True
                     worker.user_id = new_user.id
             
-            # Check if already enrolled
+            # Check if already enrolled (excluding cancelled enrollments)
             existing_enrollment = db.query(Enrollment).filter(
                 and_(
                     Enrollment.user_id == worker.user_id,
-                    Enrollment.course_id == assignment_data.course_id
+                    Enrollment.course_id == assignment_data.course_id,
+                    Enrollment.status != EnrollmentStatus.CANCELLED
                 )
             ).first()
             
@@ -532,13 +534,14 @@ async def get_user_enrollments(
 
 
 @router.delete("/{enrollment_id}")
-async def cancel_enrollment(
+async def delete_enrollment(
     enrollment_id: int,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:
     """
-    Cancel an enrollment and remove all related data (admin and capacitador roles only)
+    Permanently delete an enrollment and all related data from the database
+    This action cannot be undone.
     """
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
@@ -553,23 +556,57 @@ async def cancel_enrollment(
             detail="Enrollment not found"
         )
     
-    # Delete related data in cascade
+    # Get user and course info for logging
+    user = db.query(User).filter(User.id == enrollment.user_id).first()
+    course = db.query(Course).filter(Course.id == enrollment.course_id).first()
+    
+    # Delete all related data in the correct order to avoid foreign key constraints
     try:
-        # Delete user evaluations related to this enrollment
-        db.query(UserEvaluation).filter(UserEvaluation.enrollment_id == enrollment_id).delete()
+        # 1. Delete attendance records
+        attendance_count = db.query(Attendance).filter(Attendance.enrollment_id == enrollment_id).count()
+        db.query(Attendance).filter(Attendance.enrollment_id == enrollment_id).delete()
         
-        # Delete user surveys related to this enrollment
-        db.query(UserSurvey).filter(UserSurvey.enrollment_id == enrollment_id).delete()
+        # 2. Delete user material progress
+        material_progress_count = db.query(UserMaterialProgress).filter(
+            UserMaterialProgress.enrollment_id == enrollment_id
+        ).count()
+        db.query(UserMaterialProgress).filter(
+            UserMaterialProgress.enrollment_id == enrollment_id
+        ).delete()
         
-        # Delete user material progress related to this enrollment
-        db.query(UserMaterialProgress).filter(UserMaterialProgress.enrollment_id == enrollment_id).delete()
-        
-        # Delete user module progress related to this enrollment
+        # 3. Delete user module progress
         from app.models.user_progress import UserModuleProgress
-        db.query(UserModuleProgress).filter(UserModuleProgress.enrollment_id == enrollment_id).delete()
+        module_progress_count = db.query(UserModuleProgress).filter(
+            UserModuleProgress.enrollment_id == enrollment_id
+        ).count()
+        db.query(UserModuleProgress).filter(
+            UserModuleProgress.enrollment_id == enrollment_id
+        ).delete()
         
-        # Delete certificates related to this user and course
+        # 4. Delete user evaluations
+        evaluations_count = db.query(UserEvaluation).filter(
+            UserEvaluation.enrollment_id == enrollment_id
+        ).count()
+        db.query(UserEvaluation).filter(
+            UserEvaluation.enrollment_id == enrollment_id
+        ).delete()
+        
+        # 5. Delete user surveys related to this enrollment
+        surveys_count = db.query(UserSurvey).filter(
+            UserSurvey.enrollment_id == enrollment_id
+        ).count()
+        db.query(UserSurvey).filter(
+            UserSurvey.enrollment_id == enrollment_id
+        ).delete()
+        
+        # 6. Delete certificates
         from app.models.certificate import Certificate
+        certificates_count = db.query(Certificate).filter(
+            and_(
+                Certificate.user_id == enrollment.user_id,
+                Certificate.course_id == enrollment.course_id
+            )
+        ).count()
         db.query(Certificate).filter(
             and_(
                 Certificate.user_id == enrollment.user_id,
@@ -577,21 +614,23 @@ async def cancel_enrollment(
             )
         ).delete()
         
-        # Delete attendance records related to this enrollment
-        db.query(Attendance).filter(Attendance.enrollment_id == enrollment_id).delete()
-        
-        # Finally, cancel the enrollment
-        enrollment.cancel_enrollment("Cancelled by administrator")
+        # 7. Finally, delete the enrollment itself
+        db.delete(enrollment)
         
         db.commit()
         
-        return MessageResponse(message="Enrollment and all related data cancelled successfully")
+        return MessageResponse(
+            message=f"Enrollment permanently deleted. Removed: {attendance_count} attendance records, "
+                   f"{material_progress_count} material progress records, {module_progress_count} module progress records, "
+                   f"{evaluations_count} evaluations, {surveys_count} surveys, {certificates_count} certificates, "
+                   f"and the enrollment for user {user.email if user else 'N/A'} in course {course.title if course else 'N/A'}"
+        )
         
     except Exception as e:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error cancelling enrollment: {str(e)}"
+            detail=f"Error deleting enrollment: {str(e)}"
         )
 
 
@@ -718,21 +757,14 @@ async def remove_worker_from_course(
         )
     
     try:
-        # Use a more detailed approach with logging
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        logger.info(f"Starting removal of worker {worker_id} from course {course_id}")
-        logger.info(f"Enrollment ID: {enrollment.id}")
+        # Remove worker from course
         
         # Delete related attendance records first
         attendance_records = db.query(Attendance).filter(
             Attendance.enrollment_id == enrollment.id
         ).all()
         
-        logger.info(f"Found {len(attendance_records)} attendance records to delete")
         for attendance in attendance_records:
-            logger.info(f"Deleting attendance record {attendance.id}")
             db.delete(attendance)
         
         # Delete related user evaluations
@@ -740,9 +772,7 @@ async def remove_worker_from_course(
             UserEvaluation.enrollment_id == enrollment.id
         ).all()
         
-        logger.info(f"Found {len(user_evaluations)} user evaluations to delete")
         for user_evaluation in user_evaluations:
-            logger.info(f"Deleting user evaluation {user_evaluation.id}")
             db.delete(user_evaluation)
         
         # Delete related user material progress
@@ -750,9 +780,7 @@ async def remove_worker_from_course(
             UserMaterialProgress.enrollment_id == enrollment.id
         ).all()
         
-        logger.info(f"Found {len(user_progress_records)} user progress records to delete")
         for progress in user_progress_records:
-            logger.info(f"Deleting user progress record {progress.id}")
             db.delete(progress)
             
         # Delete related user surveys
@@ -760,19 +788,13 @@ async def remove_worker_from_course(
             UserSurvey.enrollment_id == enrollment.id
         ).all()
         
-        logger.info(f"Found {len(user_surveys)} user surveys to delete")
         for survey in user_surveys:
-            logger.info(f"Deleting user survey {survey.id}")
             db.delete(survey)
         
         # Then delete the enrollment
-        logger.info(f"Deleting enrollment {enrollment.id}")
         db.delete(enrollment)
         
-        logger.info("Committing transaction")
         db.commit()
-        
-        logger.info("Worker successfully removed from course")
         return {
             "message": "Worker successfully removed from course",
             "worker_id": worker_id,
@@ -782,8 +804,6 @@ async def remove_worker_from_course(
     except Exception as e:
         db.rollback()
         import traceback
-        logger.error(f"Error removing worker from course: {str(e)}")
-        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error removing worker from course: {str(e)}"
@@ -853,6 +873,143 @@ async def get_enrollments(
     }
 
 
+@router.get("/{enrollment_id}")
+async def get_enrollment(
+    enrollment_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get a specific enrollment by ID (admin and capacitador roles only)
+    """
+    # Check permissions
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    # Get enrollment
+    enrollment = db.query(Enrollment).filter(Enrollment.id == enrollment_id).first()
+    if not enrollment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Enrollment not found"
+        )
+    
+    # Get user and course details
+    user = db.query(User).filter(User.id == enrollment.user_id).first()
+    course = db.query(Course).filter(Course.id == enrollment.course_id).first()
+    
+    return {
+        "id": enrollment.id,
+        "user_id": enrollment.user_id,
+        "user_email": user.email if user else None,
+        "first_name": user.first_name if user else None,
+        "last_name": user.last_name if user else None,
+        "full_name": f"{user.first_name} {user.last_name}" if user and user.first_name and user.last_name else None,
+        "document_number": user.document_number if user else None,
+        "position": user.position if user else None,
+        "department": user.department if user else None,
+        "fecha_de_ingreso": user.hire_date.isoformat() if user and user.hire_date else None,
+        "is_active": user.is_active if user else None,
+        "assigned_role": user.role.value if user and user.role else None,
+        "course_id": enrollment.course_id,
+        "course_title": course.title if course else None,
+        "status": enrollment.status,
+        "progress": enrollment.progress,
+        "grade": enrollment.grade,
+        "notes": enrollment.notes,
+        "enrolled_at": enrollment.enrolled_at.isoformat() if enrollment.enrolled_at else None,
+        "started_at": enrollment.started_at.isoformat() if enrollment.started_at else None,
+        "completed_at": enrollment.completed_at.isoformat() if enrollment.completed_at else None,
+        "created_at": enrollment.created_at.isoformat() if enrollment.created_at else None,
+        "updated_at": enrollment.updated_at.isoformat() if enrollment.updated_at else None
+    }
+
+
+@router.put("/{enrollment_id}")
+async def update_enrollment(
+    enrollment_id: int,
+    enrollment_data: EnrollmentUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Update an enrollment (admin and capacitador roles only)
+    """
+    # Check permissions
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    # Get enrollment
+    enrollment = db.query(Enrollment).filter(Enrollment.id == enrollment_id).first()
+    if not enrollment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Enrollment not found"
+        )
+    
+    # Update enrollment fields
+    if enrollment_data.status is not None:
+        enrollment.status = enrollment_data.status.value
+        
+        # Handle status-specific logic
+        if enrollment_data.status == EnrollmentStatus.ACTIVE and enrollment.started_at is None:
+            enrollment.start_enrollment()
+        elif enrollment_data.status == EnrollmentStatus.COMPLETED:
+            enrollment.complete_enrollment(enrollment_data.grade)
+        elif enrollment_data.status == EnrollmentStatus.CANCELLED:
+            enrollment.cancel_enrollment(enrollment_data.notes)
+        elif enrollment_data.status == EnrollmentStatus.SUSPENDED:
+            enrollment.suspend_enrollment(enrollment_data.notes)
+    
+    if enrollment_data.progress is not None:
+        enrollment.update_progress(enrollment_data.progress)
+    
+    if enrollment_data.grade is not None:
+        enrollment.grade = enrollment_data.grade
+    
+    if enrollment_data.notes is not None:
+        enrollment.notes = enrollment_data.notes
+    
+    # Update timestamp
+    enrollment.updated_at = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(enrollment)
+    
+    # Get user and course details for response
+    user = db.query(User).filter(User.id == enrollment.user_id).first()
+    course = db.query(Course).filter(Course.id == enrollment.course_id).first()
+    
+    return {
+        "message": "Enrollment updated successfully",
+        "enrollment": {
+            "id": enrollment.id,
+            "user_id": enrollment.user_id,
+            "user_email": user.email if user else None,
+            "first_name": user.first_name if user else None,
+            "last_name": user.last_name if user else None,
+            "full_name": f"{user.first_name} {user.last_name}" if user and user.first_name and user.last_name else None,
+            "course_id": enrollment.course_id,
+            "course_title": course.title if course else None,
+            "status": enrollment.status,
+            "progress": enrollment.progress,
+            "grade": enrollment.grade,
+            "notes": enrollment.notes,
+            "enrolled_at": enrollment.enrolled_at.isoformat() if enrollment.enrolled_at else None,
+            "started_at": enrollment.started_at.isoformat() if enrollment.started_at else None,
+            "completed_at": enrollment.completed_at.isoformat() if enrollment.completed_at else None,
+            "created_at": enrollment.created_at.isoformat() if enrollment.created_at else None,
+            "updated_at": enrollment.updated_at.isoformat() if enrollment.updated_at else None
+        }
+    }
+
+
 @router.post("/")
 async def create_enrollment(
     enrollment_data: EnrollmentCreate,
@@ -878,25 +1035,51 @@ async def create_enrollment(
         )
     
     # Check if user exists (support both user_id and worker_id)
-    user_id = enrollment_data.user_id or enrollment_data.worker_id
-    if not user_id:
+    user_id = None
+    
+    if enrollment_data.user_id:
+        # Direct user_id provided
+        user_id = enrollment_data.user_id
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+    elif enrollment_data.worker_id:
+        # Worker_id provided, need to get the associated user_id
+        from app.models.worker import Worker
+        worker = db.query(Worker).filter(Worker.id == enrollment_data.worker_id).first()
+        if not worker:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Worker not found"
+            )
+        if not worker.user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Worker is not registered in the system. Please register the worker first."
+            )
+        user_id = worker.user_id
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Associated user not found"
+            )
+    else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Either user_id or worker_id must be provided"
         )
     
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+    # Check if already enrolled (excluding cancelled enrollments)
     
-    # Check if already enrolled
     existing_enrollment = db.query(Enrollment).filter(
         and_(
             Enrollment.user_id == user_id,
-            Enrollment.course_id == enrollment_data.course_id
+            Enrollment.course_id == enrollment_data.course_id,
+            Enrollment.status != EnrollmentStatus.CANCELLED
         )
     ).first()
     
@@ -905,18 +1088,19 @@ async def create_enrollment(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User is already enrolled in this course"
         )
+
     
     # Create enrollment
     enrollment = Enrollment(
         user_id=user_id,
         course_id=enrollment_data.course_id,
-        status=enrollment_data.status or EnrollmentStatus.PENDING,
+        status=(enrollment_data.status or EnrollmentStatus.PENDING).value,
         progress=enrollment_data.progress or 0.0,
         grade=enrollment_data.grade,
         notes=enrollment_data.notes
     )
     
-    if enrollment.status == EnrollmentStatus.ACTIVE:
+    if enrollment.status == EnrollmentStatus.ACTIVE.value:
         enrollment.start_enrollment()
     
     db.add(enrollment)
@@ -928,7 +1112,7 @@ async def create_enrollment(
         "enrollment_id": enrollment.id,
         "user_id": enrollment.user_id,
         "course_id": enrollment.course_id,
-        "status": enrollment.status.value
+        "status": enrollment.status
     }
 
 
@@ -973,3 +1157,86 @@ async def get_enrollment_stats(
         stats["total_enrollments"] += count
     
     return stats
+
+
+@router.get("/my-enrollments")
+async def get_my_enrollments(
+    course_id: Optional[int] = Query(None, description="Filter enrollments by course ID"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get enrollments for the current user, with optional filtering by course_id
+    """
+    # Build the query for current user's enrollments
+    query = db.query(Enrollment).filter(Enrollment.user_id == current_user.id)
+    
+    # Apply course_id filter if provided
+    if course_id is not None:
+        query = query.filter(Enrollment.course_id == course_id)
+    
+    # Execute the query
+    enrollments = query.all()
+    
+    enrollment_details = []
+    for enrollment in enrollments:
+        course = db.query(Course).filter(Course.id == enrollment.course_id).first()
+        
+        enrollment_details.append({
+            "id": enrollment.id,
+            "user_id": enrollment.user_id,
+            "course_id": enrollment.course_id,
+            "course_title": course.title if course else None,
+            "status": enrollment.status,
+            "progress": enrollment.progress,
+            "grade": enrollment.grade,
+            "notes": enrollment.notes,
+            "enrolled_at": enrollment.enrolled_at.isoformat() if enrollment.enrolled_at else None,
+            "started_at": enrollment.started_at.isoformat() if enrollment.started_at else None,
+            "completed_at": enrollment.completed_at.isoformat() if enrollment.completed_at else None,
+            "created_at": enrollment.created_at.isoformat() if enrollment.created_at else None,
+            "updated_at": enrollment.updated_at.isoformat() if enrollment.updated_at else None
+        })
+    
+    return {
+        "items": enrollment_details,
+        "total": len(enrollment_details)
+    }
+
+
+@router.get("/debug/all")
+async def get_all_enrollments_debug(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Debug endpoint to get ALL enrollments including cancelled ones (admin only)
+    """
+    if current_user.role.value != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    # Get ALL enrollments including cancelled ones
+    enrollments = db.query(Enrollment).all()
+    
+    enrollment_details = []
+    for enrollment in enrollments:
+        user = db.query(User).filter(User.id == enrollment.user_id).first()
+        course = db.query(Course).filter(Course.id == enrollment.course_id).first()
+        
+        enrollment_details.append({
+            "id": enrollment.id,
+            "user_id": enrollment.user_id,
+            "user_email": user.email if user else None,
+            "course_id": enrollment.course_id,
+            "course_title": course.title if course else None,
+            "status": enrollment.status,
+            "created_at": enrollment.created_at.isoformat() if enrollment.created_at else None
+        })
+    
+    return {
+        "items": enrollment_details,
+        "total": len(enrollment_details)
+    }

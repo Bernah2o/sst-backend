@@ -190,7 +190,7 @@ class ReinductionService:
         enrollment = Enrollment(
             user_id=worker.user_id,
             course_id=target_course_id,
-            status=EnrollmentStatus.ACTIVE
+            status=EnrollmentStatus.ACTIVE.value
         )
         
         self.db.add(enrollment)

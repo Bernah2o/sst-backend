@@ -1,4 +1,5 @@
 import time
+import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -16,8 +17,8 @@ from app.database import create_tables
 from app.schemas.common import HealthCheck
 from app.scheduler import start_scheduler, stop_scheduler
 
-
-
+# Configure logger
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -435,19 +436,40 @@ async def get_direct_evaluation_results(request: Request):
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Custom validation exception handler"""
+    """Custom validation exception handler with improved error messages"""
     # Extract the first error message for a cleaner user experience
     first_error = exc.errors()[0] if exc.errors() else {}
     error_msg = first_error.get('msg', 'Validation error')
     field = first_error.get('loc', ['unknown'])[-1] if first_error.get('loc') else 'unknown'
+    error_type = first_error.get('type', 'validation_error')
+    input_value = first_error.get('input', 'unknown')
+    
+    # Provide more specific error messages for common validation errors
+    if error_type == 'int_parsing':
+        user_message = f"El parámetro '{field}' debe ser un número entero válido. Valor recibido: '{input_value}'"
+        detail_message = f"Error de conversión: no se puede convertir '{input_value}' a entero en el campo '{field}'"
+    elif error_type == 'missing':
+        user_message = f"El parámetro requerido '{field}' no fue proporcionado"
+        detail_message = f"Campo requerido '{field}' faltante en la solicitud"
+    elif 'integer' in error_msg.lower() and 'parse' in error_msg.lower():
+        user_message = f"El parámetro '{field}' debe ser un número entero válido. Valor recibido: '{input_value}'"
+        detail_message = f"Error de validación: '{input_value}' no es un entero válido para el campo '{field}'"
+    else:
+        user_message = f"Error de validación en el campo '{field}': {error_msg}"
+        detail_message = f"Error de validación en el campo '{field}': {error_msg}"
+    
+    # Log the validation error for debugging
+    logger.warning(f"Validation error on {request.url.path}: {error_type} in field '{field}' with value '{input_value}'")
     
     return JSONResponse(
         status_code=422,
         content={
             "success": False,
-            "message": f"Error de validación en el campo '{field}': {error_msg}",
-            "detail": f"Error de validación en el campo '{field}': {error_msg}",
+            "message": user_message,
+            "detail": detail_message,
             "error_code": 422,
+            "field": field,
+            "error_type": error_type,
             "timestamp": time.time()
         }
     )

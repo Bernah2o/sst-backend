@@ -63,7 +63,7 @@ class Enrollment(Base):
 
     def complete_enrollment(self, grade: float = None):
         """Mark enrollment as completed"""
-        self.status = EnrollmentStatus.COMPLETED
+        self.status = EnrollmentStatus.COMPLETED.value
         self.completed_at = datetime.utcnow()
         self.progress = 100.0
         if grade is not None:
@@ -71,24 +71,24 @@ class Enrollment(Base):
 
     def start_enrollment(self):
         """Start the enrollment"""
-        if self.status == EnrollmentStatus.PENDING:
-            self.status = EnrollmentStatus.ACTIVE
+        if self.status == EnrollmentStatus.PENDING.value:
+            self.status = EnrollmentStatus.ACTIVE.value
             self.started_at = datetime.utcnow()
 
     def cancel_enrollment(self, reason: str = None):
         """Cancel the enrollment"""
-        self.status = EnrollmentStatus.CANCELLED
+        self.status = EnrollmentStatus.CANCELLED.value
         if reason:
             self.notes = f"Cancelled: {reason}"
 
     def suspend_enrollment(self, reason: str = None):
         """Suspend the enrollment"""
-        self.status = EnrollmentStatus.SUSPENDED
+        self.status = EnrollmentStatus.SUSPENDED.value
         if reason:
             self.notes = f"Suspended: {reason}"
 
     def update_progress(self, progress: float):
         """Update enrollment progress"""
         self.progress = max(0.0, min(100.0, progress))
-        if self.progress >= 100.0 and self.status == EnrollmentStatus.ACTIVE:
+        if self.progress >= 95.0 and self.status == EnrollmentStatus.ACTIVE:  # Auto-complete at 95% progress
             self.complete_enrollment()

@@ -15,6 +15,7 @@ from app.models.course import (
     CourseType,
 )
 from app.models.enrollment import Enrollment, EnrollmentStatus
+from app.models.user_progress import UserMaterialProgress, MaterialProgressStatus
 from app.models.user_progress import MaterialProgressStatus
 from app.schemas.common import MessageResponse, PaginatedResponse
 from app.schemas.course import (
@@ -157,7 +158,7 @@ async def get_user_courses(
                 modules=course.modules,  # Include modules
                 progress=enrollment.progress,
                 enrolled_at=enrollment.enrolled_at,
-                completed=enrollment.status == EnrollmentStatus.COMPLETED,
+                completed=enrollment.status == EnrollmentStatus.COMPLETED.value,
             )
             user_courses.append(user_course)
 
@@ -561,7 +562,31 @@ async def get_module_materials(
         .order_by(CourseMaterial.order_index)
         .all()
     )
-
+    
+    # Para usuarios no administradores, añadir información de progreso
+    if current_user.role.value not in ["admin", "capacitador"]:
+        result = []
+        for material in materials:
+            # Buscar progreso del material
+            material_progress = db.query(UserMaterialProgress).filter(
+                and_(
+                    UserMaterialProgress.user_id == current_user.id,
+                    UserMaterialProgress.material_id == material.id
+                )
+            ).first()
+            
+            # Convertir a dict para poder añadir campos
+            material_dict = material.__dict__.copy()
+            if "_sa_instance_state" in material_dict:
+                del material_dict["_sa_instance_state"]
+            
+            # Añadir información de progreso
+            material_dict["completed"] = material_progress is not None and material_progress.status == MaterialProgressStatus.COMPLETED
+            material_dict["progress"] = material_progress.progress_percentage if material_progress else 0
+            
+            result.append(material_dict)
+        return result
+    
     return materials
 
 
