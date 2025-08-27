@@ -60,6 +60,14 @@ class CourseMaterialResponse(CourseMaterialBase):
         from_attributes = True
 
 
+class CourseMaterialWithProgressResponse(CourseMaterialResponse):
+    completed: bool = False
+    progress: float = 0.0
+
+    class Config:
+        from_attributes = True
+
+
 # Course Module Schemas
 class CourseModuleBase(BaseModel):
     title: str = Field(..., max_length=255)

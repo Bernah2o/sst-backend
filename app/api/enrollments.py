@@ -873,143 +873,6 @@ async def get_enrollments(
     }
 
 
-@router.get("/{enrollment_id}")
-async def get_enrollment(
-    enrollment_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-) -> Any:
-    """
-    Get a specific enrollment by ID (admin and capacitador roles only)
-    """
-    # Check permissions
-    if current_user.role.value not in ["admin", "capacitador"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
-        )
-    
-    # Get enrollment
-    enrollment = db.query(Enrollment).filter(Enrollment.id == enrollment_id).first()
-    if not enrollment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Enrollment not found"
-        )
-    
-    # Get user and course details
-    user = db.query(User).filter(User.id == enrollment.user_id).first()
-    course = db.query(Course).filter(Course.id == enrollment.course_id).first()
-    
-    return {
-        "id": enrollment.id,
-        "user_id": enrollment.user_id,
-        "user_email": user.email if user else None,
-        "first_name": user.first_name if user else None,
-        "last_name": user.last_name if user else None,
-        "full_name": f"{user.first_name} {user.last_name}" if user and user.first_name and user.last_name else None,
-        "document_number": user.document_number if user else None,
-        "position": user.position if user else None,
-        "department": user.department if user else None,
-        "fecha_de_ingreso": user.hire_date.isoformat() if user and user.hire_date else None,
-        "is_active": user.is_active if user else None,
-        "assigned_role": user.role.value if user and user.role else None,
-        "course_id": enrollment.course_id,
-        "course_title": course.title if course else None,
-        "status": enrollment.status,
-        "progress": enrollment.progress,
-        "grade": enrollment.grade,
-        "notes": enrollment.notes,
-        "enrolled_at": enrollment.enrolled_at.isoformat() if enrollment.enrolled_at else None,
-        "started_at": enrollment.started_at.isoformat() if enrollment.started_at else None,
-        "completed_at": enrollment.completed_at.isoformat() if enrollment.completed_at else None,
-        "created_at": enrollment.created_at.isoformat() if enrollment.created_at else None,
-        "updated_at": enrollment.updated_at.isoformat() if enrollment.updated_at else None
-    }
-
-
-@router.put("/{enrollment_id}")
-async def update_enrollment(
-    enrollment_id: int,
-    enrollment_data: EnrollmentUpdate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-) -> Any:
-    """
-    Update an enrollment (admin and capacitador roles only)
-    """
-    # Check permissions
-    if current_user.role.value not in ["admin", "capacitador"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
-        )
-    
-    # Get enrollment
-    enrollment = db.query(Enrollment).filter(Enrollment.id == enrollment_id).first()
-    if not enrollment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Enrollment not found"
-        )
-    
-    # Update enrollment fields
-    if enrollment_data.status is not None:
-        enrollment.status = enrollment_data.status.value
-        
-        # Handle status-specific logic
-        if enrollment_data.status == EnrollmentStatus.ACTIVE and enrollment.started_at is None:
-            enrollment.start_enrollment()
-        elif enrollment_data.status == EnrollmentStatus.COMPLETED:
-            enrollment.complete_enrollment(enrollment_data.grade)
-        elif enrollment_data.status == EnrollmentStatus.CANCELLED:
-            enrollment.cancel_enrollment(enrollment_data.notes)
-        elif enrollment_data.status == EnrollmentStatus.SUSPENDED:
-            enrollment.suspend_enrollment(enrollment_data.notes)
-    
-    if enrollment_data.progress is not None:
-        enrollment.update_progress(enrollment_data.progress)
-    
-    if enrollment_data.grade is not None:
-        enrollment.grade = enrollment_data.grade
-    
-    if enrollment_data.notes is not None:
-        enrollment.notes = enrollment_data.notes
-    
-    # Update timestamp
-    enrollment.updated_at = datetime.utcnow()
-    
-    db.commit()
-    db.refresh(enrollment)
-    
-    # Get user and course details for response
-    user = db.query(User).filter(User.id == enrollment.user_id).first()
-    course = db.query(Course).filter(Course.id == enrollment.course_id).first()
-    
-    return {
-        "message": "Enrollment updated successfully",
-        "enrollment": {
-            "id": enrollment.id,
-            "user_id": enrollment.user_id,
-            "user_email": user.email if user else None,
-            "first_name": user.first_name if user else None,
-            "last_name": user.last_name if user else None,
-            "full_name": f"{user.first_name} {user.last_name}" if user and user.first_name and user.last_name else None,
-            "course_id": enrollment.course_id,
-            "course_title": course.title if course else None,
-            "status": enrollment.status,
-            "progress": enrollment.progress,
-            "grade": enrollment.grade,
-            "notes": enrollment.notes,
-            "enrolled_at": enrollment.enrolled_at.isoformat() if enrollment.enrolled_at else None,
-            "started_at": enrollment.started_at.isoformat() if enrollment.started_at else None,
-            "completed_at": enrollment.completed_at.isoformat() if enrollment.completed_at else None,
-            "created_at": enrollment.created_at.isoformat() if enrollment.created_at else None,
-            "updated_at": enrollment.updated_at.isoformat() if enrollment.updated_at else None
-        }
-    }
-
-
 @router.post("/")
 async def create_enrollment(
     enrollment_data: EnrollmentCreate,
@@ -1201,6 +1064,137 @@ async def get_my_enrollments(
     return {
         "items": enrollment_details,
         "total": len(enrollment_details)
+    }
+
+
+# Routes with {enrollment_id} parameters - placed at end to avoid conflicts
+@router.get("/{enrollment_id}")
+async def get_enrollment(
+    enrollment_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get enrollment by ID
+    """
+    # Check permissions
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    enrollment = db.query(Enrollment).filter(Enrollment.id == enrollment_id).first()
+    if not enrollment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Enrollment not found"
+        )
+    
+    # Get user and course details
+    user = db.query(User).filter(User.id == enrollment.user_id).first()
+    course = db.query(Course).filter(Course.id == enrollment.course_id).first()
+    
+    return {
+        "id": enrollment.id,
+        "user_id": enrollment.user_id,
+        "user_email": user.email if user else None,
+        "first_name": user.first_name if user else None,
+        "last_name": user.last_name if user else None,
+        "full_name": f"{user.first_name} {user.last_name}" if user and user.first_name and user.last_name else None,
+        "course_id": enrollment.course_id,
+        "course_title": course.title if course else None,
+        "status": enrollment.status,
+        "progress": enrollment.progress,
+        "grade": enrollment.grade,
+        "notes": enrollment.notes,
+        "enrolled_at": enrollment.enrolled_at.isoformat() if enrollment.enrolled_at else None,
+        "started_at": enrollment.started_at.isoformat() if enrollment.started_at else None,
+        "completed_at": enrollment.completed_at.isoformat() if enrollment.completed_at else None,
+        "created_at": enrollment.created_at.isoformat() if enrollment.created_at else None,
+        "updated_at": enrollment.updated_at.isoformat() if enrollment.updated_at else None
+    }
+
+
+@router.put("/{enrollment_id}")
+async def update_enrollment(
+    enrollment_id: int,
+    enrollment_data: EnrollmentUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Update an enrollment (admin and capacitador roles only)
+    """
+    # Check permissions
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    # Get enrollment
+    enrollment = db.query(Enrollment).filter(Enrollment.id == enrollment_id).first()
+    if not enrollment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Enrollment not found"
+        )
+    
+    # Update enrollment fields
+    if enrollment_data.status is not None:
+        enrollment.status = enrollment_data.status.value
+        
+        # Handle status-specific logic
+        if enrollment_data.status == EnrollmentStatus.ACTIVE and enrollment.started_at is None:
+            enrollment.start_enrollment()
+        elif enrollment_data.status == EnrollmentStatus.COMPLETED:
+            enrollment.complete_enrollment(enrollment_data.grade)
+        elif enrollment_data.status == EnrollmentStatus.CANCELLED:
+            enrollment.cancel_enrollment(enrollment_data.notes)
+        elif enrollment_data.status == EnrollmentStatus.SUSPENDED:
+            enrollment.suspend_enrollment(enrollment_data.notes)
+    
+    if enrollment_data.progress is not None:
+        enrollment.update_progress(enrollment_data.progress)
+    
+    if enrollment_data.grade is not None:
+        enrollment.grade = enrollment_data.grade
+    
+    if enrollment_data.notes is not None:
+        enrollment.notes = enrollment_data.notes
+    
+    # Update timestamp
+    enrollment.updated_at = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(enrollment)
+    
+    # Get user and course details for response
+    user = db.query(User).filter(User.id == enrollment.user_id).first()
+    course = db.query(Course).filter(Course.id == enrollment.course_id).first()
+    
+    return {
+        "message": "Enrollment updated successfully",
+        "enrollment": {
+            "id": enrollment.id,
+            "user_id": enrollment.user_id,
+            "user_email": user.email if user else None,
+            "first_name": user.first_name if user else None,
+            "last_name": user.last_name if user else None,
+            "full_name": f"{user.first_name} {user.last_name}" if user and user.first_name and user.last_name else None,
+            "course_id": enrollment.course_id,
+            "course_title": course.title if course else None,
+            "status": enrollment.status,
+            "progress": enrollment.progress,
+            "grade": enrollment.grade,
+            "notes": enrollment.notes,
+            "enrolled_at": enrollment.enrolled_at.isoformat() if enrollment.enrolled_at else None,
+            "started_at": enrollment.started_at.isoformat() if enrollment.started_at else None,
+            "completed_at": enrollment.completed_at.isoformat() if enrollment.completed_at else None,
+            "created_at": enrollment.created_at.isoformat() if enrollment.created_at else None,
+            "updated_at": enrollment.updated_at.isoformat() if enrollment.updated_at else None
+        }
     }
 
 

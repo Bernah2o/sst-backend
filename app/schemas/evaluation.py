@@ -218,11 +218,20 @@ class EvaluationResponse(EvaluationBase):
         from_attributes = True
 
 
+class CourseInfo(BaseModel):
+    id: int
+    title: str
+    
+    class Config:
+        from_attributes = True
+
+
 class EvaluationListResponse(BaseModel):
     id: int
     title: str
     description: Optional[str] = None
     course_id: int
+    course: Optional[CourseInfo] = None
     status: EvaluationStatus
     time_limit_minutes: Optional[int] = None
     passing_score: float

@@ -3,7 +3,7 @@ from typing import Any, List
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func
 
 from app.dependencies import get_current_active_user
@@ -40,7 +40,9 @@ async def get_evaluations(
     """
     Get all evaluations with optional filtering
     """
-    query = db.query(Evaluation)
+    from app.models.course import Course
+    
+    query = db.query(Evaluation).join(Course, Evaluation.course_id == Course.id)
     
     # Apply filters
     if course_id:
@@ -56,8 +58,8 @@ async def get_evaluations(
     # Get total count
     total = query.count()
     
-    # Apply pagination
-    evaluations = query.offset(skip).limit(limit).all()
+    # Apply pagination and eager load course
+    evaluations = query.options(joinedload(Evaluation.course)).offset(skip).limit(limit).all()
     
     # Calculate pagination fields
     page = (skip // limit) + 1 if limit > 0 else 1
@@ -194,183 +196,6 @@ async def create_evaluation(
 
 
 # Routes with path parameters will be moved to the end of the file
-
-
-@router.post("/{evaluation_id}/submit")
-async def submit_evaluation(
-    evaluation_id: int,
-    submission: EvaluationSubmission,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-) -> Any:
-    """
-    Submit evaluation answers
-    """
-    evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
-    
-    if not evaluation:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evaluation not found"
-        )
-    
-    if evaluation.status != EvaluationStatus.PUBLISHED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Evaluation is not active"
-        )
-    
-    # Find existing in-progress attempt
-    user_evaluation = db.query(UserEvaluation).filter(
-        and_(
-            UserEvaluation.user_id == current_user.id,
-            UserEvaluation.evaluation_id == evaluation_id,
-            UserEvaluation.status == UserEvaluationStatus.IN_PROGRESS
-        )
-    ).first()
-    
-    if not user_evaluation:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No active evaluation attempt found. Please start the evaluation first."
-        )
-    
-    # Check if evaluation has expired
-    from datetime import datetime
-    current_time = datetime.utcnow()
-    if user_evaluation.expires_at and current_time > user_evaluation.expires_at:
-        user_evaluation.status = UserEvaluationStatus.EXPIRED
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Evaluation time has expired"
-        )
-    
-    # Update status to completed and set completion time
-    user_evaluation.status = UserEvaluationStatus.COMPLETED
-    user_evaluation.completed_at = current_time
-    
-    # Save answers
-    total_score = 0
-    max_score = 0
-    
-    for answer_data in submission.user_answers:
-        question = db.query(Question).filter(Question.id == answer_data.question_id).first()
-        if not question or question.evaluation_id != evaluation_id:
-            continue
-        
-        user_answer = UserAnswer(
-            user_evaluation_id=user_evaluation.id,
-            question_id=answer_data.question_id,
-            selected_answer_ids=answer_data.selected_answer_ids,
-            answer_text=answer_data.answer_text,
-            time_spent_seconds=answer_data.time_spent_seconds
-        )
-        
-        # Calculate score for this question
-        if question.question_type.value in ["single_choice", "multiple_choice"]:
-            correct_answers = db.query(Answer).filter(
-                and_(
-                    Answer.question_id == question.id,
-                    Answer.is_correct == True
-                )
-            ).all()
-            
-            correct_answer_ids = {answer.id for answer in correct_answers}
-            
-            # Parse selected_answer_ids from string to set of integers
-            selected_answer_ids = set()
-            if answer_data.selected_answer_ids:
-                try:
-                    # If it's a single ID as string, convert to int
-                    selected_id = int(answer_data.selected_answer_ids)
-                    selected_answer_ids = {selected_id}
-                except ValueError:
-                    # If it's a JSON array string, parse it
-                    import json
-                    try:
-                        selected_ids = json.loads(answer_data.selected_answer_ids)
-                        selected_answer_ids = {int(id) for id in selected_ids}
-                    except (json.JSONDecodeError, ValueError):
-                        selected_answer_ids = set()
-            
-            # Set is_correct based on whether the selected answers match the correct answers
-            user_answer.is_correct = (correct_answer_ids == selected_answer_ids)
-            
-            if user_answer.is_correct:
-                user_answer.points_earned = question.points
-                total_score += question.points
-        
-        max_score += question.points
-        db.add(user_answer)
-    
-    # Update user evaluation with final score
-    percentage = (total_score / max_score * 100) if max_score > 0 else 0
-    user_evaluation.score = total_score
-    user_evaluation.total_points = total_score
-    user_evaluation.max_points = max_score
-    user_evaluation.percentage = percentage
-    user_evaluation.passed = percentage >= evaluation.passing_score
-    
-    # Calculate time spent in minutes
-    if user_evaluation.started_at and user_evaluation.completed_at:
-        time_diff = user_evaluation.completed_at - user_evaluation.started_at
-        user_evaluation.time_spent_minutes = int(time_diff.total_seconds() / 60)
-    
-    db.commit()
-    db.refresh(user_evaluation)
-    
-    # After completing this attempt, update the user's best score for this evaluation
-    update_user_best_score(db, user_evaluation.user_id, evaluation_id)
-    
-    # Generate certificate if user passed and evaluation is associated with a course
-    if user_evaluation.passed and evaluation.course_id:
-         try:
-             # Check if certificate already exists for this user and course
-             existing_certificate = db.query(Certificate).filter(
-                 and_(
-                     Certificate.user_id == user_evaluation.user_id,
-                     Certificate.course_id == evaluation.course_id
-                 )
-             ).first()
-             
-             if not existing_certificate:
-                 # Get course information
-                 course = db.query(Course).filter(Course.id == evaluation.course_id).first()
-                 if course:
-                     # Generate unique certificate number
-                     cert_number = f"CERT-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
-                     
-                     # Create certificate record
-                     certificate = Certificate(
-                         user_id=user_evaluation.user_id,
-                         course_id=evaluation.course_id,
-                         certificate_number=cert_number,
-                         title=f"Certificado de Finalización - {course.title}",
-                         description=f"Certificado otorgado por completar satisfactoriamente el curso {course.title}",
-                         score_achieved=user_evaluation.percentage,
-                         completion_date=user_evaluation.completed_at,
-                         issue_date=datetime.utcnow(),
-                         status=CertificateStatus.ISSUED,
-                         verification_code=uuid.uuid4().hex,
-                         template_used="default",
-                         issued_by=current_user.id
-                     )
-                     
-                     db.add(certificate)
-                     db.commit()
-                     db.refresh(certificate)
-                     
-                     # Generate PDF certificate
-                     certificate_generator = CertificateGenerator(db)
-                     certificate_generator.generate_certificate_pdf(certificate.id)
-                     
-                     logger.info(f"Certificate generated for user {user_evaluation.user_id} and course {evaluation.course_id}")
-         except Exception as e:
-             logger.error(f"Error generating certificate: {str(e)}")
-             # Don't fail the evaluation submission if certificate generation fails
-    
-    return user_evaluation
 
 
 def update_user_best_score(db: Session, user_id: int, evaluation_id: int):
@@ -578,12 +403,15 @@ async def submit_evaluation(
         total_points += points_earned
         
         # Create user answer record
+        selected_answer_ids = None
+        if answer_submission.selected_option_id:
+            selected_answer_ids = str(answer_submission.selected_option_id)
+        
         user_answer = UserAnswer(
             user_evaluation_id=user_evaluation.id,
             question_id=question.id,
-            selected_option_id=answer_submission.selected_option_id,
-            text_answer=answer_submission.text_answer,
-            boolean_answer=answer_submission.boolean_answer,
+            selected_answer_ids=selected_answer_ids,
+            answer_text=answer_submission.text_answer,
             points_earned=points_earned,
             is_correct=is_correct
         )
@@ -613,17 +441,62 @@ async def submit_evaluation(
     
     db.commit()
     
-    # Generate certificate if passed and evaluation has certificate template
+    # Generate certificate if passed
     certificate_url = None
-    if passed and evaluation.certificate_template:
+    if passed:
         try:
-            from app.services.certificate_service import generate_certificate
-            certificate_url = await generate_certificate(
-                user_evaluation.id,
-                current_user,
-                evaluation,
-                db
-            )
+            # Check if certificate already exists
+            existing_certificate = db.query(Certificate).filter(
+                and_(
+                    Certificate.user_id == user_evaluation.user_id,
+                    Certificate.course_id == user_evaluation.evaluation.course_id
+                )
+            ).first()
+            
+            if not existing_certificate:
+                # Generate certificate automatically
+                import uuid
+                certificate_number = f"CERT-{datetime.now().year}-{str(uuid.uuid4())[:8].upper()}"
+                verification_code = str(uuid.uuid4())
+                
+                # Get course and user info
+                course = user_evaluation.evaluation.course
+                user = user_evaluation.user
+                
+                certificate = Certificate(
+                    user_id=user_evaluation.user_id,
+                    course_id=user_evaluation.evaluation.course_id,
+                    certificate_number=certificate_number,
+                    title=f"Certificado de Finalización - {course.title}",
+                    description=f"Certifica que {user.full_name} ha completado satisfactoriamente el curso {course.title}",
+                    score_achieved=percentage,
+                    completion_date=current_time,
+                    issue_date=current_time,
+                    status=CertificateStatus.ISSUED,
+                    verification_code=verification_code,
+                    template_used="default",
+                    issued_by=None  # Auto-generated
+                )
+                
+                db.add(certificate)
+                db.commit()
+                db.refresh(certificate)
+                
+                # Generate PDF
+                try:
+                    from app.services.certificate_generator import CertificateGenerator
+                    generator = CertificateGenerator(db)
+                    generator.generate_certificate_pdf(certificate.id)
+                    certificate_url = f"/certificates/{certificate.id}/download"
+                except Exception as pdf_error:
+                    logger.warning(f"Failed to generate PDF for certificate {certificate.id}: {str(pdf_error)}")
+                    certificate_url = f"/certificates/{certificate.id}"
+                    
+                logger.info(f"Certificate {certificate.certificate_number} generated for user {user_evaluation.user_id} completing course {user_evaluation.evaluation.course_id}")
+            else:
+                certificate_url = f"/certificates/{existing_certificate.id}"
+                logger.info(f"Certificate already exists for user {user_evaluation.user_id} and course {user_evaluation.evaluation.course_id}")
+                
         except Exception as e:
             logger.warning(f"Failed to generate certificate for user_evaluation {user_evaluation.id}: {str(e)}")
     
@@ -691,6 +564,7 @@ async def get_my_evaluation_results(
                 "percentage": float(user_eval.percentage) if user_eval.percentage is not None else None,
                 "time_spent_minutes": int(user_eval.time_spent_minutes) if user_eval.time_spent_minutes is not None else None,
                 "passed": bool(user_eval.passed),
+                "responded": user_eval.status == UserEvaluationStatus.COMPLETED,  # Add responded property
                 "started_at": user_eval.started_at.isoformat() if user_eval.started_at else None,
                 "completed_at": user_eval.completed_at.isoformat() if user_eval.completed_at else None,
                 "expires_at": user_eval.expires_at.isoformat() if user_eval.expires_at else None,
@@ -1109,6 +983,103 @@ async def start_evaluation(
     db.refresh(user_evaluation)
     
     return user_evaluation
+
+
+@router.post("/{evaluation_id}/save-progress")
+async def save_evaluation_progress(
+    evaluation_id: int,
+    progress_data: dict,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Save evaluation progress (answers) for an in-progress evaluation
+    """
+    # Get the evaluation
+    evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
+    if not evaluation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation not found"
+        )
+    
+    # Get the user's current evaluation attempt
+    user_evaluation = db.query(UserEvaluation).filter(
+        and_(
+            UserEvaluation.user_id == current_user.id,
+            UserEvaluation.evaluation_id == evaluation_id,
+            UserEvaluation.status == UserEvaluationStatus.IN_PROGRESS
+        )
+    ).first()
+    
+    if not user_evaluation:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active evaluation attempt found"
+        )
+    
+    # Check if evaluation has expired
+    if user_evaluation.expires_at and datetime.utcnow() > user_evaluation.expires_at:
+        user_evaluation.status = UserEvaluationStatus.EXPIRED
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Evaluation attempt has expired"
+        )
+    
+    try:
+        # Get user_answers from the request data
+        user_answers = progress_data.get('user_answers', [])
+        
+        # Save or update user answers
+        for answer_data in user_answers:
+            question_id = answer_data.get('question_id')
+            
+            # Check if answer already exists
+            existing_answer = db.query(UserAnswer).filter(
+                and_(
+                    UserAnswer.user_evaluation_id == user_evaluation.id,
+                    UserAnswer.question_id == question_id
+                )
+            ).first()
+            
+            if existing_answer:
+                # Update existing answer
+                if 'selected_answer_ids' in answer_data:
+                    existing_answer.selected_answer_ids = answer_data['selected_answer_ids']
+                if 'answer_text' in answer_data:
+                    existing_answer.answer_text = answer_data['answer_text']
+                if 'time_spent_seconds' in answer_data:
+                    existing_answer.time_spent_seconds = answer_data['time_spent_seconds']
+                existing_answer.updated_at = datetime.utcnow()
+            else:
+                # Create new answer
+                new_answer = UserAnswer(
+                    user_evaluation_id=user_evaluation.id,
+                    question_id=question_id,
+                    selected_answer_ids=answer_data.get('selected_answer_ids'),
+                    answer_text=answer_data.get('answer_text'),
+                    time_spent_seconds=answer_data.get('time_spent_seconds', 0)
+                )
+                db.add(new_answer)
+        
+        # Update the user evaluation's updated_at timestamp
+        user_evaluation.updated_at = datetime.utcnow()
+        
+        db.commit()
+        
+        return {
+            "message": "Progress saved successfully",
+            "saved_answers": len(user_answers)
+        }
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error saving evaluation progress: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error saving progress"
+        )
 
 
 @router.get("/{evaluation_id}/attempts")

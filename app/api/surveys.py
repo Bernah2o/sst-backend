@@ -274,6 +274,125 @@ async def get_available_surveys(
     )
 
 
+@router.get("/my-surveys", response_class=JSONResponse)
+async def get_my_surveys(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get current user's surveys with status (completed and pending)
+    Similar to evaluations endpoint
+    """
+    from app.models.enrollment import Enrollment
+    
+    try:
+        # Get user's enrollments
+        user_enrollments = db.query(Enrollment).filter(
+            Enrollment.user_id == current_user.id
+        ).all()
+        
+        if not user_enrollments:
+            return JSONResponse(
+                content={
+                    "items": [],
+                    "total": 0,
+                    "page": 1,
+                    "size": 100,
+                    "pages": 1,
+                    "has_next": False,
+                    "has_prev": False
+                }
+            )
+        
+        # Get course IDs from enrollments
+        course_ids = [enrollment.course_id for enrollment in user_enrollments]
+        
+        # Get published surveys for these courses with course information
+        available_surveys = db.query(Survey).options(joinedload(Survey.course)).filter(
+            Survey.course_id.in_(course_ids),
+            Survey.status == SurveyStatus.PUBLISHED
+        ).all()
+        
+        # Get user's survey submissions
+        user_surveys = db.query(UserSurvey).filter(
+            UserSurvey.user_id == current_user.id
+        ).all()
+        
+        # Create a map of survey_id to user_survey for quick lookup
+        user_survey_map = {us.survey_id: us for us in user_surveys}
+        
+        # Build response with all available surveys
+        survey_results = []
+        
+        for survey in available_surveys:
+            user_survey = user_survey_map.get(survey.id)
+            
+            if user_survey:
+                # User has started this survey
+                survey_results.append({
+                    "survey_id": survey.id,
+                    "user_id": current_user.id,
+                    "anonymous_token": user_survey.anonymous_token,
+                    "id": user_survey.id,
+                    "status": user_survey.status.value if user_survey.status else "not_started",
+                    "started_at": user_survey.started_at.isoformat() if user_survey.started_at else None,
+                    "completed_at": user_survey.completed_at.isoformat() if user_survey.completed_at else None,
+                    "created_at": user_survey.created_at.isoformat() if user_survey.created_at else None,
+                    "updated_at": user_survey.updated_at.isoformat() if user_survey.updated_at else None,
+                    "title": survey.title,
+                    "description": survey.description,
+                    "survey": {
+                        "id": survey.id,
+                        "title": survey.title,
+                        "description": survey.description,
+                        "course": {"id": survey.course.id, "title": survey.course.title} if survey.course else None
+                    }
+                })
+            else:
+                # User hasn't started this survey yet
+                survey_results.append({
+                    "survey_id": survey.id,
+                    "user_id": current_user.id,
+                    "anonymous_token": None,
+                    "id": None,
+                    "status": "not_started",
+                    "started_at": None,
+                    "completed_at": None,
+                    "created_at": None,
+                    "updated_at": None,
+                    "title": survey.title,
+                    "description": survey.description,
+                    "survey": {
+                        "id": survey.id,
+                        "title": survey.title,
+                        "description": survey.description,
+                        "course": {"id": survey.course.id, "title": survey.course.title} if survey.course else None
+                    }
+                })
+        
+        return JSONResponse(
+            content={
+                "items": survey_results,
+                "total": len(survey_results),
+                "page": 1,
+                "size": 100,
+                "pages": 1,
+                "has_next": False,
+                "has_prev": False
+            }
+        )
+        
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"Error retrieving user surveys: {str(e)}",
+                "data": []
+            }
+        )
+
+
 @router.get("/{survey_id}", response_model=SurveyResponse)
 async def get_survey(
     survey_id: int,
@@ -922,62 +1041,6 @@ async def get_survey_presentation(
         is_submitted=user_submission is not None,
         user_submission=user_submission
     )
-
-
-@router.get("/my-surveys", response_class=JSONResponse)
-async def get_my_surveys(
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Get current user's surveys with status (completed and pending)
-    Similar to evaluations endpoint
-    """
-    from app.models.enrollment import Enrollment
-    
-    try:
-        # Get user's survey submissions
-        user_surveys = db.query(UserSurvey).filter(
-            UserSurvey.user_id == current_user.id
-        ).all()
-        
-        # Build simple response
-        survey_results = []
-        
-        for user_survey in user_surveys:
-            survey_results.append({
-                "survey_id": user_survey.survey_id,
-                "user_id": user_survey.user_id,
-                "anonymous_token": user_survey.anonymous_token,
-                "id": user_survey.id,
-                "status": user_survey.status.value if user_survey.status else "unknown",
-                "started_at": user_survey.started_at.isoformat() if user_survey.started_at else None,
-                "completed_at": user_survey.completed_at.isoformat() if user_survey.completed_at else None,
-                "created_at": user_survey.created_at.isoformat() if user_survey.created_at else None,
-                "updated_at": user_survey.updated_at.isoformat() if user_survey.updated_at else None
-            })
-        
-        return JSONResponse(
-            content={
-                "items": survey_results,
-                "total": len(survey_results),
-                "page": 1,
-                "size": 100,
-                "pages": 1,
-                "has_next": False,
-                "has_prev": False
-            }
-        )
-        
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "message": f"Error retrieving user surveys: {str(e)}",
-                "data": []
-            }
-        )
 
 
 @router.get("/{survey_id}/detailed-results", response_model=SurveyDetailedResults)

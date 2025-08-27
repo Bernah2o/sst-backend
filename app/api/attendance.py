@@ -452,6 +452,55 @@ async def create_attendance_record(
     return attendance
 
 
+@router.get("/stats")
+async def get_attendance_stats(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get attendance statistics by status
+    """
+    # Check permissions
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    # Get counts by status
+    stats_query = db.query(
+        Attendance.status,
+        func.count(Attendance.id).label('count')
+    ).group_by(Attendance.status).all()
+    
+    # Initialize stats with default values
+    stats = {
+        "total_attendance": 0,
+        "present": 0,
+        "absent": 0,
+        "late": 0,
+        "excused": 0,
+        "partial": 0
+    }
+    
+    # Populate stats from query results
+    for status_result, count in stats_query:
+        if status_result == AttendanceStatus.PRESENT:
+            stats["present"] = count
+        elif status_result == AttendanceStatus.ABSENT:
+            stats["absent"] = count
+        elif status_result == AttendanceStatus.LATE:
+            stats["late"] = count
+        elif status_result == AttendanceStatus.EXCUSED:
+            stats["excused"] = count
+        elif status_result == AttendanceStatus.PARTIAL:
+            stats["partial"] = count
+        
+        stats["total_attendance"] += count
+    
+    return stats
+
+
 @router.get("/{attendance_id}", response_model=AttendanceResponse)
 async def get_attendance_record(
     attendance_id: int,

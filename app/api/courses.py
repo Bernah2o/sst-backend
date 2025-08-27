@@ -30,6 +30,7 @@ from app.schemas.course import (
     CourseMaterialCreate,
     CourseMaterialUpdate,
     CourseMaterialResponse,
+    CourseMaterialWithProgressResponse,
 )
 
 router = APIRouter()
@@ -517,7 +518,7 @@ async def delete_course_module(
 
 
 @router.get(
-    "/modules/{module_id}/materials", response_model=List[CourseMaterialResponse]
+    "/modules/{module_id}/materials"
 )
 async def get_module_materials(
     module_id: int,
