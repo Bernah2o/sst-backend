@@ -425,13 +425,83 @@ async def mark_all_notifications_read(
             Notification.read_at.is_(None)
         )
     ).all()
-    
+
     for notification in notifications:
         notification.read_at = datetime.now()
+
+    db.commit()
+
+    return MessageResponse(message=f"Marked {len(notifications)} notifications as read")
+
+
+@router.post("/{notification_id}/send", response_model=MessageResponse)
+async def send_notification(
+    notification_id: int,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Send a notification via email
+    """
+    # Get the notification
+    notification = db.query(Notification).filter(Notification.id == notification_id).first()
+    
+    if not notification:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Notification not found"
+        )
+    
+    # Check permissions - users can only send their own notifications unless they are admin
+    if current_user.role.value != "admin" and notification.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    # Get the user to send the email to
+    user = db.query(User).filter(User.id == notification.user_id).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    if not user.email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User does not have an email address"
+        )
+    
+    # Send email in background
+    from app.utils.email import send_email
+    
+    background_tasks.add_task(
+        send_email,
+        recipient=user.email,
+        subject=notification.title,
+        body=notification.message,
+        template="notification",
+        context={
+            "user_name": f"{user.first_name} {user.last_name}",
+            "title": notification.title,
+            "message": notification.message,
+            "notification_type": notification.notification_type.value,
+            "priority": notification.priority.value,
+            "created_at": notification.created_at.strftime('%d/%m/%Y %H:%M'),
+            "system_url": "http://localhost:3000"  # TODO: Get from settings
+        }
+    )
+    
+    # Update notification status to SENT
+    notification.status = NotificationStatus.SENT
+    notification.sent_at = datetime.now()
     
     db.commit()
     
-    return MessageResponse(message=f"Marked {len(notifications)} notifications as read")
+    return MessageResponse(message=f"Notification sent to {user.email}")
 
 
 @router.get("/unread/count")

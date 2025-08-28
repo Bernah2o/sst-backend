@@ -18,20 +18,23 @@ from sqlalchemy.orm import Session
 from app.models.certificate import Certificate
 from app.models.user import User
 from app.models.course import Course
+from app.utils.storage import StorageManager
+from app.config import settings
 
 
 class CertificateGenerator:
     def __init__(self, db: Session):
         self.db = db
+        self.storage_manager = StorageManager()
         self.certificates_dir = "certificates"
         
-        # Crear directorio si no existe
+        # Crear directorio local si no existe (para fallback)
         if not os.path.exists(self.certificates_dir):
             os.makedirs(self.certificates_dir)
     
-    def generate_certificate_pdf(self, certificate_id: int) -> str:
+    async def generate_certificate_pdf(self, certificate_id: int) -> str:
         """
-        Genera un certificado en PDF y retorna la ruta del archivo
+        Genera un certificado en PDF y retorna la URL del archivo
         """
         # Obtener datos del certificado
         certificate = self.db.query(Certificate).filter(Certificate.id == certificate_id).first()
@@ -46,16 +49,36 @@ class CertificateGenerator:
         
         # Generar nombre del archivo
         filename = f"certificate_{certificate.certificate_number}.pdf"
-        filepath = os.path.join(self.certificates_dir, filename)
+        local_filepath = os.path.join(self.certificates_dir, filename)
         
-        # Crear el PDF
-        self._create_certificate_pdf(filepath, certificate, user, course)
+        # Crear el PDF localmente
+        self._create_certificate_pdf(local_filepath, certificate, user, course)
         
-        # Actualizar la ruta del archivo en la base de datos
-        certificate.file_path = filepath
+        # Subir a Firebase Storage si está habilitado
+        if settings.use_firebase_storage:
+            firebase_path = f"{settings.firebase_certificates_path}/{filename}"
+            file_url = await self.storage_manager.upload_file(
+                local_filepath, 
+                firebase_path,
+                storage_type="firebase"
+            )
+            
+            # Limpiar archivo local después de subir
+            try:
+                os.remove(local_filepath)
+            except OSError:
+                pass
+                
+            # Actualizar la ruta del archivo en la base de datos
+            certificate.file_path = file_url
+        else:
+            # Usar ruta local
+            certificate.file_path = local_filepath
+            file_url = f"/certificates/{filename}"
+        
         self.db.commit()
         
-        return filepath
+        return file_url
     
     def _create_certificate_pdf(self, filepath: str, certificate: Certificate, user: User, course: Course):
         """

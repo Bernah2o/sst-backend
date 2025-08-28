@@ -45,13 +45,13 @@ async def update_current_user_profile(
     if "profile_picture" in update_data and update_data["profile_picture"] is None:
         # Delete old profile picture file if exists
         if current_user.profile_picture:
-            old_file_path = os.path.join(settings.upload_dir, current_user.profile_picture)
-            if os.path.exists(old_file_path):
-                try:
-                    os.remove(old_file_path)
-                except Exception as e:
-                    # Log error but don't fail the request
-                    print(f"Error deleting profile picture file: {e}")
+            try:
+                from app.utils.storage import storage_manager
+                import asyncio
+                asyncio.create_task(storage_manager.delete_file(current_user.profile_picture))
+            except Exception as e:
+                # Log error but don't fail the request
+                print(f"Error deleting profile picture file: {e}")
     
     for field, value in update_data.items():
         setattr(current_user, field, value)

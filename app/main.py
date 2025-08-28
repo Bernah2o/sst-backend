@@ -194,6 +194,8 @@ app.add_middleware(RequestLoggingMiddleware)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 app.mount("/certificates", StaticFiles(directory=settings.certificate_output_dir), name="certificates")
+app.mount("/medical_reports", StaticFiles(directory="medical_reports"), name="medical_reports")
+app.mount("/attendance_lists", StaticFiles(directory="attendance_lists"), name="attendance_lists")
 
 # Include API router
 app.include_router(api_router, prefix="/api/v1")

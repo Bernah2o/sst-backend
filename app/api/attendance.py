@@ -12,6 +12,8 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from app.utils.storage import StorageManager
+from app.config import settings
 
 from app.dependencies import get_current_active_user
 from app.database import get_db
@@ -1004,7 +1006,7 @@ async def generate_attendance_list_pdf(
     session_id: int,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
-) -> FileResponse:
+):
     """
     Generate attendance list PDF for a session (admin and capacitador roles only)
     """
@@ -1057,18 +1059,21 @@ async def generate_attendance_list_pdf(
     
     # Create PDF
     try:
-        # Create attendance_lists directory if it doesn't exist
+        # Initialize storage manager
+        storage_manager = StorageManager()
+        
+        # Create attendance_lists directory if it doesn't exist (for fallback)
         attendance_dir = "attendance_lists"
         if not os.path.exists(attendance_dir):
             os.makedirs(attendance_dir)
         
         # Generate filename
         filename = f"lista_asistencia_sesion_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        filepath = os.path.join(attendance_dir, filename)
+        local_filepath = os.path.join(attendance_dir, filename)
         
         # Create PDF document with margins
         doc = SimpleDocTemplate(
-            filepath, 
+            local_filepath, 
             pagesize=A4,
             rightMargin=50,
             leftMargin=50,
@@ -1341,12 +1346,33 @@ async def generate_attendance_list_pdf(
         # Build PDF with page numbers
         doc.build(story, onFirstPage=add_page_number, onLaterPages=add_page_number)
         
-        # Return file
-        return FileResponse(
-            path=filepath,
-            filename=f"lista_asistencia_{session.title.replace(' ', '_')}_{session.session_date.strftime('%Y%m%d')}.pdf",
-            media_type='application/pdf'
-        )
+        # Upload to Firebase Storage if enabled
+        if settings.use_firebase_storage:
+            try:
+                firebase_path = f"{settings.firebase_attendance_lists_path}/{filename}"
+                file_url = await storage_manager.upload_file(local_filepath, firebase_path)
+                
+                # Delete local file after upload
+                if os.path.exists(local_filepath):
+                    os.remove(local_filepath)
+                
+                # Return redirect to Firebase URL
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(url=file_url)
+            except Exception as e:
+                # If Firebase upload fails, return local file
+                return FileResponse(
+                    path=local_filepath,
+                    filename=f"lista_asistencia_{session.title.replace(' ', '_')}_{session.session_date.strftime('%Y%m%d')}.pdf",
+                    media_type='application/pdf'
+                )
+        else:
+            # Return local file
+            return FileResponse(
+                path=local_filepath,
+                filename=f"lista_asistencia_{session.title.replace(' ', '_')}_{session.session_date.strftime('%Y%m%d')}.pdf",
+                media_type='application/pdf'
+            )
         
     except Exception as e:
         raise HTTPException(

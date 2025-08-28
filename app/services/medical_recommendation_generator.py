@@ -15,23 +15,27 @@ from reportlab.pdfbase.ttfonts import TTFont
 from PIL import Image as PILImage
 from sqlalchemy.orm import Session
 
+from app.models.user import User
 from app.models.seguimiento import Seguimiento
 from app.models.worker import Worker
 from app.models.occupational_exam import OccupationalExam
+from app.utils.storage import StorageManager
+from app.config import settings
 
 
 class MedicalRecommendationGenerator:
     def __init__(self, db: Session):
         self.db = db
+        self.storage_manager = StorageManager()
         self.reports_dir = "medical_reports"
         
-        # Crear directorio si no existe
+        # Crear directorio local si no existe (para fallback)
         if not os.path.exists(self.reports_dir):
             os.makedirs(self.reports_dir)
     
-    def generate_medical_recommendation_pdf(self, seguimiento_id: int) -> str:
+    async def generate_medical_recommendation_pdf(self, seguimiento_id: int) -> str:
         """
-        Genera un PDF de notificación de recomendaciones médicas y retorna la ruta del archivo
+        Genera un PDF de notificación de recomendaciones médicas y retorna la URL del archivo
         """
         # Obtener datos del seguimiento
         seguimiento = self.db.query(Seguimiento).filter(Seguimiento.id == seguimiento_id).first()
@@ -49,12 +53,30 @@ class MedicalRecommendationGenerator:
         
         # Generar nombre del archivo
         filename = f"recomendaciones_medicas_{worker.document_number}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        filepath = os.path.join(self.reports_dir, filename)
+        local_filepath = os.path.join(self.reports_dir, filename)
         
-        # Crear el PDF
-        self._create_medical_recommendation_pdf(filepath, seguimiento, worker, latest_exam)
+        # Crear el PDF localmente
+        self._create_medical_recommendation_pdf(local_filepath, seguimiento, worker, latest_exam)
         
-        return filepath
+        # Subir a Firebase Storage si está habilitado
+        if settings.use_firebase_storage:
+            firebase_path = f"{settings.firebase_medical_reports_path}/{filename}"
+            file_url = await self.storage_manager.upload_file(
+                local_filepath, 
+                firebase_path,
+                storage_type="firebase"
+            )
+            
+            # Limpiar archivo local después de subir
+            try:
+                os.remove(local_filepath)
+            except OSError:
+                pass
+                
+            return file_url
+        else:
+            # Usar ruta local
+            return f"/medical_reports/{filename}"
     
     def _create_medical_recommendation_pdf(self, filepath: str, seguimiento: Seguimiento, worker: Worker, exam: Optional[OccupationalExam]):
         """

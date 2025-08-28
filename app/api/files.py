@@ -2,9 +2,10 @@ import os
 import uuid
 from typing import Any, List
 from PIL import Image
+from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -13,6 +14,7 @@ from app.models.user import User
 from app.models.course import Course, CourseModule, CourseMaterial, MaterialType
 from app.schemas.common import MessageResponse
 from app.config import settings
+from app.utils.storage import storage_manager
 
 router = APIRouter()
 
@@ -20,13 +22,42 @@ router = APIRouter()
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
+    folder: str = "uploads",
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:
     """
-    Upload a file
+    Upload a file to storage (Firebase or local)
     """
-    return {"message": "File upload endpoint - not implemented yet", "filename": file.filename}
+    try:
+        # Validate file size (max 50MB)
+        max_size = 50 * 1024 * 1024  # 50MB
+        file_content = await file.read()
+        if len(file_content) > max_size:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="File size must be less than 50MB"
+            )
+        
+        # Reset file position
+        await file.seek(0)
+        
+        # Upload file using storage manager
+        result = await storage_manager.upload_file(file, folder)
+        
+        return {
+            "message": "File uploaded successfully",
+            "filename": result["filename"],
+            "url": result["url"],
+            "storage_type": result["storage_type"],
+            "size": result["size"]
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error uploading file: {str(e)}"
+        )
 
 
 @router.get("/")
@@ -85,7 +116,7 @@ async def upload_profile_picture(
     db: Session = Depends(get_db)
 ) -> Any:
     """
-    Upload profile picture
+    Upload profile picture using Firebase Storage or local storage
     """
     # Validate file type
     allowed_types = ["image/jpeg", "image/jpg", "image/png", "image/gif"]
@@ -104,61 +135,69 @@ async def upload_profile_picture(
             detail="File size must be less than 5MB"
         )
     
-    # Create uploads directory if it doesn't exist
-    upload_dir = os.path.join(settings.upload_dir, "profile_pictures")
-    os.makedirs(upload_dir, exist_ok=True)
-    
-    # Generate unique filename
-    file_extension = os.path.splitext(file.filename)[1]
-    unique_filename = f"{current_user.id}_{uuid.uuid4().hex}{file_extension}"
-    file_path = os.path.join(upload_dir, unique_filename)
-    
     try:
-        # Save and resize image
-        with open(file_path, "wb") as buffer:
-            buffer.write(file_content)
+        # Process image
+        img = Image.open(BytesIO(file_content))
         
-        # Resize image to 300x300 pixels
-        with Image.open(file_path) as img:
-            # Convert to RGB if necessary (for PNG with transparency)
-            if img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
-            
-            # Resize maintaining aspect ratio
-            img.thumbnail((300, 300), Image.Resampling.LANCZOS)
-            
-            # Create a square image with white background
-            square_img = Image.new("RGB", (300, 300), (255, 255, 255))
-            
-            # Center the resized image
-            x = (300 - img.width) // 2
-            y = (300 - img.height) // 2
-            square_img.paste(img, (x, y))
-            
-            # Save the processed image
-            square_img.save(file_path, "JPEG", quality=85)
+        # Convert to RGB if necessary (for PNG with transparency)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        
+        # Resize maintaining aspect ratio
+        img.thumbnail((300, 300), Image.Resampling.LANCZOS)
+        
+        # Create a square image with white background
+        square_img = Image.new("RGB", (300, 300), (255, 255, 255))
+        
+        # Center the resized image
+        x = (300 - img.width) // 2
+        y = (300 - img.height) // 2
+        square_img.paste(img, (x, y))
+        
+        # Save processed image to BytesIO
+        processed_image = BytesIO()
+        square_img.save(processed_image, "JPEG", quality=85)
+        processed_image.seek(0)
+        
+        # Generate unique filename
+        file_extension = ".jpg"  # Always save as JPEG
+        unique_filename = f"profile_{current_user.id}_{uuid.uuid4().hex}{file_extension}"
+        
+        # Create a new UploadFile object with processed image
+        from fastapi import UploadFile
+        processed_file = UploadFile(
+            filename=unique_filename,
+            file=processed_image,
+            content_type="image/jpeg"
+        )
         
         # Delete old profile picture if exists
         if current_user.profile_picture:
-            old_file_path = os.path.join(settings.upload_dir, current_user.profile_picture)
-            if os.path.exists(old_file_path):
-                os.remove(old_file_path)
+            # Extract storage info from URL or path
+            old_storage_type = "firebase" if current_user.profile_picture.startswith("http") else "local"
+            if old_storage_type == "firebase":
+                # Extract Firebase path from URL
+                old_path = current_user.profile_picture.split("/")[-1]
+                storage_manager.delete_file(f"{settings.firebase_static_path}/profile_pictures/{old_path}", "firebase")
+            else:
+                old_file_path = os.path.join(settings.upload_dir, current_user.profile_picture)
+                storage_manager.delete_file(old_file_path, "local")
+        
+        # Upload using storage manager
+        result = await storage_manager.upload_file(processed_file, "static")
         
         # Update user profile picture in database
-        profile_picture_url = f"profile_pictures/{unique_filename}"
-        current_user.profile_picture = profile_picture_url
+        current_user.profile_picture = result["url"]
         db.commit()
         db.refresh(current_user)
         
         return {
             "message": "Profile picture uploaded successfully",
-            "profile_picture_url": f"/uploads/{profile_picture_url}"
+            "profile_picture_url": result["url"],
+            "storage_type": result["storage_type"]
         }
         
     except Exception as e:
-        # Clean up file if something went wrong
-        if os.path.exists(file_path):
-            os.remove(file_path)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error processing image: {str(e)}"
@@ -223,29 +262,24 @@ async def upload_course_material(
             detail=f"File size must be less than {size_limit}"
         )
     
-    # Create uploads directory
-    material_dir = "pdfs" if material_type == MaterialType.PDF else "videos"
-    upload_dir = os.path.join(settings.upload_dir, "course_materials", material_dir)
-    os.makedirs(upload_dir, exist_ok=True)
-    
-    # Generate unique filename
-    file_extension = os.path.splitext(file.filename)[1]
-    unique_filename = f"{module_id}_{uuid.uuid4().hex}{file_extension}"
-    file_path = os.path.join(upload_dir, unique_filename)
+    # Reset file position
+    await file.seek(0)
     
     try:
-        # Save file
-        with open(file_path, "wb") as buffer:
-            buffer.write(file_content)
+        # Determine folder for storage
+        material_dir = "pdfs" if material_type == MaterialType.PDF else "videos"
+        folder = f"uploads/course_materials/{material_dir}"
+        
+        # Upload using storage manager
+        result = await storage_manager.upload_file(file, folder)
         
         # Create course material record
-        file_url = f"course_materials/{material_dir}/{unique_filename}"
         course_material = CourseMaterial(
             module_id=module_id,
             title=os.path.splitext(file.filename)[0],  # Use original filename without extension as title
             description=f"Material uploaded: {file.filename}",
             material_type=material_type,
-            file_url=file_url,
+            file_url=result["url"],
             order_index=0  # Will be updated by frontend if needed
         )
         
@@ -257,14 +291,12 @@ async def upload_course_material(
             "message": "Course material uploaded successfully",
             "material_id": course_material.id,
             "material_type": material_type.value,
-            "file_url": f"/uploads/{file_url}",
+            "file_url": result["url"],
+            "storage_type": result["storage_type"],
             "title": course_material.title
         }
         
     except Exception as e:
-        # Clean up file if something went wrong
-        if os.path.exists(file_path):
-            os.remove(file_path)
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -314,11 +346,12 @@ async def delete_course_material(
             user_ids.append(progress.user_id)
             db.delete(progress)
         
-        # Delete physical file if it exists locally
-        if material.file_url and not material.file_url.startswith('http'):
-            file_path = os.path.join(settings.upload_dir, material.file_url)
-            if os.path.exists(file_path):
-                os.remove(file_path)
+        # Delete the file from storage
+        if material.file_url:
+            try:
+                await storage_manager.delete_file(material.file_url)
+            except Exception as e:
+                logger.warning(f"Failed to delete file {material.file_url}: {str(e)}")
         
         # Delete database record
         db.delete(material)
@@ -395,11 +428,8 @@ async def view_course_material(
         )
     
     # For LINK type materials, return the URL as-is (external links like YouTube)
-    # For other types (PDF, VIDEO), add the /uploads/ prefix for local files
-    if material.material_type.value == "link":
-        file_url = material.file_url
-    else:
-        file_url = f"/uploads/{material.file_url}"
+    # For other types (PDF, VIDEO), use the stored URL directly
+    file_url = material.file_url
     
     # Agregar un campo para indicar si el usuario puede descargar el material
     # Solo los administradores, capacitadores y creadores del curso pueden descargar
@@ -449,15 +479,28 @@ async def download_course_material(
     if material.material_type.value == "link":
         return RedirectResponse(url=material.file_url)
     
-    # Para archivos locales, devolver el archivo para descarga
-    file_path = os.path.join(settings.upload_dir, material.file_url)
-    if not os.path.exists(file_path):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="File not found"
+    # Para archivos, usar el storage manager para obtener el archivo
+    try:
+        file_data = await storage_manager.download_file(material.file_url)
+        if file_data is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found"
+            )
+        
+        # Determinar el nombre del archivo
+        filename = os.path.basename(material.file_url) or f"{material.title}.pdf"
+        
+        # Determinar el tipo de contenido
+        content_type = "application/pdf" if material.material_type.value == "pdf" else "video/mp4"
+        
+        return Response(
+            content=file_data,
+            media_type=content_type,
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
-    
-    return FileResponse(
-        path=file_path,
-        filename=os.path.basename(file_path)
-    )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error downloading file: {str(e)}"
+        )

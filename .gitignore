@@ -232,3 +232,6 @@ htmlcov/
 
 # FastAPI specific
 openapi_temp.json
+
+# Credenciales sensibles
+firebase-credentials.json
