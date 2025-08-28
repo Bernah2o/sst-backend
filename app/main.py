@@ -2,6 +2,7 @@ import os
 import time
 from contextlib import asynccontextmanager
 from typing import Any
+import logging
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.exceptions import RequestValidationError
@@ -18,6 +19,12 @@ from app.database import create_tables
 from app.schemas.common import HealthCheck
 from app.scheduler import start_scheduler, stop_scheduler
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
 # Custom middleware for debugging request bodies
 class OptionsMiddleware(BaseHTTPMiddleware):
     """Middleware to handle OPTIONS requests explicitly"""
@@ -26,9 +33,14 @@ class OptionsMiddleware(BaseHTTPMiddleware):
             # Get the origin from the request
             origin = request.headers.get("origin")
             
+            # Log OPTIONS request details for debugging
+            logging.info(f"OPTIONS request received - Origin: {origin}, URL: {request.url}, Headers: {dict(request.headers)}")
+            
             # Check if origin is in allowed origins
             allowed_origins = settings.allowed_origins
             allow_origin = origin if origin in allowed_origins else allowed_origins[0] if allowed_origins else "*"
+            
+            logging.info(f"Allowed origins: {allowed_origins}, Selected origin: {allow_origin}")
             
             # Create a proper OPTIONS response
             response = Response(
@@ -42,6 +54,8 @@ class OptionsMiddleware(BaseHTTPMiddleware):
                     "Vary": "Origin",
                 }
             )
+            
+            logging.info(f"OPTIONS response headers: {response.headers}")
             return response
         
         response = await call_next(request)
@@ -224,10 +238,16 @@ app.mount("/attendance_lists", StaticFiles(directory="attendance_lists"), name="
 async def options_auth_login(request: Request):
     """Handle OPTIONS request for auth login endpoint"""
     origin = request.headers.get("origin")
+    
+    # Log specific auth login OPTIONS request
+    logging.info(f"Explicit OPTIONS /auth/login - Origin: {origin}, Headers: {dict(request.headers)}")
+    
     allowed_origins = settings.allowed_origins
     allow_origin = origin if origin in allowed_origins else allowed_origins[0] if allowed_origins else "*"
     
-    return Response(
+    logging.info(f"Auth login OPTIONS - Allowed origins: {allowed_origins}, Selected: {allow_origin}")
+    
+    response = Response(
         status_code=200,
         headers={
             "Access-Control-Allow-Origin": allow_origin,
@@ -238,6 +258,9 @@ async def options_auth_login(request: Request):
             "Vary": "Origin",
         }
     )
+    
+    logging.info(f"Auth login OPTIONS response: {response.status_code}, Headers: {response.headers}")
+    return response
 
 # Include API router
 app.include_router(api_router, prefix="/api/v1")
