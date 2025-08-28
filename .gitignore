@@ -167,13 +167,10 @@ app.db
 
 # Generated PDFs and documents
 *.pdf
-certificates/
-attendance_lists/
-medical_reports/
 
 # Upload directories
-uploads/
-static/uploads/
+#uploads/
+#static/uploads/
 
 # Configuration files with sensitive data
 .env
