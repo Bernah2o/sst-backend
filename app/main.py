@@ -21,6 +21,11 @@ from app.scheduler import start_scheduler, stop_scheduler
 # Custom middleware for debugging request bodies
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        # Skip logging for OPTIONS requests (CORS preflight)
+        if request.method == "OPTIONS":
+            response = await call_next(request)
+            return response
+            
         print(f"DEBUG MIDDLEWARE: Processing {request.method} request to {request.url}")
         
         # Only log POST requests to absenteeism endpoint
@@ -172,7 +177,7 @@ app = FastAPI(
     redoc_url="/redoc" if settings.debug else None,
 )
 
-# Add middleware
+# Add middleware in correct order (CORS first)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
@@ -181,13 +186,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add request logging middleware for debugging
+app.add_middleware(RequestLoggingMiddleware)
+
 app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=["*"] if settings.debug else ["localhost", "127.0.0.1", "sst-backend-93br.onrender.com"]
 )
-
-# Add request logging middleware for debugging
-app.add_middleware(RequestLoggingMiddleware)
 
 # Create necessary directories if they don't exist
 required_dirs = [
