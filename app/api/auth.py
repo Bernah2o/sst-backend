@@ -25,6 +25,27 @@ from app.api.auth_worker_update import update_worker_after_registration
 router = APIRouter()
 
 
+@router.get("/login")
+async def login_info():
+    """
+    GET endpoint for login information.
+    The actual login should be done via POST to this same endpoint.
+    """
+    return {
+        "message": "Para iniciar sesión, envía una petición POST a este endpoint con email y password",
+        "method": "POST",
+        "endpoint": "/api/v1/auth/login",
+        "required_fields": {
+            "email": "string",
+            "password": "string"
+        },
+        "example": {
+            "email": "usuario@ejemplo.com",
+            "password": "tu_contraseña"
+        }
+    }
+
+
 @router.post("/login")
 async def login(
     user_credentials: UserLogin,
