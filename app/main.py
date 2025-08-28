@@ -7,7 +7,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 import json
@@ -19,36 +19,33 @@ from app.schemas.common import HealthCheck
 from app.scheduler import start_scheduler, stop_scheduler
 
 # Custom middleware for debugging request bodies
+class OptionsMiddleware(BaseHTTPMiddleware):
+    """Middleware to handle OPTIONS requests explicitly"""
+    async def dispatch(self, request: Request, call_next):
+        if request.method == "OPTIONS":
+            # Create a proper OPTIONS response
+            response = Response(
+                status_code=200,
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+                    "Access-Control-Allow-Headers": "*",
+                    "Access-Control-Allow-Credentials": "true",
+                    "Access-Control-Max-Age": "86400",
+                }
+            )
+            return response
+        
+        response = await call_next(request)
+        return response
+
+
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Skip logging for OPTIONS requests (CORS preflight)
         if request.method == "OPTIONS":
             response = await call_next(request)
             return response
-            
-        print(f"DEBUG MIDDLEWARE: Processing {request.method} request to {request.url}")
-        
-        # Only log POST requests to absenteeism endpoint
-        if request.method == "POST" and "/absenteeism" in str(request.url):
-            print(f"DEBUG MIDDLEWARE: POST request to absenteeism detected!")
-            
-            # Read body
-            body = await request.body()
-            print(f"DEBUG MIDDLEWARE: Body length: {len(body)}")
-            
-            try:
-                body_str = body.decode('utf-8')
-                print(f"DEBUG MIDDLEWARE: Raw request body: {body_str}")
-                if body_str:
-                    body_json = json.loads(body_str)
-                    print(f"DEBUG MIDDLEWARE: Parsed JSON: {body_json}")
-                    print(f"DEBUG MIDDLEWARE: disability_or_charged_days in body: {'disability_or_charged_days' in body_json}")
-                    if 'disability_or_charged_days' in body_json:
-                        print(f"DEBUG MIDDLEWARE: disability_or_charged_days value: {body_json['disability_or_charged_days']}")
-                    else:
-                        print(f"DEBUG MIDDLEWARE: Available keys: {list(body_json.keys())}")
-            except Exception as e:
-                print(f"DEBUG MIDDLEWARE: Error parsing body: {e}")
         
         response = await call_next(request)
         return response
@@ -68,9 +65,8 @@ async def lifespan(app: FastAPI):
     # Start reinduction scheduler
     try:
         start_scheduler()
-        print("✅ Scheduler de reinducciones iniciado")
     except Exception as e:
-        print(f"⚠️ Error al iniciar scheduler de reinducciones: {e}")
+        pass
     
     yield
     
@@ -78,9 +74,8 @@ async def lifespan(app: FastAPI):
     # Stop scheduler
     try:
         stop_scheduler()
-        print("✅ Scheduler de reinducciones detenido")
     except Exception as e:
-        print(f"⚠️ Error al detener scheduler de reinducciones: {e}")
+        pass
 
 
 # Create FastAPI application
@@ -177,13 +172,16 @@ app = FastAPI(
     redoc_url="/redoc" if settings.debug else None,
 )
 
-# Add middleware in correct order (CORS first)
+# Add middleware in correct order (OPTIONS middleware first, then CORS)
+app.add_middleware(OptionsMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Add request logging middleware for debugging
@@ -507,7 +505,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         detail_message = f"Error de validación en el campo '{field}': {error_msg}"
     
     # Log the validation error for debugging
-    print(f"Validation error on {request.url.path}: {error_type} in field '{field}' with value '{input_value}'")
+    # Removed print for production
     
     return JSONResponse(
         status_code=422,
