@@ -144,15 +144,23 @@ EMAIL_FROM=noreply@tudominio.com
 
 ### 5. Ejecutar Migraciones
 
+**⚠️ IMPORTANTE**: Las migraciones ahora se ejecutan de forma controlada, no automáticamente.
+
 ```bash
-# Crear migración inicial
-alembic revision --autogenerate -m "Initial migration"
+# Verificar estado de la base de datos
+python migrate.py check
 
-# Aplicar migraciones
-alembic upgrade head
+# Ejecutar migraciones (solo cuando sea necesario)
+python migrate.py upgrade
 
-# Aplicar una migracion especifica
-alembic revision --autogenerate -m "Add (nombre de la table )table"
+# Verificar que se aplicaron correctamente
+python migrate.py current
+
+# Para crear nuevas migraciones (desarrollo)
+alembic revision --autogenerate -m "Descripción del cambio"
+
+# Luego aplicar con el script controlado
+python migrate.py upgrade
 ```
 
 ### 6. Crear Directorios Necesarios
@@ -191,19 +199,26 @@ npm start
 
 ### Producción
 
+**📖 Para despliegue en producción, consulta la [Guía de Despliegue](DEPLOYMENT.md)**
+
 ```bash
+# Despliegue con Docker Compose (Recomendado)
+# 1. Ejecutar migraciones de forma controlada
+docker-compose --profile migration up migrate
+
+# 2. Levantar la aplicación
+docker-compose up -d app
+
+# Despliegue manual
 # Backend con Gunicorn
 cd app
 gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
-
-# Frontend build
-cd frontend
-npm run build
-
-# Con Docker (crear Dockerfile)
-docker build -t sst-platform .
-docker run -p 8000:8000 -p 3000:3000 sst-platform
 ```
+
+**⚠️ Importante**: 
+- Las migraciones NO se ejecutan automáticamente
+- Usar `python migrate.py` para control manual
+- Consultar [DEPLOYMENT.md](DEPLOYMENT.md) para proceso completo
 
 ## 📚 Uso de la Aplicación
 

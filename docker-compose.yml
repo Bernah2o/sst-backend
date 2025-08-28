@@ -41,6 +41,28 @@ services:
       timeout: 5s
       retries: 5
 
+  # Database Migration Service
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sst_migrate
+    environment:
+      - DATABASE_URL=postgresql://sst_user:sst_password@db:5432/sst_platform
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+    command: python migrate.py upgrade
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - sst_network
+    restart: "no"  # Solo ejecutar una vez
+    profiles:
+      - migration
+
   # FastAPI Application
   app:
     build:
@@ -53,6 +75,8 @@ services:
       - SECRET_KEY=your-super-secret-key-change-in-production
       - ENVIRONMENT=production
       - LOG_LEVEL=INFO
+      - DEBUG=false
+      - SQL_ECHO=false
     ports:
       - "8000:8000"
     volumes:

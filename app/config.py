@@ -13,7 +13,7 @@ class Settings:
         
         # Configuración de base de datos
         self.database_url = os.getenv("DATABASE_URL", "sqlite:///./app.db")
-        self.debug = os.getenv("DEBUG", "True").lower() == "true"
+        self.debug = os.getenv("DEBUG", "False").lower() == "false"
         
         # Configuración de CORS
         self.allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")

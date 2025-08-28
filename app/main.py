@@ -78,11 +78,9 @@ async def lifespan(app: FastAPI):
     """Application lifespan events"""
     # Startup
     
-    # Create database tables
-    try:
-        create_tables()
-    except Exception as e:
-        raise
+    # Note: Database tables should be created using Alembic migrations
+    # Run: alembic upgrade head
+    # This ensures proper version control and rollback capabilities
     
     # Start reinduction scheduler
     try:
