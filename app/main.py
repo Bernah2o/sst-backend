@@ -1,3 +1,4 @@
+import os
 import time
 from contextlib import asynccontextmanager
 from typing import Any
@@ -182,13 +183,23 @@ app.add_middleware(
 
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["*"] if settings.debug else ["localhost", "127.0.0.1"]
+    allowed_hosts=["*"] if settings.debug else ["localhost", "127.0.0.1", "sst-backend-93br.onrender.com"]
 )
 
 # Add request logging middleware for debugging
 app.add_middleware(RequestLoggingMiddleware)
 
+# Create necessary directories if they don't exist
+required_dirs = [
+    "static",
+    "uploads", 
+    settings.certificate_output_dir,
+    "medical_reports",
+    "attendance_lists"
+]
 
+for directory in required_dirs:
+    os.makedirs(directory, exist_ok=True)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
