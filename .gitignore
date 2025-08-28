@@ -165,13 +165,27 @@ cython_debug/
 *.sqlite3
 app.db
 
-# Generated PDFs and documents
-*.pdf
-* .jpg
+# Generated PDFs and documents (but keep directory structure)
+attendance_lists/*.pdf
+certificates/*.pdf
+medical_reports/*.pdf
+*.jpg
 
-# Upload directories
-#uploads/
-#static/uploads/
+# Upload directories content (but keep directory structure)
+uploads/*
+!uploads/.gitkeep
+static/uploads/*
+!static/uploads/.gitkeep
+
+# Keep directory structure but ignore content
+attendance_lists/*
+!attendance_lists/.gitkeep
+certificates/*
+!certificates/.gitkeep
+medical_reports/*
+!medical_reports/.gitkeep
+static/*
+!static/.gitkeep
 
 # Configuration files with sensitive data
 .env

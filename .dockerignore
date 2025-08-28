@@ -75,10 +75,19 @@ coverage/
 # Documentation
 docs/_build/
 
-# Uploads and generated files
-uploads/
-certificates/
-static/uploads/
+# Uploads and generated files (but keep directory structure)
+uploads/*
+!uploads/.gitkeep
+certificates/*
+!certificates/.gitkeep
+static/uploads/*
+!static/uploads/.gitkeep
+attendance_lists/*
+!attendance_lists/.gitkeep
+medical_reports/*
+!medical_reports/.gitkeep
+static/*
+!static/.gitkeep
 
 # Database
 *.db

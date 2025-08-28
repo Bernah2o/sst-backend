@@ -1,0 +1,2 @@
+# This file ensures the attendance_lists directory is tracked by Git
+# The directory is needed for storing attendance list PDFs when Firebase Storage is disabled
