@@ -23,15 +23,23 @@ class OptionsMiddleware(BaseHTTPMiddleware):
     """Middleware to handle OPTIONS requests explicitly"""
     async def dispatch(self, request: Request, call_next):
         if request.method == "OPTIONS":
+            # Get the origin from the request
+            origin = request.headers.get("origin")
+            
+            # Check if origin is in allowed origins
+            allowed_origins = settings.allowed_origins
+            allow_origin = origin if origin in allowed_origins else allowed_origins[0] if allowed_origins else "*"
+            
             # Create a proper OPTIONS response
             response = Response(
                 status_code=200,
                 headers={
-                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Origin": allow_origin,
                     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
-                    "Access-Control-Allow-Headers": "*",
+                    "Access-Control-Allow-Headers": "Accept, Accept-Language, Content-Language, Content-Type, Authorization, X-Requested-With",
                     "Access-Control-Allow-Credentials": "true",
                     "Access-Control-Max-Age": "86400",
+                    "Vary": "Origin",
                 }
             )
             return response
@@ -210,6 +218,26 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 app.mount("/certificates", StaticFiles(directory=settings.certificate_output_dir), name="certificates")
 app.mount("/medical_reports", StaticFiles(directory="medical_reports"), name="medical_reports")
 app.mount("/attendance_lists", StaticFiles(directory="attendance_lists"), name="attendance_lists")
+
+# Add explicit OPTIONS handler for auth endpoints
+@app.options("/api/v1/auth/login")
+async def options_auth_login(request: Request):
+    """Handle OPTIONS request for auth login endpoint"""
+    origin = request.headers.get("origin")
+    allowed_origins = settings.allowed_origins
+    allow_origin = origin if origin in allowed_origins else allowed_origins[0] if allowed_origins else "*"
+    
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": allow_origin,
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+            "Access-Control-Allow-Headers": "Accept, Accept-Language, Content-Language, Content-Type, Authorization, X-Requested-With",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Max-Age": "86400",
+            "Vary": "Origin",
+        }
+    )
 
 # Include API router
 app.include_router(api_router, prefix="/api/v1")
