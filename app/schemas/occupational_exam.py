@@ -38,6 +38,17 @@ class OccupationalExamUpdate(BaseModel):
 class OccupationalExamResponse(OccupationalExamBase):
     id: int
     worker_id: int
+    worker_name: Optional[str] = Field(None, description="Nombre completo del trabajador")
+    worker_document: Optional[str] = Field(None, description="Número de documento del trabajador")
+    worker_position: Optional[str] = Field(None, description="Cargo del trabajador")
+    worker_hire_date: Optional[str] = Field(None, description="Fecha de ingreso del trabajador")
+    next_exam_date: Optional[str] = Field(None, description="Fecha del próximo examen")
+    
+    # Campos legacy para compatibilidad con el frontend
+    status: Optional[str] = Field("realizado", description="Estado del examen (legacy)")
+    result: Optional[str] = Field(None, description="Resultado del examen (legacy)")
+    restrictions: Optional[str] = Field(None, description="Restricciones (legacy)")
+    
     created_at: datetime
     updated_at: datetime
 

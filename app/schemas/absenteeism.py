@@ -15,7 +15,7 @@ class AbsenteeismBase(BaseModel):
     disability_days: int = Field(..., ge=0, description="Días de incapacidad")
     extension: int = Field(default=0, ge=0, description="Prórroga en días")
     charged_days: int = Field(default=0, ge=0, description="Días cargados")
-    disability_or_charged_days: int = Field(..., ge=0, description="Días de incapacidad o días cargados")
+    disability_or_charged_days: Optional[int] = Field(None, ge=0, description="Días de incapacidad o días cargados")
     diagnostic_code: str = Field(..., max_length=20, description="Código diagnóstico")
     health_condition_description: str = Field(..., description="Descripción de la categoría de la condición de salud")
     observations: Optional[str] = Field(None, description="Observaciones")

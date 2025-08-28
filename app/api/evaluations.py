@@ -1,4 +1,3 @@
-import logging
 from typing import Any, List
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -25,7 +24,6 @@ from app.services.certificate_generator import CertificateGenerator
 import uuid
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
 
 
 @router.get("/", response_model=PaginatedResponse[EvaluationListResponse])
@@ -274,7 +272,7 @@ async def get_user_evaluation_results(
             }
         )
     except Exception as e:
-        logger.error(f"Error getting user evaluation results: {str(e)}")
+        print(f"Error getting user evaluation results: {str(e)}")
         return JSONResponse(
             status_code=500,
             content={
@@ -489,16 +487,16 @@ async def submit_evaluation(
                     generator.generate_certificate_pdf(certificate.id)
                     certificate_url = f"/certificates/{certificate.id}/download"
                 except Exception as pdf_error:
-                    logger.warning(f"Failed to generate PDF for certificate {certificate.id}: {str(pdf_error)}")
+                    print(f"Failed to generate PDF for certificate {certificate.id}: {str(pdf_error)}")
                     certificate_url = f"/certificates/{certificate.id}"
                     
-                logger.info(f"Certificate {certificate.certificate_number} generated for user {user_evaluation.user_id} completing course {user_evaluation.evaluation.course_id}")
+                print(f"Certificate {certificate.certificate_number} generated for user {user_evaluation.user_id} completing course {user_evaluation.evaluation.course_id}")
             else:
                 certificate_url = f"/certificates/{existing_certificate.id}"
-                logger.info(f"Certificate already exists for user {user_evaluation.user_id} and course {user_evaluation.evaluation.course_id}")
+                print(f"Certificate already exists for user {user_evaluation.user_id} and course {user_evaluation.evaluation.course_id}")
                 
         except Exception as e:
-            logger.warning(f"Failed to generate certificate for user_evaluation {user_evaluation.id}: {str(e)}")
+            print(f"Failed to generate certificate for user_evaluation {user_evaluation.id}: {str(e)}")
     
     return {
         "success": True,
@@ -580,7 +578,7 @@ async def get_my_evaluation_results(
             }
         )
     except Exception as e:
-        logger.error(f"Error getting user evaluation results: {str(e)}")
+        print(f"Error getting user evaluation results: {str(e)}")
         return JSONResponse(
             status_code=500,
             content={
@@ -729,7 +727,7 @@ async def get_all_evaluation_results(
             }
         )
     except Exception as e:
-        logger.error(f"Error getting all evaluation results: {str(e)}")
+        print(f"Error getting all evaluation results: {str(e)}")
         return JSONResponse(
             status_code=500,
             content={
@@ -1075,7 +1073,7 @@ async def save_evaluation_progress(
         
     except Exception as e:
         db.rollback()
-        logger.error(f"Error saving evaluation progress: {str(e)}")
+        print(f"Error saving evaluation progress: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error saving progress"
@@ -1234,7 +1232,7 @@ async def get_evaluation_results(
             }
         )
     except Exception as e:
-        logger.error(f"Error getting evaluation results for evaluation {evaluation_id}: {str(e)}")
+        print(f"Error getting evaluation results for evaluation {evaluation_id}: {str(e)}")
         return JSONResponse(
             status_code=500,
             content={

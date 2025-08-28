@@ -227,6 +227,21 @@ async def create_user(
     return user
 
 
+@router.get("/list", response_model=List[UserResponse])
+async def get_users_list(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get basic list of users for selection (authenticated users only)
+    """
+    users = db.query(User).options(joinedload(User.custom_role)).filter(
+        User.is_active == True
+    ).all()
+    
+    return users
+
+
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
     user_id: int,
@@ -262,11 +277,8 @@ async def delete_user(
     Delete user (admin only)
     """
     from sqlalchemy import text
-    import logging
     from jose import jwt, JWTError
     from app.config import settings
-    
-    logger = logging.getLogger(__name__)
     
     try:
         # Decode token directly without using auth service to avoid User object loading
@@ -313,10 +325,10 @@ async def delete_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot delete your own account"
             )
-        logger.info(f"Starting deletion process for user_id: {user_id}")
+        print(f"Starting deletion process for user_id: {user_id}")
         
         # Delete related records first using raw SQL to avoid ORM relationship issues
-        logger.info(f"Deleting related records for user {user_id}")
+        print(f"Deleting related records for user {user_id}")
         
         # Delete user_answers (they depend on user_evaluations)
         result = db.execute(text("""
@@ -325,11 +337,11 @@ async def delete_user(
                 SELECT id FROM user_evaluations WHERE user_id = :user_id
             )
         """), {"user_id": user_id})
-        logger.info(f"Deleted {result.rowcount} user answers")
+        print(f"Deleted {result.rowcount} user answers")
         
         # Delete user_evaluations
         result = db.execute(text("DELETE FROM user_evaluations WHERE user_id = :user_id"), {"user_id": user_id})
-        logger.info(f"Deleted {result.rowcount} user evaluations")
+        print(f"Deleted {result.rowcount} user evaluations")
         
         # Delete user_survey_answers (they depend on user_surveys)
         result = db.execute(text("""
@@ -338,11 +350,11 @@ async def delete_user(
                 SELECT id FROM user_surveys WHERE user_id = :user_id
             )
         """), {"user_id": user_id})
-        logger.info(f"Deleted {result.rowcount} user survey answers")
+        print(f"Deleted {result.rowcount} user survey answers")
         
         # Delete user_surveys
         result = db.execute(text("DELETE FROM user_surveys WHERE user_id = :user_id"), {"user_id": user_id})
-        logger.info(f"Deleted {result.rowcount} user surveys")
+        print(f"Deleted {result.rowcount} user surveys")
         
         # Delete user_material_progress (depends on enrollments)
         result = db.execute(text("""
@@ -351,7 +363,7 @@ async def delete_user(
                 SELECT id FROM enrollments WHERE user_id = :user_id
             )
         """), {"user_id": user_id})
-        logger.info(f"Deleted {result.rowcount} user material progress records")
+        print(f"Deleted {result.rowcount} user material progress records")
         
         # Delete user_module_progress (depends on enrollments)
         result = db.execute(text("""
@@ -360,44 +372,44 @@ async def delete_user(
                 SELECT id FROM enrollments WHERE user_id = :user_id
             )
         """), {"user_id": user_id})
-        logger.info(f"Deleted {result.rowcount} user module progress records")
+        print(f"Deleted {result.rowcount} user module progress records")
         
         # Delete enrollments
         result = db.execute(text("DELETE FROM enrollments WHERE user_id = :user_id"), {"user_id": user_id})
-        logger.info(f"Deleted {result.rowcount} enrollments")
+        print(f"Deleted {result.rowcount} enrollments")
         
         # Delete certificates
         result = db.execute(text("DELETE FROM certificates WHERE user_id = :user_id"), {"user_id": user_id})
-        logger.info(f"Deleted {result.rowcount} certificates")
+        print(f"Deleted {result.rowcount} certificates")
         
         # Delete attendances
         result = db.execute(text("DELETE FROM attendances WHERE user_id = :user_id"), {"user_id": user_id})
-        logger.info(f"Deleted {result.rowcount} attendances")
+        print(f"Deleted {result.rowcount} attendances")
         
         # Delete notifications
         result = db.execute(text("DELETE FROM notifications WHERE user_id = :user_id"), {"user_id": user_id})
-        logger.info(f"Deleted {result.rowcount} notifications")
+        print(f"Deleted {result.rowcount} notifications")
         
         # Delete audit_logs
         result = db.execute(text("DELETE FROM audit_logs WHERE user_id = :user_id"), {"user_id": user_id})
-        logger.info(f"Deleted {result.rowcount} audit logs")
+        print(f"Deleted {result.rowcount} audit logs")
         
         # Finally delete the user using raw SQL to avoid ORM relationship issues
-        logger.info(f"Deleting user {user_id}")
+        print(f"Deleting user {user_id}")
         result = db.execute(text("DELETE FROM users WHERE id = :user_id"), {"user_id": user_id})
-        logger.info(f"Deleted {result.rowcount} users")
+        print(f"Deleted {result.rowcount} users")
         
         db.commit()
-        logger.info("User deletion completed successfully")
+        print("User deletion completed successfully")
         
         return MessageResponse(message="User deleted successfully")
         
     except Exception as e:
-        logger.error(f"Error during user deletion: {str(e)}")
-        logger.error(f"Error type: {type(e).__name__}")
+        print(f"Error during user deletion: {str(e)}")
+        print(f"Error type: {type(e).__name__}")
         import traceback
         error_traceback = traceback.format_exc()
-        logger.error(f"Traceback: {error_traceback}")
+        print(f"Traceback: {error_traceback}")
         db.rollback()
         
         # Return detailed error information for debugging

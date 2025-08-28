@@ -182,10 +182,13 @@ async def get_worker_detailed_info(
         course = enrollment.course
         
         courses.append({
-            "id": course.id,
-            "title": course.title,
-            "description": course.description,
-            "overall_progress": enrollment.progress or 0
+            "enrollment_id": enrollment.id,
+            "course_id": course.id,
+            "course_title": course.title,
+            "enrollment_date": enrollment.enrolled_at.isoformat() if enrollment.enrolled_at else None,
+            "completion_date": enrollment.completed_at.isoformat() if enrollment.completed_at else None,
+            "status": enrollment.status,
+            "progress_percentage": enrollment.progress or 0
         })
     
     # Obtener encuestas del trabajador
@@ -204,8 +207,9 @@ async def get_worker_detailed_info(
     surveys = []
     for survey in surveys_query:
         surveys.append({
-            "id": survey.survey_id,
-            "title": survey.survey_title,
+            "user_survey_id": survey.user_survey_id,
+            "survey_id": survey.survey_id,
+            "survey_title": survey.survey_title,
             "status": survey.status,
             "completed_at": survey.completed_at.isoformat() if survey.completed_at else None
         })
@@ -233,7 +237,7 @@ async def get_worker_detailed_info(
             "evaluation_id": evaluation.evaluation_id,
             "evaluation_title": evaluation.evaluation_title,
             "score": evaluation.score,
-            "max_score": evaluation.max_points,
+            "max_points": evaluation.max_points,
             "passed": evaluation.passed,
             "completed_at": evaluation.completed_at.isoformat() if evaluation.completed_at else None,
             "status": evaluation.status
@@ -568,7 +572,47 @@ async def create_occupational_exam(
             db.add(seguimiento)
             db.commit()
     
-    return exam
+    # Calcular fecha del próximo examen (1 año después)
+    from datetime import timedelta
+    next_exam_date = exam.exam_date + timedelta(days=365)
+    
+    # Mapear medical_aptitude_concept a result legacy
+    result_mapping = {
+        "apto": "apto",
+        "apto_con_recomendaciones": "apto_con_restricciones",
+        "no_apto": "no_apto"
+    }
+    
+    # Crear respuesta enriquecida con datos del trabajador
+    exam_dict = {
+        "id": exam.id,
+        "exam_type": exam.exam_type,
+        "exam_date": exam.exam_date,
+        "programa": exam.programa,
+        "occupational_conclusions": exam.occupational_conclusions,
+        "preventive_occupational_behaviors": exam.preventive_occupational_behaviors,
+        "general_recommendations": exam.general_recommendations,
+        "medical_aptitude_concept": exam.medical_aptitude_concept,
+        "observations": exam.observations,
+        "examining_doctor": exam.examining_doctor,
+        "medical_center": exam.medical_center,
+        "worker_id": exam.worker_id,
+        "worker_name": worker.full_name if worker else None,
+        "worker_document": worker.document_number if worker else None,
+        "worker_position": worker.position if worker else None,
+        "worker_hire_date": worker.fecha_de_ingreso.isoformat() if worker and worker.fecha_de_ingreso else None,
+        "next_exam_date": next_exam_date.isoformat(),
+        
+        # Campos legacy para compatibilidad con el frontend
+        "status": "realizado",
+        "result": result_mapping.get(exam.medical_aptitude_concept, "pendiente"),
+        "restrictions": exam.general_recommendations if exam.medical_aptitude_concept == "apto_con_recomendaciones" else None,
+        
+        "created_at": exam.created_at,
+        "updated_at": exam.updated_at
+    }
+    
+    return exam_dict
 
 
 @router.get("/{worker_id}/occupational-exams", response_model=List[OccupationalExamResponse])
@@ -602,15 +646,57 @@ async def get_occupational_exam(
     current_user: User = Depends(require_supervisor_or_admin)
 ) -> Any:
     """
-    Obtener un examen ocupacional por ID
+    Obtener un examen ocupacional por ID con información del trabajador
     """
-    exam = db.query(OccupationalExam).filter(OccupationalExam.id == exam_id).first()
+    exam = db.query(OccupationalExam).join(Worker).filter(OccupationalExam.id == exam_id).first()
     if not exam:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Examen ocupacional no encontrado"
         )
-    return exam
+    
+    # Calcular fecha del próximo examen (1 año después)
+    from datetime import timedelta
+    next_exam_date = exam.exam_date + timedelta(days=365)
+    
+    # Mapear medical_aptitude_concept a result legacy
+    result_mapping = {
+        "apto": "apto",
+        "apto_con_recomendaciones": "apto_con_restricciones",
+        "no_apto": "no_apto"
+    }
+    
+    # Crear respuesta enriquecida con datos del trabajador
+    worker = exam.worker
+    exam_dict = {
+        "id": exam.id,
+        "exam_type": exam.exam_type,
+        "exam_date": exam.exam_date,
+        "programa": exam.programa,
+        "occupational_conclusions": exam.occupational_conclusions,
+        "preventive_occupational_behaviors": exam.preventive_occupational_behaviors,
+        "general_recommendations": exam.general_recommendations,
+        "medical_aptitude_concept": exam.medical_aptitude_concept,
+        "observations": exam.observations,
+        "examining_doctor": exam.examining_doctor,
+        "medical_center": exam.medical_center,
+        "worker_id": exam.worker_id,
+        "worker_name": worker.full_name if worker else None,
+        "worker_document": worker.document_number if worker else None,
+        "worker_position": worker.position if worker else None,
+        "worker_hire_date": worker.fecha_de_ingreso.isoformat() if worker and worker.fecha_de_ingreso else None,
+        "next_exam_date": next_exam_date.isoformat(),
+        
+        # Campos legacy para compatibilidad con el frontend
+        "status": "realizado",
+        "result": result_mapping.get(exam.medical_aptitude_concept, "pendiente"),
+        "restrictions": exam.general_recommendations if exam.medical_aptitude_concept == "apto_con_recomendaciones" else None,
+        
+        "created_at": exam.created_at,
+        "updated_at": exam.updated_at
+    }
+    
+    return exam_dict
 
 
 @router.put("/occupational-exams/{exam_id}", response_model=OccupationalExamResponse)
@@ -670,7 +756,50 @@ async def update_occupational_exam(
                 db.add(seguimiento)
                 db.commit()
     
-    return exam
+    # Calcular fecha del próximo examen (1 año después)
+    from datetime import timedelta
+    next_exam_date = exam.exam_date + timedelta(days=365)
+    
+    # Obtener información del trabajador para la respuesta
+    worker = db.query(Worker).filter(Worker.id == exam.worker_id).first()
+    
+    # Mapear medical_aptitude_concept a result legacy
+    result_mapping = {
+        "apto": "apto",
+        "apto_con_recomendaciones": "apto_con_restricciones",
+        "no_apto": "no_apto"
+    }
+    
+    # Crear respuesta enriquecida con datos del trabajador
+    exam_dict = {
+        "id": exam.id,
+        "exam_type": exam.exam_type,
+        "exam_date": exam.exam_date,
+        "programa": exam.programa,
+        "occupational_conclusions": exam.occupational_conclusions,
+        "preventive_occupational_behaviors": exam.preventive_occupational_behaviors,
+        "general_recommendations": exam.general_recommendations,
+        "medical_aptitude_concept": exam.medical_aptitude_concept,
+        "observations": exam.observations,
+        "examining_doctor": exam.examining_doctor,
+        "medical_center": exam.medical_center,
+        "worker_id": exam.worker_id,
+        "worker_name": worker.full_name if worker else None,
+        "worker_document": worker.document_number if worker else None,
+        "worker_position": worker.position if worker else None,
+        "worker_hire_date": worker.fecha_de_ingreso.isoformat() if worker and worker.fecha_de_ingreso else None,
+        "next_exam_date": next_exam_date.isoformat(),
+        
+        # Campos legacy para compatibilidad con el frontend
+        "status": "realizado",
+        "result": result_mapping.get(exam.medical_aptitude_concept, "pendiente"),
+        "restrictions": exam.general_recommendations if exam.medical_aptitude_concept == "apto_con_recomendaciones" else None,
+        
+        "created_at": exam.created_at,
+        "updated_at": exam.updated_at
+    }
+    
+    return exam_dict
 
 
 @router.delete("/occupational-exams/{exam_id}", response_model=MessageResponse)

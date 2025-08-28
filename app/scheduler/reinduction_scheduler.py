@@ -1,13 +1,10 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from datetime import datetime
-import logging
 from sqlalchemy.orm import sessionmaker
 
 from app.database import engine
 from app.services.reinduction_service import ReinductionService
-
-logger = logging.getLogger(__name__)
 
 # Crear session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -20,15 +17,15 @@ def run_daily_reinduction_check():
     """Función que ejecuta la verificación diaria de reinducciones"""
     db = SessionLocal()
     try:
-        logger.info("Iniciando verificación diaria de reinducciones")
+        print("Iniciando verificación diaria de reinducciones")
         
         service = ReinductionService(db)
         results = service.run_daily_check()
         
-        logger.info(f"Verificación diaria completada: {results}")
+        print(f"Verificación diaria completada: {results}")
         
     except Exception as e:
-        logger.error(f"Error en verificación diaria de reinducciones: {str(e)}")
+        print(f"Error en verificación diaria de reinducciones: {str(e)}")
         db.rollback()
     finally:
         db.close()
@@ -39,7 +36,7 @@ def start_scheduler():
     global scheduler
     
     if scheduler is not None:
-        logger.warning("El scheduler ya está iniciado")
+        print("El scheduler ya está iniciado")
         return
     
     try:
@@ -71,15 +68,15 @@ def start_scheduler():
         )
         
         scheduler.start()
-        logger.info("Scheduler de reinducciones iniciado exitosamente")
+        print("Scheduler de reinducciones iniciado exitosamente")
         
         # Log de trabajos programados
         jobs = scheduler.get_jobs()
         for job in jobs:
-            logger.info(f"Trabajo programado: {job.name} - Próxima ejecución: {job.next_run_time}")
+            print(f"Trabajo programado: {job.name} - Próxima ejecución: {job.next_run_time}")
             
     except Exception as e:
-        logger.error(f"Error iniciando scheduler de reinducciones: {str(e)}")
+        print(f"Error iniciando scheduler de reinducciones: {str(e)}")
         raise
 
 
@@ -88,15 +85,15 @@ def stop_scheduler():
     global scheduler
     
     if scheduler is None:
-        logger.warning("El scheduler no está iniciado")
+        print("El scheduler no está iniciado")
         return
     
     try:
         scheduler.shutdown(wait=True)
         scheduler = None
-        logger.info("Scheduler de reinducciones detenido exitosamente")
+        print("Scheduler de reinducciones detenido exitosamente")
     except Exception as e:
-        logger.error(f"Error deteniendo scheduler de reinducciones: {str(e)}")
+        print(f"Error deteniendo scheduler de reinducciones: {str(e)}")
 
 
 def get_scheduler_status():
@@ -129,11 +126,11 @@ def get_scheduler_status():
 def run_manual_check():
     """Ejecuta una verificación manual inmediata"""
     try:
-        logger.info("Ejecutando verificación manual de reinducciones")
+        print("Ejecutando verificación manual de reinducciones")
         run_daily_reinduction_check()
         return {"success": True, "message": "Verificación manual completada"}
     except Exception as e:
-        logger.error(f"Error en verificación manual: {str(e)}")
+        print(f"Error en verificación manual: {str(e)}")
         return {"success": False, "message": f"Error: {str(e)}"}
 
 
@@ -152,10 +149,10 @@ def add_custom_job(func, trigger_config, job_id, job_name):
             name=job_name,
             replace_existing=True
         )
-        logger.info(f"Trabajo personalizado agregado: {job_name}")
+        print(f"Trabajo personalizado agregado: {job_name}")
         return True
     except Exception as e:
-        logger.error(f"Error agregando trabajo personalizado: {str(e)}")
+        print(f"Error agregando trabajo personalizado: {str(e)}")
         return False
 
 
@@ -168,8 +165,8 @@ def remove_job(job_id):
     
     try:
         scheduler.remove_job(job_id)
-        logger.info(f"Trabajo removido: {job_id}")
+        print(f"Trabajo removido: {job_id}")
         return True
     except Exception as e:
-        logger.error(f"Error removiendo trabajo: {str(e)}")
+        print(f"Error removiendo trabajo: {str(e)}")
         return False

@@ -180,6 +180,16 @@ class Worker(Base):
     def full_name(self) -> str:
         return f"{self.first_name} {self.last_name}"
     
+    @property
+    def cedula(self) -> str:
+        """Legacy field - returns document_number for compatibility"""
+        return self.document_number
+    
+    @property
+    def base_salary(self) -> Optional[float]:
+        """Legacy field - returns salary_ibc for compatibility"""
+        return float(self.salary_ibc) if self.salary_ibc else None
+    
     def __repr__(self):
         return f"<Worker(id={self.id}, name='{self.full_name}', document='{self.document_number}')>"
 

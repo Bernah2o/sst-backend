@@ -1,12 +1,9 @@
 from typing import Dict, List, Optional, Any
 from pathlib import Path
-import logging
 from jinja2 import Environment, FileSystemLoader
 
 from app.config import settings
 from app.services.email_service import EmailService
-
-logger = logging.getLogger(__name__)
 
 # Configurar Jinja2 para las plantillas de correo
 templates_dir = Path(__file__).parent.parent / "templates" / "emails"
@@ -44,7 +41,7 @@ def send_email(
                 template_obj = env.get_template(template_file)
                 html_content = template_obj.render(**(context or {}))
             except Exception as e:
-                logger.error(f"Error al renderizar la plantilla de correo {template}: {str(e)}")
+                print(f"Error al renderizar la plantilla de correo {template}: {str(e)}")
                 # Si falla la plantilla, usar el cuerpo de texto plano
                 html_content = body or f"<p>{subject}</p>"
         else:
@@ -59,5 +56,5 @@ def send_email(
             cc=cc
         )
     except Exception as e:
-        logger.error(f"Error al enviar correo a {recipient}: {str(e)}")
+        print(f"Error al enviar correo a {recipient}: {str(e)}")
         return False

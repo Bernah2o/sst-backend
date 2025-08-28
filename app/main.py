@@ -1,5 +1,4 @@
 import time
-import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -10,6 +9,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
+import json
 
 from app.api import api_router
 from app.config import settings
@@ -17,8 +17,35 @@ from app.database import create_tables
 from app.schemas.common import HealthCheck
 from app.scheduler import start_scheduler, stop_scheduler
 
-# Configure logger
-logger = logging.getLogger(__name__)
+# Custom middleware for debugging request bodies
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        print(f"DEBUG MIDDLEWARE: Processing {request.method} request to {request.url}")
+        
+        # Only log POST requests to absenteeism endpoint
+        if request.method == "POST" and "/absenteeism" in str(request.url):
+            print(f"DEBUG MIDDLEWARE: POST request to absenteeism detected!")
+            
+            # Read body
+            body = await request.body()
+            print(f"DEBUG MIDDLEWARE: Body length: {len(body)}")
+            
+            try:
+                body_str = body.decode('utf-8')
+                print(f"DEBUG MIDDLEWARE: Raw request body: {body_str}")
+                if body_str:
+                    body_json = json.loads(body_str)
+                    print(f"DEBUG MIDDLEWARE: Parsed JSON: {body_json}")
+                    print(f"DEBUG MIDDLEWARE: disability_or_charged_days in body: {'disability_or_charged_days' in body_json}")
+                    if 'disability_or_charged_days' in body_json:
+                        print(f"DEBUG MIDDLEWARE: disability_or_charged_days value: {body_json['disability_or_charged_days']}")
+                    else:
+                        print(f"DEBUG MIDDLEWARE: Available keys: {list(body_json.keys())}")
+            except Exception as e:
+                print(f"DEBUG MIDDLEWARE: Error parsing body: {e}")
+        
+        response = await call_next(request)
+        return response
 
 
 @asynccontextmanager
@@ -157,6 +184,9 @@ app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=["*"] if settings.debug else ["localhost", "127.0.0.1"]
 )
+
+# Add request logging middleware for debugging
+app.add_middleware(RequestLoggingMiddleware)
 
 
 
@@ -459,7 +489,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         detail_message = f"Error de validación en el campo '{field}': {error_msg}"
     
     # Log the validation error for debugging
-    logger.warning(f"Validation error on {request.url.path}: {error_type} in field '{field}' with value '{input_value}'")
+    print(f"Validation error on {request.url.path}: {error_type} in field '{field}' with value '{input_value}'")
     
     return JSONResponse(
         status_code=422,

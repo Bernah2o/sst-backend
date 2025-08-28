@@ -153,6 +153,9 @@ class WorkerList(BaseModel):
     assigned_role: UserRole
     is_registered: bool
     photo: Optional[str] = None
+    # Legacy fields for compatibility
+    cedula: Optional[str] = None
+    base_salary: Optional[float] = None
     
     class Config:
         from_attributes = True

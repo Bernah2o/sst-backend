@@ -57,7 +57,7 @@ class Absenteeism(Base):
     charged_days = Column(Integer, default=0)
     
     # Días de incapacidad o días cargados
-    disability_or_charged_days = Column(Integer, nullable=False)
+    disability_or_charged_days = Column(Integer, nullable=True)
     
     # Código diagnóstico
     diagnostic_code = Column(String(20), nullable=False)

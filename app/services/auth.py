@@ -107,8 +107,9 @@ class AuthService:
 
     def get_current_user(self, db: Session, token: str) -> User:
         """Get current user from JWT token"""
+        from sqlalchemy.orm import joinedload
         token_data = self.verify_token(token)
-        user = db.query(User).filter(User.id == token_data.user_id).first()
+        user = db.query(User).options(joinedload(User.custom_role)).filter(User.id == token_data.user_id).first()
         
         if user is None:
             raise HTTPException(

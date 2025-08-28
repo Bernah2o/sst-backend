@@ -5,9 +5,6 @@ Utilidades para validación robusta de parámetros
 
 from typing import Optional, Union, Any
 from fastapi import HTTPException, status
-import logging
-
-logger = logging.getLogger(__name__)
 
 def safe_int_conversion(value: Any, field_name: str, allow_none: bool = True) -> Optional[int]:
     """

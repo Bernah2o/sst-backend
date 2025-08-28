@@ -20,9 +20,7 @@ from app.schemas.reinduction import (
 )
 from app.models.notification import Notification, NotificationType, NotificationPriority
 from app.utils.email import send_email
-import logging
 
-logger = logging.getLogger(__name__)
 
 
 class ReinductionService:
@@ -66,7 +64,7 @@ class ReinductionService:
         self.db.commit()
         self.db.refresh(record)
         
-        logger.info(f"Registro de reinducción creado: {record.id} para trabajador {record.worker_id}")
+        print(f"Registro de reinducción creado: {record.id} para trabajador {record.worker_id}")
         return record
     
     def update_reinduction_record(self, record_id: int, update_data: ReinductionRecordUpdate) -> ReinductionRecord:
@@ -82,7 +80,7 @@ class ReinductionService:
         self.db.commit()
         self.db.refresh(record)
         
-        logger.info(f"Registro de reinducción actualizado: {record.id}")
+        print(f"Registro de reinducción actualizado: {record.id}")
         return record
     
     def generate_missing_reinduction_records(self, worker_id: Optional[int] = None) -> Dict[str, int]:
@@ -100,7 +98,7 @@ class ReinductionService:
         
         for worker in workers:
             if not worker.fecha_de_ingreso:
-                logger.warning(f"Trabajador {worker.id} no tiene fecha de ingreso")
+                print(f"Trabajador {worker.id} no tiene fecha de ingreso")
                 continue
             
             required_years = self.get_years_requiring_reinduction(worker.fecha_de_ingreso)
@@ -140,7 +138,7 @@ class ReinductionService:
         
         self.db.commit()
         
-        logger.info(f"Registros de reinducción generados: {created_count} creados, {updated_count} actualizados")
+        print(f"Registros de reinducción generados: {created_count} creados, {updated_count} actualizados")
         return {"created": created_count, "updated": updated_count}
     
     def enroll_worker_in_reinduction(self, record_id: int, course_id: Optional[int] = None) -> Enrollment:
@@ -204,7 +202,7 @@ class ReinductionService:
         self.db.commit()
         self.db.refresh(enrollment)
         
-        logger.info(f"Trabajador {worker.id} inscrito en curso de reinducción {target_course_id}")
+        print(f"Trabajador {worker.id} inscrito en curso de reinducción {target_course_id}")
         return enrollment
     
     def check_completed_reinducciones(self) -> int:
@@ -232,7 +230,7 @@ class ReinductionService:
         
         if updated_count > 0:
             self.db.commit()
-            logger.info(f"Actualizados {updated_count} registros de reinducción como completados")
+            print(f"Actualizados {updated_count} registros de reinducción como completados")
         
         return updated_count
     
@@ -260,12 +258,12 @@ class ReinductionService:
                     self._send_notification_for_record(record, config)
                     sent_count += 1
             except Exception as e:
-                logger.error(f"Error enviando notificación para registro {record.id}: {str(e)}")
+                print(f"Error enviando notificación para registro {record.id}: {str(e)}")
                 error_count += 1
         
         if sent_count > 0:
             self.db.commit()
-            logger.info(f"Enviadas {sent_count} notificaciones de reinducción")
+            print(f"Enviadas {sent_count} notificaciones de reinducción")
         
         return {"sent": sent_count, "errors": error_count}
     
@@ -352,27 +350,27 @@ class ReinductionService:
             )
             
             if success:
-                logger.info(f"Email de reinducción enviado a {worker.email} para registro {record.id}")
+                print(f"Email de reinducción enviado a {worker.email} para registro {record.id}")
             else:
-                logger.error(f"Error al enviar email de reinducción a {worker.email} para registro {record.id}")
+                print(f"Error al enviar email de reinducción a {worker.email} para registro {record.id}")
                 
         except Exception as e:
-            logger.error(f"Error al enviar email de reinducción: {str(e)}")
+            print(f"Error al enviar email de reinducción: {str(e)}")
     
     def send_anniversary_notification(self, worker_id: int) -> bool:
         """Envía notificación de aniversario y crea registro de reinducción para un trabajador específico"""
         try:
             worker = self.db.query(Worker).filter(Worker.id == worker_id).first()
             if not worker:
-                logger.error(f"Trabajador {worker_id} no encontrado")
+                print(f"Trabajador {worker_id} no encontrado")
                 return False
             
             if not worker.fecha_de_ingreso:
-                logger.error(f"Trabajador {worker_id} no tiene fecha de ingreso")
+                print(f"Trabajador {worker_id} no tiene fecha de ingreso")
                 return False
             
             if not worker.email:
-                logger.error(f"Trabajador {worker_id} no tiene email configurado")
+                print(f"Trabajador {worker_id} no tiene email configurado")
                 return False
             
             # Calcular años en la empresa
@@ -382,7 +380,7 @@ class ReinductionService:
             # Verificar si es el aniversario (mismo día y mes)
             anniversary_date = worker.fecha_de_ingreso.replace(year=today.year)
             if today != anniversary_date:
-                logger.warning(f"Hoy no es el aniversario del trabajador {worker_id}. Aniversario: {anniversary_date}")
+                print(f"Hoy no es el aniversario del trabajador {worker_id}. Aniversario: {anniversary_date}")
             
             # Crear registro de reinducción si no existe
             current_year = today.year
@@ -413,10 +411,10 @@ class ReinductionService:
                 self.db.add(record)
                 self.db.commit()
                 self.db.refresh(record)
-                logger.info(f"Registro de reinducción creado para trabajador {worker_id}, año {current_year}")
+                print(f"Registro de reinducción creado para trabajador {worker_id}, año {current_year}")
             else:
                 record = existing_record
-                logger.info(f"Registro de reinducción ya existe para trabajador {worker_id}, año {current_year}")
+                print(f"Registro de reinducción ya existe para trabajador {worker_id}, año {current_year}")
             
             # Obtener información del curso si está asignado
             course_name = None
@@ -447,14 +445,14 @@ class ReinductionService:
             )
             
             if success:
-                logger.info(f"Email de aniversario enviado a {worker.email} para trabajador {worker_id}")
+                print(f"Email de aniversario enviado a {worker.email} para trabajador {worker_id}")
                 return True
             else:
-                logger.error(f"Error al enviar email de aniversario a {worker.email} para trabajador {worker_id}")
+                print(f"Error al enviar email de aniversario a {worker.email} para trabajador {worker_id}")
                 return False
                 
         except Exception as e:
-            logger.error(f"Error al enviar notificación de aniversario: {str(e)}")
+            print(f"Error al enviar notificación de aniversario: {str(e)}")
             return False
     
     def get_worker_reinduction_summary(self, worker_id: int) -> WorkerReinductionSummary:
@@ -583,7 +581,7 @@ class ReinductionService:
                 summary = self.get_worker_reinduction_summary(record.worker_id)
                 summaries.append(summary)
             except Exception as e:
-                logger.error(f"Error obteniendo resumen para trabajador {record.worker_id}: {str(e)}")
+                print(f"Error obteniendo resumen para trabajador {record.worker_id}: {str(e)}")
         
         return summaries
     
@@ -604,7 +602,7 @@ class ReinductionService:
                 summary = self.get_worker_reinduction_summary(record.worker_id)
                 summaries.append(summary)
             except Exception as e:
-                logger.error(f"Error obteniendo resumen para trabajador {record.worker_id}: {str(e)}")
+                print(f"Error obteniendo resumen para trabajador {record.worker_id}: {str(e)}")
         
         return summaries
     
@@ -618,7 +616,7 @@ class ReinductionService:
             self.db.add(config)
             self.db.commit()
             self.db.refresh(config)
-            logger.info("Configuración de reinducción creada con valores por defecto")
+            print("Configuración de reinducción creada con valores por defecto")
         
         return config
     
@@ -635,7 +633,7 @@ class ReinductionService:
         self.db.commit()
         self.db.refresh(config)
         
-        logger.info(f"Configuración de reinducción actualizada por usuario {updated_by}")
+        print(f"Configuración de reinducción actualizada por usuario {updated_by}")
         return config
     
     def bulk_create_reinducciones(self, bulk_data: BulkReinductionCreate, created_by: int) -> Dict[str, Any]:
@@ -702,7 +700,7 @@ class ReinductionService:
             for record in created_records:
                 self.db.refresh(record)
         
-        logger.info(f"Creación en lote completada: {created_count} creados, {skipped_count} omitidos, {len(errors)} errores")
+        print(f"Creación en lote completada: {created_count} creados, {skipped_count} omitidos, {len(errors)} errores")
         
         return {
             "created_count": created_count,
@@ -734,10 +732,10 @@ class ReinductionService:
             notification_result = self.send_reinduction_notifications()
             results["notifications"] = notification_result
             
-            logger.info(f"Verificación diaria completada: {results}")
+            print(f"Verificación diaria completada: {results}")
             
         except Exception as e:
-            logger.error(f"Error en verificación diaria: {str(e)}")
+            print(f"Error en verificación diaria: {str(e)}")
             results["error"] = str(e)
         
         return results

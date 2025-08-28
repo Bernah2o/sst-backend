@@ -33,9 +33,13 @@ async def get_notifications(
     db: Session = Depends(get_db)
 ) -> Any:
     """
-    Get notifications for current user
+    Get notifications for current user (or all notifications if admin)
     """
-    query = db.query(Notification).filter(Notification.user_id == current_user.id)
+    # Admin users can see all notifications, regular users only see their own
+    if current_user.role == "admin":
+        query = db.query(Notification)
+    else:
+        query = db.query(Notification).filter(Notification.user_id == current_user.id)
     
     # Apply filters
     if notification_type:
@@ -101,8 +105,7 @@ async def create_notification(
     
     # Create new notification
     notification = Notification(
-        **notification_data.dict(),
-        created_by=current_user.id
+        **notification_data.dict()
     )
     
     db.add(notification)
@@ -520,8 +523,7 @@ async def create_bulk_notifications(
             title=bulk_data.title,
             message=bulk_data.message,
             notification_type=bulk_data.notification_type,
-            priority=bulk_data.priority,
-            created_by=current_user.id
+            priority=bulk_data.priority
         )
         notifications.append(notification)
     
@@ -714,8 +716,7 @@ async def create_notification_template(
     
     # Create new template
     template = NotificationTemplate(
-        **template_data.dict(),
-        created_by=current_user.id
+        **template_data.dict()
     )
     
     db.add(template)
@@ -868,9 +869,7 @@ async def send_notification_from_template(
             title=title,
             message=message,
             notification_type=template.notification_type,
-            priority=template.priority,
-            template_id=template.id,
-            created_by=current_user.id
+            priority=template.priority
         )
         notifications.append(notification)
     

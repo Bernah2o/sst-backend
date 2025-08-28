@@ -28,6 +28,11 @@ def create_absenteeism(
 ):
     """Crear un nuevo registro de ausentismo"""
     
+    # Debug logging
+    print(f"DEBUG: Received absenteeism_data: {absenteeism_data}")
+    print(f"DEBUG: absenteeism_data.model_dump(): {absenteeism_data.model_dump()}")
+    print(f"DEBUG: disability_or_charged_days value: {getattr(absenteeism_data, 'disability_or_charged_days', 'NOT_FOUND')}")
+    
     # Verificar que el trabajador existe
     worker = db.query(Worker).filter(Worker.id == absenteeism_data.worker_id).first()
     if not worker:
