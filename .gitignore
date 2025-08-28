@@ -167,6 +167,7 @@ app.db
 
 # Generated PDFs and documents
 *.pdf
+* .jpg
 
 # Upload directories
 #uploads/
