@@ -110,7 +110,6 @@ class Worker(Base):
     gender = Column(SQLEnum(Gender), nullable=False)
     document_type = Column(SQLEnum(DocumentType), nullable=False)
     document_number = Column(String(50), unique=True, nullable=False, index=True)
-    cedula = Column(String(50), unique=True, nullable=True, index=True)  # Alias para document_number
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
     birth_date = Column(Date, nullable=False)
@@ -123,10 +122,8 @@ class Worker(Base):
     profession = Column(String(100))
     risk_level = Column(SQLEnum(RiskLevel), nullable=False)
     position = Column(String(100), nullable=False)
-    cargo = Column(String(100), nullable=True)  # Alias para position
     occupation = Column(String(100))
     salary_ibc = Column(Numeric(12, 2))  # Salario/IBC
-    salario = Column(Numeric(12, 2), nullable=True)  # Alias para salary_ibc
     fecha_de_ingreso = Column(Date, nullable=True)  # Fecha de ingreso del trabajador
     fecha_de_retiro = Column(Date, nullable=True)  # Fecha de retiro del trabajador
     
@@ -184,6 +181,16 @@ class Worker(Base):
     def cedula(self) -> str:
         """Legacy field - returns document_number for compatibility"""
         return self.document_number
+    
+    @property
+    def cargo(self) -> str:
+        """Legacy field - returns position for compatibility"""
+        return self.position
+    
+    @property
+    def salario(self) -> Optional[float]:
+        """Legacy field - returns salary_ibc for compatibility"""
+        return float(self.salary_ibc) if self.salary_ibc else None
     
     @property
     def base_salary(self) -> Optional[float]:
