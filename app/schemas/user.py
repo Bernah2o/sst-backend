@@ -149,31 +149,16 @@ class UserRegister(BaseModel):
         if not re.search(r'\d', v):
             raise ValueError('La contraseña debe contener al menos un número')
         
+        # Check for at least one special character
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
+            raise ValueError('La contraseña debe contener al menos un carácter especial (!@#$%^&*(),.?":{}|<>)')
+        
         return v
     
     @validator('document_number')
     def validate_document_number(cls, v):
         if not v.isdigit():
             raise ValueError('El número de documento debe contener solo dígitos')
-        return v
-    
-    @validator('password')
-    def validate_password(cls, v):
-        if len(v) < 8:
-            raise ValueError('La contraseña debe tener al menos 8 caracteres')
-        
-        # Check for at least one letter
-        if not re.search(r'[a-zA-Z]', v):
-            raise ValueError('La contraseña debe contener al menos una letra')
-        
-        # Check for at least one number
-        if not re.search(r'\d', v):
-            raise ValueError('La contraseña debe contener al menos un número')
-        
-        # Check for at least one special character
-        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
-            raise ValueError('La contraseña debe contener al menos un carácter especial (!@#$%^&*(),.?":{}|<>)')
-        
         return v
 
 

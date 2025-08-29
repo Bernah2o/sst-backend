@@ -1,5 +1,6 @@
 import os
 import uuid
+import logging
 from typing import Any, List
 from PIL import Image
 from io import BytesIO
@@ -16,6 +17,7 @@ from app.schemas.common import MessageResponse
 from app.config import settings
 from app.utils.storage import storage_manager
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -163,14 +165,6 @@ async def upload_profile_picture(
         file_extension = ".jpg"  # Always save as JPEG
         unique_filename = f"profile_{current_user.id}_{uuid.uuid4().hex}{file_extension}"
         
-        # Create a new UploadFile object with processed image
-        from fastapi import UploadFile
-        processed_file = UploadFile(
-            filename=unique_filename,
-            file=processed_image,
-            content_type="image/jpeg"
-        )
-        
         # Delete old profile picture if exists
         if current_user.profile_picture:
             # Extract storage info from URL or path
@@ -183,8 +177,27 @@ async def upload_profile_picture(
                 old_file_path = os.path.join(settings.upload_dir, current_user.profile_picture)
                 storage_manager.delete_file(old_file_path, "local")
         
-        # Upload using storage manager
-        result = await storage_manager.upload_file(processed_file, "static")
+        # Upload processed image directly
+        if settings.use_firebase_storage:
+            # Upload to Firebase Storage
+            from app.services.firebase_storage_service import firebase_storage_service
+            firebase_path = f"profile_pictures/{unique_filename}"
+            public_url = firebase_storage_service.upload_file(processed_image, firebase_path)
+            result = {
+                "url": public_url,
+                "storage_type": "firebase"
+            }
+        else:
+            # Save to local storage
+            upload_path = os.path.join(settings.upload_dir, unique_filename)
+            os.makedirs(os.path.dirname(upload_path), exist_ok=True)
+            with open(upload_path, "wb") as f:
+                processed_image.seek(0)
+                f.write(processed_image.read())
+            result = {
+                "url": f"/uploads/{unique_filename}",
+                "storage_type": "local"
+            }
         
         # Update user profile picture in database
         current_user.profile_picture = result["url"]
@@ -198,6 +211,16 @@ async def upload_profile_picture(
         }
         
     except Exception as e:
+        import traceback
+        error_details = {
+            "error_type": type(e).__name__,
+            "error_message": str(e),
+            "traceback": traceback.format_exc(),
+            "firebase_enabled": settings.use_firebase_storage,
+            "firebase_bucket": settings.firebase_storage_bucket,
+            "firebase_credentials_path": settings.firebase_credentials_path
+        }
+        logger.error(f"Error en upload_profile_picture: {error_details}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error processing image: {str(e)}"
