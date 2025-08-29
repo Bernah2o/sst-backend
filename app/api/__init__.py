@@ -24,6 +24,7 @@ from .audit import router as audit_router
 from .occupational_exams import router as occupational_exams_router
 
 
+
 api_router = APIRouter()
 
 # Include available routers

@@ -33,14 +33,9 @@ class OptionsMiddleware(BaseHTTPMiddleware):
             # Get the origin from the request
             origin = request.headers.get("origin")
             
-            # Log OPTIONS request details for debugging
-            logging.info(f"OPTIONS request received - Origin: {origin}, URL: {request.url}, Headers: {dict(request.headers)}")
-            
             # Check if origin is in allowed origins
             allowed_origins = settings.allowed_origins
             allow_origin = origin if origin in allowed_origins else allowed_origins[0] if allowed_origins else "*"
-            
-            logging.info(f"Allowed origins: {allowed_origins}, Selected origin: {allow_origin}")
             
             # Create a proper OPTIONS response
             response = Response(
@@ -55,7 +50,7 @@ class OptionsMiddleware(BaseHTTPMiddleware):
                 }
             )
             
-            logging.info(f"OPTIONS response headers: {response.headers}")
+
             return response
         
         response = await call_next(request)
@@ -237,13 +232,8 @@ async def options_auth_login(request: Request):
     """Handle OPTIONS request for auth login endpoint"""
     origin = request.headers.get("origin")
     
-    # Log specific auth login OPTIONS request
-    logging.info(f"Explicit OPTIONS /auth/login - Origin: {origin}, Headers: {dict(request.headers)}")
-    
     allowed_origins = settings.allowed_origins
     allow_origin = origin if origin in allowed_origins else allowed_origins[0] if allowed_origins else "*"
-    
-    logging.info(f"Auth login OPTIONS - Allowed origins: {allowed_origins}, Selected: {allow_origin}")
     
     response = Response(
         status_code=200,
@@ -257,7 +247,7 @@ async def options_auth_login(request: Request):
         }
     )
     
-    logging.info(f"Auth login OPTIONS response: {response.status_code}, Headers: {response.headers}")
+
     return response
 
 # Include API router
