@@ -52,5 +52,17 @@ class Settings:
         self.firebase_attendance_lists_path = os.getenv("FIREBASE_ATTENDANCE_LISTS_PATH", "fastapi_project/attendance_lists")
         self.use_firebase_storage = os.getenv("USE_FIREBASE_STORAGE", "False").lower() == "true"
         self.firebase_credentials_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
+        
+        # Variables de entorno individuales de Firebase (alternativa al archivo JSON)
+        self.firebase_type = os.getenv("FIREBASE_TYPE")
+        self.firebase_private_key_id = os.getenv("FIREBASE_PRIVATE_KEY_ID")
+        self.firebase_private_key = os.getenv("FIREBASE_PRIVATE_KEY")
+        self.firebase_client_email = os.getenv("FIREBASE_CLIENT_EMAIL")
+        self.firebase_client_id = os.getenv("FIREBASE_CLIENT_ID")
+        self.firebase_auth_uri = os.getenv("FIREBASE_AUTH_URI")
+        self.firebase_token_uri = os.getenv("FIREBASE_TOKEN_URI")
+        self.firebase_auth_provider_x509_cert_url = os.getenv("FIREBASE_AUTH_PROVIDER_X509_CERT_URL")
+        self.firebase_client_x509_cert_url = os.getenv("FIREBASE_CLIENT_X509_CERT_URL")
+        self.firebase_universe_domain = os.getenv("FIREBASE_UNIVERSE_DOMAIN")
 
 settings = Settings()

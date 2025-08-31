@@ -32,6 +32,14 @@ class FirebaseStorageService:
                     initialize_app(cred, {
                         'storageBucket': settings.firebase_storage_bucket
                     })
+                elif self._can_use_env_credentials():
+                    # Usar credenciales desde variables de entorno para producción
+                    logger.info("Usando credenciales desde variables de entorno")
+                    cred_dict = self._get_credentials_from_env()
+                    cred = credentials.Certificate(cred_dict)
+                    initialize_app(cred, {
+                        'storageBucket': settings.firebase_storage_bucket
+                    })
                 else:
                     # Usar credenciales por defecto (para producción en Google Cloud)
                     logger.warning("Archivo de credenciales no encontrado, usando credenciales por defecto")
@@ -50,6 +58,39 @@ class FirebaseStorageService:
         except Exception as e:
             logger.error(f"Error al inicializar Firebase Storage: {str(e)}")
             raise
+    
+    def _can_use_env_credentials(self) -> bool:
+        """Verifica si todas las variables de entorno necesarias están disponibles"""
+        required_env_vars = [
+            'FIREBASE_TYPE', 'FIREBASE_PROJECT_ID', 'FIREBASE_PRIVATE_KEY_ID',
+            'FIREBASE_PRIVATE_KEY', 'FIREBASE_CLIENT_EMAIL', 'FIREBASE_CLIENT_ID',
+            'FIREBASE_AUTH_URI', 'FIREBASE_TOKEN_URI', 'FIREBASE_AUTH_PROVIDER_X509_CERT_URL',
+            'FIREBASE_CLIENT_X509_CERT_URL', 'FIREBASE_UNIVERSE_DOMAIN'
+        ]
+        
+        for var in required_env_vars:
+            if not os.getenv(var):
+                logger.debug(f"Variable de entorno faltante: {var}")
+                return False
+        return True
+    
+    def _get_credentials_from_env(self) -> dict:
+        """Construye el diccionario de credenciales desde variables de entorno"""
+        private_key = os.getenv('FIREBASE_PRIVATE_KEY', '').replace('\\n', '\n')
+        
+        return {
+            "type": os.getenv('FIREBASE_TYPE'),
+            "project_id": os.getenv('FIREBASE_PROJECT_ID'),
+            "private_key_id": os.getenv('FIREBASE_PRIVATE_KEY_ID'),
+            "private_key": private_key,
+            "client_email": os.getenv('FIREBASE_CLIENT_EMAIL'),
+            "client_id": os.getenv('FIREBASE_CLIENT_ID'),
+            "auth_uri": os.getenv('FIREBASE_AUTH_URI'),
+            "token_uri": os.getenv('FIREBASE_TOKEN_URI'),
+            "auth_provider_x509_cert_url": os.getenv('FIREBASE_AUTH_PROVIDER_X509_CERT_URL'),
+            "client_x509_cert_url": os.getenv('FIREBASE_CLIENT_X509_CERT_URL'),
+            "universe_domain": os.getenv('FIREBASE_UNIVERSE_DOMAIN')
+        }
     
     def upload_file(self, file_data: BinaryIO, destination_path: str, content_type: str = None) -> str:
         """Sube un archivo a Firebase Storage"""
