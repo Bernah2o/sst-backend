@@ -48,14 +48,14 @@ WORKDIR /app
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy application code (manteniendo la estructura como paquete)
-COPY --chown=appuser:appuser app/ ./app/
-COPY --chown=appuser:appuser alembic/ ./alembic/
-COPY --chown=appuser:appuser alembic.ini ./
-COPY --chown=appuser:appuser logging.conf ./
-COPY --chown=appuser:appuser migrate.py ./
-COPY --chown=appuser:appuser create_admin.py ./
-COPY --chown=appuser:appuser create_default_admin.py ./
+# Copy application code
+COPY --chown=appuser:appuser app/ /app/app/
+COPY --chown=appuser:appuser alembic/ /app/alembic/
+COPY --chown=appuser:appuser alembic.ini /app/
+COPY --chown=appuser:appuser logging.conf /app/
+COPY --chown=appuser:appuser migrate.py /app/
+COPY --chown=appuser:appuser create_admin.py /app/
+COPY --chown=appuser:appuser create_default_admin.py /app/
 
 # Create necessary directories with proper permissions
 RUN mkdir -p /app/uploads /app/logs /app/certificates /app/static /app/templates \
@@ -75,5 +75,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run the application (usando la estructura de paquete)
+# Run the application
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
