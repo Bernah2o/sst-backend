@@ -49,7 +49,7 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
-COPY --chown=appuser:appuser app/ /app/
+COPY --chown=appuser:appuser app/ .
 COPY --chown=appuser:appuser alembic/ /app/alembic/
 COPY --chown=appuser:appuser alembic.ini /app/
 COPY --chown=appuser:appuser logging.conf /app/
