@@ -49,7 +49,13 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
-COPY --chown=appuser:appuser . .
+COPY --chown=appuser:appuser app/ /app/
+COPY --chown=appuser:appuser alembic/ /app/alembic/
+COPY --chown=appuser:appuser alembic.ini /app/
+COPY --chown=appuser:appuser logging.conf /app/
+COPY --chown=appuser:appuser migrate.py /app/
+COPY --chown=appuser:appuser create_admin.py /app/
+COPY --chown=appuser:appuser create_default_admin.py /app/
 
 # Create necessary directories with proper permissions
 RUN mkdir -p /app/uploads /app/logs /app/certificates /app/static /app/templates \
