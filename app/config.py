@@ -2,8 +2,11 @@
 import os
 from dotenv import load_dotenv
 
-# Cargar variables de entorno desde el archivo .env.production
-load_dotenv('.env.production')
+# Cargar variables de entorno según el entorno
+# En desarrollo: .env.local o .env
+# En producción: variables de entorno del servidor
+env_file = '.env.local' if os.path.exists('.env.local') else '.env'
+load_dotenv(env_file)
 
 class Settings:
     def __init__(self):
@@ -12,8 +15,13 @@ class Settings:
         self.app_version = os.getenv("APP_VERSION", "1.0.0")
         
         # Configuración de base de datos
-        self.database_url = os.getenv("DATABASE_URL", "sqlite:///./app.db")
-        self.debug = os.getenv("DEBUG", "False").lower() == "false"
+        # En producción, DATABASE_URL debe estar configurada en el servidor
+        self.database_url = os.getenv("DATABASE_URL")
+        if not self.database_url:
+            raise ValueError("DATABASE_URL environment variable is required")
+        
+        # Configuración de debug
+        self.debug = os.getenv("DEBUG", "false").lower() == "true"
         
         # Configuración de CORS
         self.allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")

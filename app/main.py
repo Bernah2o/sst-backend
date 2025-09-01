@@ -173,7 +173,7 @@ app.add_middleware(RequestLoggingMiddleware)
 
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["*"] if settings.debug else ["localhost", "127.0.0.1", "sst-backend-upmch1-b95ca4-5-252-53-108.traefik.me"]
+    allowed_hosts=["*"] if settings.debug else ["sst-backend-upmch1-b95ca4-5-252-53-108.traefik.me"]
 )
 
 # Create necessary directories if they don't exist
