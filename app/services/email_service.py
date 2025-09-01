@@ -13,7 +13,7 @@ class EmailService:
         try:
             context = ssl.create_default_context()
             with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
-                server.set_debuglevel(1) # Muestra la comunicación detallada
+                # server.set_debuglevel(1) # Debug disabled for production
                 server.starttls(context=context)
                 server.login(settings.smtp_username, settings.smtp_password)
             return True

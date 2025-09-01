@@ -70,7 +70,7 @@ class FirebaseStorageService:
         
         for var in required_env_vars:
             if not os.getenv(var):
-                logger.debug(f"Variable de entorno faltante: {var}")
+                pass  # Variable de entorno faltante
                 return False
         return True
     
