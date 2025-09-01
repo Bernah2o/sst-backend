@@ -63,7 +63,7 @@ RUN mkdir -p /app/uploads /app/logs /app/certificates /app/static /app/templates
     chown -R appuser:appuser /app
 
 # Set PYTHONPATH to include the app directory
-ENV PYTHONPATH=/app:$PYTHONPATH
+ENV PYTHONPATH=/app:/app/app:$PYTHONPATH
 
 # Switch to non-root user
 USER appuser
