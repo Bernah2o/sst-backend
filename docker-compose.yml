@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # PostgreSQL Database
@@ -6,7 +6,7 @@ services:
     image: postgres:17-alpine
     container_name: sst_postgres
     environment:
-      POSTGRES_DB: ${DB_NAME:-sst}
+      POSTGRES_DB: ${DB_NAME:-bd_sst}
       POSTGRES_USER: ${DB_USER:-sstuser}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       PGDATA: /var/lib/postgresql/data/pgdata
@@ -18,7 +18,8 @@ services:
       - sst_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-sstuser} -d ${DB_NAME:-sst}"]
+      test:
+        ["CMD-SHELL", "pg_isready -U ${DB_USER:-sstuser} -d ${DB_NAME:-bd_sst}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -38,7 +39,7 @@ services:
       dockerfile: Dockerfile
     container_name: sst_migrate
     environment:
-      - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@db:5432/${DB_NAME:-sst}
+      - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME:-bd_sst}
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     command: python migrate.py upgrade
@@ -62,7 +63,7 @@ services:
     env_file:
       - .env.production
     environment:
-      - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@db:5432/${DB_NAME:-sst}
+      - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME:-bd_sst}
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - USE_FIREBASE_STORAGE=${USE_FIREBASE_STORAGE:-true}
@@ -91,10 +92,10 @@ services:
       resources:
         limits:
           memory: 1G
-          cpus: '0.5'
+          cpus: "0.5"
         reservations:
           memory: 512M
-          cpus: '0.25'
+          cpus: "0.25"
 
   # FastAPI Application - Instance 2
   app2:
@@ -105,7 +106,7 @@ services:
     env_file:
       - .env.production
     environment:
-      - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@db:5432/${DB_NAME:-sst}
+      - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME:-bd_sst}
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - USE_FIREBASE_STORAGE=${USE_FIREBASE_STORAGE:-true}
@@ -134,10 +135,10 @@ services:
       resources:
         limits:
           memory: 1G
-          cpus: '0.5'
+          cpus: "0.5"
         reservations:
           memory: 512M
-          cpus: '0.25'
+          cpus: "0.25"
 
 volumes:
   postgres_data:
