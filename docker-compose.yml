@@ -3,43 +3,33 @@ version: '3.8'
 services:
   # PostgreSQL Database
   db:
-    image: postgres:13-alpine
+    image: postgres:17-alpine
     container_name: sst_postgres
     environment:
-      POSTGRES_DB: sst_platform
-      POSTGRES_USER: sst_user
-      POSTGRES_PASSWORD: sst_password
+      POSTGRES_DB: ${DB_NAME:-sst_platform}
+      POSTGRES_USER: ${DB_USER:-sst_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-sst_password}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
       - "5432:5432"
     networks:
       - sst_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sst_user -d sst_platform"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-sst_user} -d ${DB_NAME:-sst_platform}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
 
-  # Redis for caching and sessions
-  redis:
-    image: redis:7-alpine
-    container_name: sst_redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - sst_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # Redis removido - no se usa en la aplicación actual
 
   # Database Migration Service
   migrate:
@@ -48,47 +38,45 @@ services:
       dockerfile: Dockerfile
     container_name: sst_migrate
     environment:
-      - DATABASE_URL=postgresql://sst_user:sst_password@db:5432/sst_platform
-      - ENVIRONMENT=production
-      - LOG_LEVEL=INFO
+      - DATABASE_URL=postgresql://${DB_USER:-sst_user}:${DB_PASSWORD:-sst_password}@db:5432/${DB_NAME:-sst_platform}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     command: python migrate.py upgrade
     volumes:
-      - ./logs:/app/logs
+      - app_logs:/app/logs
     depends_on:
       db:
         condition: service_healthy
     networks:
       - sst_network
-    restart: "no"  # Solo ejecutar una vez
+    restart: "no"
     profiles:
       - migration
 
-  # FastAPI Application
-  app:
+  # FastAPI Application - Instance 1
+  app1:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: sst_app
+    container_name: sst_app1
+    env_file:
+      - .env.production
     environment:
-      - DATABASE_URL=postgresql://sst_user:sst_password@db:5432/sst_platform
-      - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=your-super-secret-key-change-in-production
-      - ENVIRONMENT=production
-      - LOG_LEVEL=INFO
-      - DEBUG=false
-      - SQL_ECHO=false
+      - DATABASE_URL=postgresql://${DB_USER:-sst_user}:${DB_PASSWORD:-sst_password}@db:5432/${DB_NAME:-sst_platform}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - USE_FIREBASE_STORAGE=${USE_FIREBASE_STORAGE:-true}
     ports:
-      - "8000:8000"
+      - "8001:8000"
     volumes:
-      - ./uploads:/app/uploads
-      - ./logs:/app/logs
-      - ./certificates:/app/certificates
-      - ./static:/app/static
-      - ./templates:/app/templates
+      - app_uploads:/app/uploads
+      - app_logs:/app/logs
+      - app_certificates:/app/certificates
+      - app_static:/app/static
+      - app_medical_reports:/app/medical_reports
+      - app_attendance_lists:/app/attendance_lists
     depends_on:
       db:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     networks:
       - sst_network
@@ -99,83 +87,102 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
 
-  # Nginx Reverse Proxy (Optional)
-  nginx:
-    image: nginx:alpine
-    container_name: sst_nginx
+  # FastAPI Application - Instance 2
+  app2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sst_app2
+    env_file:
+      - .env.production
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-sst_user}:${DB_PASSWORD:-sst_password}@db:5432/${DB_NAME:-sst_platform}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - USE_FIREBASE_STORAGE=${USE_FIREBASE_STORAGE:-true}
     ports:
-      - "80:80"
-      - "443:443"
+      - "8002:8000"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./ssl:/etc/nginx/ssl:ro
-      - ./static:/var/www/static:ro
-    depends_on:
-      - app
-    networks:
-      - sst_network
-    restart: unless-stopped
-    profiles:
-      - production
-
-  # Celery Worker for background tasks (Optional)
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: sst_worker
-    command: celery -A app.celery worker --loglevel=info
-    environment:
-      - DATABASE_URL=postgresql://sst_user:sst_password@db:5432/sst_platform
-      - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=your-super-secret-key-change-in-production
-      - ENVIRONMENT=production
-    volumes:
-      - ./uploads:/app/uploads
-      - ./logs:/app/logs
-      - ./certificates:/app/certificates
+      - app_uploads:/app/uploads
+      - app_logs:/app/logs
+      - app_certificates:/app/certificates
+      - app_static:/app/static
+      - app_medical_reports:/app/medical_reports
+      - app_attendance_lists:/app/attendance_lists
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     networks:
       - sst_network
     restart: unless-stopped
-    profiles:
-      - production
-
-  # Celery Beat for scheduled tasks (Optional)
-  scheduler:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: sst_scheduler
-    command: celery -A app.celery beat --loglevel=info
-    environment:
-      - DATABASE_URL=postgresql://sst_user:sst_password@db:5432/sst_platform
-      - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=your-super-secret-key-change-in-production
-      - ENVIRONMENT=production
-    volumes:
-      - ./logs:/app/logs
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - sst_network
-    restart: unless-stopped
-    profiles:
-      - production
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
 
 volumes:
   postgres_data:
     driver: local
-  redis_data:
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/postgres
+  # redis_data removido - Redis no es necesario
+  app_uploads:
     driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/uploads
+  app_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/logs
+  app_certificates:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/certificates
+  app_static:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/static
+  app_medical_reports:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/medical_reports
+  app_attendance_lists:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/attendance_lists
 
 networks:
   sst_network:
