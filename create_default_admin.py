@@ -35,12 +35,12 @@ def create_default_admin():
     
     # Datos predefinidos del administrador
     admin_data = {
-        "email": "admin@sst.com",
+        "email": "bernardino.deaguas@gmail.com",
         "password": "Admin123!",  # Contraseña que cumple con los nuevos requisitos
         "first_name": "Administrador",
         "last_name": "Sistema",
-        "document_number": "00000000",
-        "phone": "3001234567",
+        "document_number": "15172967",
+        "phone": "3008054296",
         "department": "Sistemas",
         "position": "Administrador del Sistema"
     }

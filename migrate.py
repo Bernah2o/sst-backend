@@ -20,6 +20,10 @@ import logging
 import subprocess
 from pathlib import Path
 from typing import Optional
+from dotenv import load_dotenv
+
+# Cargar variables de entorno de producción
+load_dotenv('.env.production')
 
 # Configurar logging
 logging.basicConfig(

@@ -10,17 +10,21 @@ import psycopg2
 from psycopg2 import sql
 from sqlalchemy import create_engine, inspect, MetaData
 from sqlalchemy.orm import sessionmaker
+from dotenv import load_dotenv
 
-# Credenciales de producción
+# Cargar variables de entorno desde .env.production
+load_dotenv('.env.production')
+
+# Credenciales de producción desde variables de entorno
 PROD_DB_CONFIG = {
-    'host': 'dpg-d2oa6ku3jp1c73fghq70-a.oregon-postgres.render.com',
-    'port': 5432,
-    'database': 'bd_sst',
-    'user': 'bd_sst_user',
-    'password': '4p5fIa3xOUbnfzMxxgkFSxMaSNMiHbtp'
+    'host': os.getenv('DB_HOST'),
+    'port': int(os.getenv('DB_PORT', 5432)),
+    'database': os.getenv('DB_NAME'),
+    'user': os.getenv('DB_USER'),
+    'password': os.getenv('DB_PASSWORD')
 }
 
-PROD_DATABASE_URL = "postgresql://bd_sst_user:4p5fIa3xOUbnfzMxxgkFSxMaSNMiHbtp@dpg-d2oa6ku3jp1c73fghq70-a.oregon-postgres.render.com:5432/bd_sst"
+PROD_DATABASE_URL = os.getenv('DATABASE_URL')
 
 def test_connection():
     """Probar conexión a la base de datos de producción"""
