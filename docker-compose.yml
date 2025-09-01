@@ -6,9 +6,9 @@ services:
     image: postgres:17-alpine
     container_name: sst_postgres
     environment:
-      POSTGRES_DB: ${DB_NAME:-sst_platform}
-      POSTGRES_USER: ${DB_USER:-sst_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-sst_password}
+      POSTGRES_DB: ${DB_NAME:-sst}
+      POSTGRES_USER: ${DB_USER:-sstuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -18,7 +18,7 @@ services:
       - sst_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-sst_user} -d ${DB_NAME:-sst_platform}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-sstuser} -d ${DB_NAME:-sst}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -38,7 +38,7 @@ services:
       dockerfile: Dockerfile
     container_name: sst_migrate
     environment:
-      - DATABASE_URL=postgresql://${DB_USER:-sst_user}:${DB_PASSWORD:-sst_password}@db:5432/${DB_NAME:-sst_platform}
+      - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@db:5432/${DB_NAME:-sst}
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     command: python migrate.py upgrade
@@ -62,7 +62,7 @@ services:
     env_file:
       - .env.production
     environment:
-      - DATABASE_URL=postgresql://${DB_USER:-sst_user}:${DB_PASSWORD:-sst_password}@db:5432/${DB_NAME:-sst_platform}
+      - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@db:5432/${DB_NAME:-sst}
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - USE_FIREBASE_STORAGE=${USE_FIREBASE_STORAGE:-true}
@@ -105,7 +105,7 @@ services:
     env_file:
       - .env.production
     environment:
-      - DATABASE_URL=postgresql://${DB_USER:-sst_user}:${DB_PASSWORD:-sst_password}@db:5432/${DB_NAME:-sst_platform}
+      - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@db:5432/${DB_NAME:-sst}
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - USE_FIREBASE_STORAGE=${USE_FIREBASE_STORAGE:-true}
