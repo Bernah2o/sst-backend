@@ -108,8 +108,9 @@ async def create_worker(
     return worker
 
 
-@router.get("/basic", response_model=List[WorkerList])
+@router.get("/basic{trailing_slash:path}", response_model=List[WorkerList])
 async def get_workers_basic(
+    trailing_slash: str = "",
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     search: str = Query(None, description="Buscar por nombre, documento o email"),

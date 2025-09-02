@@ -26,8 +26,9 @@ from app.schemas.common import MessageResponse, PaginatedResponse
 router = APIRouter()
 
 
-@router.get("/dashboard", response_model=DashboardStatsResponse)
+@router.get("/dashboard{trailing_slash:path}", response_model=DashboardStatsResponse)
 async def get_dashboard_stats(
+    trailing_slash: str = "",
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:
@@ -99,8 +100,9 @@ async def get_dashboard_stats(
     )
 
 
-@router.get("/courses", response_model=PaginatedResponse[CourseReportResponse])
+@router.get("/courses{trailing_slash:path}", response_model=PaginatedResponse[CourseReportResponse])
 async def get_course_reports(
+    trailing_slash: str = "",
     skip: int = 0,
     limit: int = 100,
     course_id: int = None,
@@ -213,8 +215,9 @@ async def get_course_reports(
     )
 
 
-@router.get("/users", response_model=PaginatedResponse[UserReportResponse])
+@router.get("/users{trailing_slash:path}", response_model=PaginatedResponse[UserReportResponse])
 async def get_user_reports(
+    trailing_slash: str = "",
     skip: int = 0,
     limit: int = 100,
     user_id: int = None,
@@ -325,8 +328,9 @@ async def get_user_reports(
     )
 
 
-@router.get("/attendance", response_model=PaginatedResponse[AttendanceReportResponse])
+@router.get("/attendance{trailing_slash:path}", response_model=PaginatedResponse[AttendanceReportResponse])
 async def get_attendance_reports(
+    trailing_slash: str = "",
     skip: int = 0,
     limit: int = 100,
     course_id: int = None,

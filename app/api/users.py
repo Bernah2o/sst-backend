@@ -19,8 +19,9 @@ security = HTTPBearer()
 router = APIRouter()
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me{trailing_slash:path}", response_model=UserResponse)
 async def get_current_user_profile(
+    trailing_slash: str = "",
     current_user: User = Depends(get_current_active_user)
 ) -> Any:
     """
@@ -227,8 +228,9 @@ async def create_user(
     return user
 
 
-@router.get("/list", response_model=List[UserResponse])
+@router.get("/list{trailing_slash:path}", response_model=List[UserResponse])
 async def get_users_list(
+    trailing_slash: str = "",
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:

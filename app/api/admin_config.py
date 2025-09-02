@@ -24,8 +24,9 @@ from app.models.user import User
 router = APIRouter()
 
 
-@router.get("/categories", response_model=List[str])
+@router.get("/categories{trailing_slash:path}", response_model=List[str])
 async def get_categories(
+    trailing_slash: str = "",
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
@@ -199,8 +200,9 @@ async def delete_config(
 
 
 # Endpoints para Seguridad Social
-@router.get("/seguridad-social", response_model=List[SeguridadSocialSchema])
+@router.get("/seguridad-social{trailing_slash:path}", response_model=List[SeguridadSocialSchema])
 def get_seguridad_social(
+    trailing_slash: str = "",
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     is_active: Optional[bool] = Query(None, description="Filtrar por estado activo"),
@@ -224,8 +226,9 @@ def get_seguridad_social(
     return query.offset(skip).limit(limit).all()
 
 
-@router.get("/seguridad-social/active", response_model=List[SeguridadSocialSchema])
+@router.get("/seguridad-social/active{trailing_slash:path}", response_model=List[SeguridadSocialSchema])
 def get_active_seguridad_social(
+    trailing_slash: str = "",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -233,9 +236,10 @@ def get_active_seguridad_social(
     return db.query(SeguridadSocial).filter(SeguridadSocial.is_active == True).all()
 
 
-@router.get("/seguridad-social/tipo/{tipo}", response_model=List[SeguridadSocialSchema])
+@router.get("/seguridad-social/tipo/{tipo}{trailing_slash:path}", response_model=List[SeguridadSocialSchema])
 def get_seguridad_social_by_tipo(
     tipo: str,
+    trailing_slash: str = "",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -248,9 +252,10 @@ def get_seguridad_social_by_tipo(
     ).all()
 
 
-@router.get("/seguridad-social/{seguridad_social_id}", response_model=SeguridadSocialSchema)
+@router.get("/seguridad-social/{seguridad_social_id}{trailing_slash:path}", response_model=SeguridadSocialSchema)
 def get_seguridad_social_by_id(
     seguridad_social_id: int,
+    trailing_slash: str = "",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -353,8 +358,9 @@ def delete_seguridad_social(
 
 
 # Endpoints específicos para cargos bajo /admin/config/cargos
-@router.get("/cargos", response_model=List[CargoSchema])
+@router.get("/cargos{trailing_slash:path}", response_model=List[CargoSchema])
 def get_cargos(
+    trailing_slash: str = "",
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     activo: Optional[bool] = Query(None, description="Filtrar por estado activo"),
@@ -556,8 +562,9 @@ async def seed_initial_data(
 
 
 # Programas endpoints
-@router.get("/programas", response_model=List[ProgramasSchema])
+@router.get("/programas{trailing_slash:path}", response_model=List[ProgramasSchema])
 async def get_all_programas(
+    trailing_slash: str = "",
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):

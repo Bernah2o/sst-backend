@@ -118,9 +118,11 @@ async def create_course(
     return course
 
 
-@router.get("/user", response_model=List[UserCourseResponse])
+@router.get("/user{trailing_slash:path}", response_model=List[UserCourseResponse])
 async def get_user_courses(
-    current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)
+    trailing_slash: str = "",
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
 ) -> Any:
     """
     Get courses for current user (only published courses)
