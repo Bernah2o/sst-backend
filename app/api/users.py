@@ -143,10 +143,11 @@ async def get_users(
 
 
 @router.post("/", response_model=UserResponse)
+@router.post("", response_model=UserResponse)
 async def create_user(
     user_data: UserCreateByAdmin,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ) -> Any:
     """
     Create a new user (admin only)

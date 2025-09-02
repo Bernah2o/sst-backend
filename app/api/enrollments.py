@@ -874,6 +874,7 @@ async def get_enrollments(
 
 
 @router.post("/")
+@router.post("")
 async def create_enrollment(
     enrollment_data: EnrollmentCreate,
     current_user: User = Depends(get_current_active_user),

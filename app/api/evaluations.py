@@ -140,6 +140,7 @@ async def get_evaluation_stats(
 
 
 @router.post("/", response_model=EvaluationResponse)
+@router.post("", response_model=EvaluationResponse)
 async def create_evaluation(
     evaluation_data: EvaluationCreate,
     current_user: User = Depends(get_current_active_user),

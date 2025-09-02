@@ -71,6 +71,7 @@ async def get_workers(
 
 
 @router.post("/", response_model=WorkerSchema)
+@router.post("", response_model=WorkerSchema)
 async def create_worker(
     worker_data: WorkerCreate,
     db: Session = Depends(get_db),

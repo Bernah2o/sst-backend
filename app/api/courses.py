@@ -95,10 +95,11 @@ async def get_courses(
 
 
 @router.post("/", response_model=CourseResponse)
+@router.post("", response_model=CourseResponse)
 async def create_course(
     course_data: CourseCreate,
-    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ) -> Any:
     """
     Create new course (admin and capacitador roles only)

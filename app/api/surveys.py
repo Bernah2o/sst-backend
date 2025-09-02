@@ -101,6 +101,7 @@ async def get_surveys(
 
 
 @router.post("/", response_model=SurveyResponse)
+@router.post("", response_model=SurveyResponse)
 async def create_survey(
     survey_data: SurveyCreate,
     current_user: User = Depends(get_current_active_user),

@@ -125,6 +125,7 @@ async def get_occupational_exams(
 
 
 @router.post("/", response_model=OccupationalExamResponse)
+@router.post("", response_model=OccupationalExamResponse)
 async def create_occupational_exam(
     exam_data: OccupationalExamCreate,
     db: Session = Depends(get_db),
