@@ -551,9 +551,10 @@ async def root():
 @app.get("/health", response_model=HealthCheck, tags=["health"])
 async def health_check() -> Any:
     """Health check endpoint"""
+    from datetime import datetime
     return HealthCheck(
         status="healthy",
-        timestamp=time.time(),
+        timestamp=datetime.utcnow(),
         version=settings.app_version,
         database="connected",
         services={
