@@ -269,9 +269,10 @@ def get_seguridad_social_by_id(
     return seguridad_social
 
 
-@router.post("/seguridad-social", response_model=SeguridadSocialSchema, status_code=status.HTTP_201_CREATED)
+@router.post("/seguridad-social{trailing_slash:path}", response_model=SeguridadSocialSchema, status_code=status.HTTP_201_CREATED)
 def create_seguridad_social(
     seguridad_social_data: SeguridadSocialCreate,
+    trailing_slash: str = "",
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
@@ -297,10 +298,11 @@ def create_seguridad_social(
     return seguridad_social
 
 
-@router.put("/seguridad-social/{seguridad_social_id}", response_model=SeguridadSocialSchema)
+@router.put("/seguridad-social/{seguridad_social_id}{trailing_slash:path}", response_model=SeguridadSocialSchema)
 def update_seguridad_social(
     seguridad_social_id: int,
     seguridad_social_data: SeguridadSocialUpdate,
+    trailing_slash: str = "",
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
@@ -338,9 +340,10 @@ def update_seguridad_social(
     return seguridad_social
 
 
-@router.delete("/seguridad-social/{seguridad_social_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/seguridad-social/{seguridad_social_id}{trailing_slash:path}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_seguridad_social(
     seguridad_social_id: int,
+    trailing_slash: str = "",
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
@@ -413,9 +416,10 @@ def get_cargo(
     return cargo
 
 
-@router.post("/cargos", response_model=CargoSchema, status_code=status.HTTP_201_CREATED)
+@router.post("/cargos{trailing_slash:path}", response_model=CargoSchema, status_code=status.HTTP_201_CREATED)
 def create_cargo(
     cargo_data: CargoCreate,
+    trailing_slash: str = "",
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
@@ -437,10 +441,11 @@ def create_cargo(
     return cargo
 
 
-@router.put("/cargos/{cargo_id}", response_model=CargoSchema)
+@router.put("/cargos/{cargo_id}{trailing_slash:path}", response_model=CargoSchema)
 def update_cargo(
     cargo_id: int,
     cargo_data: CargoUpdate,
+    trailing_slash: str = "",
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
@@ -477,9 +482,10 @@ def update_cargo(
     return cargo
 
 
-@router.delete("/cargos/{cargo_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/cargos/{cargo_id}{trailing_slash:path}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_cargo(
     cargo_id: int,
+    trailing_slash: str = "",
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
@@ -600,9 +606,10 @@ async def get_programa(
     return programa
 
 
-@router.post("/programas", response_model=ProgramasSchema, status_code=status.HTTP_201_CREATED)
+@router.post("/programas{trailing_slash:path}", response_model=ProgramasSchema, status_code=status.HTTP_201_CREATED)
 async def create_programa(
     programa: ProgramasCreate,
+    trailing_slash: str = "",
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
@@ -626,10 +633,11 @@ async def create_programa(
     return db_programa
 
 
-@router.put("/programas/{programa_id}", response_model=ProgramasSchema)
+@router.put("/programas/{programa_id}{trailing_slash:path}", response_model=ProgramasSchema)
 async def update_programa(
     programa_id: int,
     programa_update: ProgramasUpdate,
+    trailing_slash: str = "",
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
@@ -668,9 +676,10 @@ async def update_programa(
     return db_programa
 
 
-@router.delete("/programas/{programa_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/programas/{programa_id}{trailing_slash:path}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_programa(
     programa_id: int,
+    trailing_slash: str = "",
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
