@@ -21,7 +21,7 @@ from app.scheduler import start_scheduler, stop_scheduler
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, settings.log_level.upper()),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
