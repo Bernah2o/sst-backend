@@ -21,6 +21,7 @@ router = APIRouter()
 
 
 @router.get("/", response_model=PaginatedResponse[OccupationalExamResponse])
+@router.get("", response_model=PaginatedResponse[OccupationalExamResponse])
 async def get_occupational_exams(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),

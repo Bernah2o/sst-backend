@@ -89,6 +89,7 @@ async def change_password(
 
 
 @router.get("/", response_model=PaginatedResponse[UserResponse])
+@router.get("", response_model=PaginatedResponse[UserResponse])
 async def get_users(
     skip: int = 0,
     limit: int = 100,

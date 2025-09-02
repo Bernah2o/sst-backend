@@ -25,6 +25,7 @@ router = APIRouter()
 
 
 @router.get("/", response_model=PaginatedResponse[SurveyListResponse])
+@router.get("", response_model=PaginatedResponse[SurveyListResponse])
 async def get_surveys(
     skip: int = 0,
     limit: int = 100,

@@ -27,6 +27,7 @@ router = APIRouter()
 
 
 @router.get("/", response_model=PaginatedResponse[EvaluationListResponse])
+@router.get("", response_model=PaginatedResponse[EvaluationListResponse])
 async def get_evaluations(
     skip: int = 0,
     limit: int = 100,

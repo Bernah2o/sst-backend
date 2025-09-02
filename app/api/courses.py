@@ -37,6 +37,7 @@ router = APIRouter()
 
 
 @router.get("/", response_model=PaginatedResponse[CourseListResponse])
+@router.get("", response_model=PaginatedResponse[CourseListResponse])
 async def get_courses(
     skip: int = 0,
     limit: int = 100,
