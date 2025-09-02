@@ -138,8 +138,7 @@ LICENSE
 # Scripts
 scripts/
 
-# Nginx config
-nginx.conf
+
 
 # Init SQL
 init.sql
