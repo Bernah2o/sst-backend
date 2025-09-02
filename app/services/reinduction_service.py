@@ -20,6 +20,7 @@ from app.schemas.reinduction import (
 )
 from app.models.notification import Notification, NotificationType, NotificationPriority
 from app.utils.email import send_email
+from app.config import settings
 
 
 
@@ -330,7 +331,7 @@ class ReinductionService:
                 'is_overdue': days_left < 0,
                 'notification_type': notification_type,
                 'course_name': course_name,
-                'system_url': 'http://localhost:8000'  # TODO: Obtener de configuración
+                'system_url': settings.react_app_api_url
             }
             
             # Determinar asunto del email

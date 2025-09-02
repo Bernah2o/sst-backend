@@ -17,6 +17,7 @@ from app.schemas.notification import (
     NotificationTemplateResponse, BulkNotificationCreate, NotificationPreferences
 )
 from app.schemas.common import MessageResponse, PaginatedResponse
+from app.config import settings
 
 router = APIRouter()
 
@@ -491,7 +492,7 @@ async def send_notification(
             "notification_type": notification.notification_type.value,
             "priority": notification.priority.value,
             "created_at": notification.created_at.strftime('%d/%m/%Y %H:%M'),
-            "system_url": "http://localhost:3000"  # TODO: Get from settings
+            "system_url": settings.react_app_api_url
         }
     )
     

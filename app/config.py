@@ -24,10 +24,13 @@ class Settings:
         self.debug = os.getenv("DEBUG", "false").lower() == "true"
         
         # Configuración de CORS
-        self.allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+        self.allowed_origins = os.getenv("ALLOWED_ORIGINS", os.getenv("REACT_APP_API_URL")).split(",")
         
         # Configuración del frontend
-        self.frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+        self.frontend_url = os.getenv("FRONTEND_URL", os.getenv("REACT_APP_API_URL"))
+        
+        # Configuración de la API del frontend
+        self.react_app_api_url = os.getenv("REACT_APP_API_URL")
         
         # Configuración de directorios
         self.certificate_output_dir = os.getenv("CERTIFICATE_OUTPUT_DIR", "certificates")

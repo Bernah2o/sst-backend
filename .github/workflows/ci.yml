@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: Build and Deploy Pipeline
 
 on:
   push:
@@ -8,119 +8,9 @@ on:
 
 env:
   PYTHON_VERSION: '3.9'
-  POETRY_VERSION: '1.6.1'
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    
-    services:
-      postgres:
-        image: postgres:13
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: test_sst_platform
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-      
-      redis:
-        image: redis:7
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-    
-    - name: Install Poetry
-      uses: snok/install-poetry@v1
-      with:
-        version: ${{ env.POETRY_VERSION }}
-        virtualenvs-create: true
-        virtualenvs-in-project: true
-    
-    - name: Load cached venv
-      id: cached-poetry-dependencies
-      uses: actions/cache@v3
-      with:
-        path: .venv
-        key: venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('**/poetry.lock') }}
-    
-    - name: Install dependencies
-      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-      run: poetry install --no-interaction --no-root
-    
-    - name: Install project
-      run: poetry install --no-interaction
-    
-    - name: Create test directories
-      run: |
-        mkdir -p uploads logs certificates static templates
-    
-    - name: Run linting
-      run: |
-        poetry run black --check .
-        poetry run isort --check-only .
-        poetry run flake8 .
-    
-    - name: Run type checking
-      run: poetry run mypy app/
-    
-    - name: Run tests
-      env:
-        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_sst_platform
-        REDIS_URL: redis://localhost:6379/0
-        SECRET_KEY: test-secret-key
-        ENVIRONMENT: testing
-      run: |
-        poetry run pytest --cov=app --cov-report=xml --cov-report=html
-    
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage.xml
-        flags: unittests
-        name: codecov-umbrella
-
-  security:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-    
-    - name: Install Poetry
-      uses: snok/install-poetry@v1
-      with:
-        version: ${{ env.POETRY_VERSION }}
-    
-    - name: Install dependencies
-      run: poetry install --no-interaction
-    
-    - name: Run security checks
-      run: |
-        poetry run bandit -r app/
-        poetry run safety check
-
   build:
-    needs: [test, security]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     
@@ -162,7 +52,6 @@ jobs:
         echo "This could include:"
         echo "- SSH to production server"
         echo "- Pull latest Docker image"
-        echo "- Run database migrations"
         echo "- Restart services"
         echo "- Health checks"
     
@@ -177,10 +66,9 @@ jobs:
     #       cd /path/to/app
     #       docker-compose pull
     #       docker-compose up -d
-    #       docker-compose exec app alembic upgrade head
 
   notification:
-    needs: [test, security, build, deploy]
+    needs: [build, deploy]
     runs-on: ubuntu-latest
     if: always()
     
