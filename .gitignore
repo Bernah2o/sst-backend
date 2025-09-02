@@ -7,6 +7,11 @@ data/
 # C extensions
 *.so
 
+# Database backup script and backups
+backup_production.py
+backups/
+*.sql
+
 # Distribution / packaging
 .Python
 build/
