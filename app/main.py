@@ -173,11 +173,11 @@ app.add_middleware(RequestLoggingMiddleware)
 
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["*"] if settings.debug else [
-        "sst-backend-upmch1-c65c26-5-252-53-108.traefik.me",
-        "localhost",
+    allowed_hosts=[
+        "api.dh2o.com.co",   # tu backend
+        "sst.dh2o.com.co",   # tu frontend
+        "localhost",         # útil si haces pruebas locales
         "127.0.0.1",
-        "0.0.0.0"
     ]
 )
 
