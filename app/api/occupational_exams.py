@@ -1,5 +1,5 @@
 from typing import Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from datetime import date, timedelta
@@ -10,6 +10,7 @@ from app.models.user import User
 from app.models.worker import Worker
 from app.models.occupational_exam import OccupationalExam
 from app.models.cargo import Cargo
+from app.models.notification_acknowledgment import NotificationAcknowledgment
 from app.schemas.occupational_exam import (
     OccupationalExamCreate,
     OccupationalExamUpdate,
@@ -397,3 +398,79 @@ async def get_exam_certificate(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
         detail="Generación de certificados no implementada"
     )
+
+
+@router.post("/acknowledge-notification/{exam_id}", response_model=MessageResponse)
+async def acknowledge_exam_notification(
+    exam_id: int,
+    worker_id: int = Query(..., description="ID del trabajador"),
+    notification_type: str = Query(..., description="Tipo de notificación: first_notification, reminder, overdue"),
+    request: Request = None,
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Procesar confirmación de recepción de notificación de examen ocupacional.
+    Este endpoint es llamado cuando el trabajador hace clic en "Recibido" en el email.
+    """
+    # Verificar que el examen existe
+    exam = db.query(OccupationalExam).filter(OccupationalExam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Examen ocupacional no encontrado"
+        )
+    
+    # Verificar que el trabajador existe y está asociado al examen
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trabajador no encontrado"
+        )
+    
+    if exam.worker_id != worker_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El examen no pertenece al trabajador especificado"
+        )
+    
+    # Verificar que no existe ya una confirmación para este examen y tipo de notificación
+    existing_ack = db.query(NotificationAcknowledgment).filter(
+        and_(
+            NotificationAcknowledgment.worker_id == worker_id,
+            NotificationAcknowledgment.occupational_exam_id == exam_id,
+            NotificationAcknowledgment.notification_type == notification_type
+        )
+    ).first()
+    
+    if existing_ack:
+        return {
+            "message": "La notificación ya había sido confirmada anteriormente",
+            "success": True
+        }
+    
+    # Obtener información de la request para auditoría
+    ip_address = None
+    user_agent = None
+    if request:
+        ip_address = request.client.host if request.client else None
+        user_agent = request.headers.get("user-agent")
+    
+    # Crear el registro de confirmación
+    acknowledgment = NotificationAcknowledgment(
+        worker_id=worker_id,
+        occupational_exam_id=exam_id,
+        notification_type=notification_type,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        stops_notifications=True
+    )
+    
+    db.add(acknowledgment)
+    db.commit()
+    db.refresh(acknowledgment)
+    
+    return {
+        "message": f"Confirmación de recepción registrada exitosamente. No recibirá más notificaciones de tipo '{notification_type}' para este examen.",
+        "success": True
+    }

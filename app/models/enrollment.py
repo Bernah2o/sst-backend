@@ -68,6 +68,9 @@ class Enrollment(Base):
         self.progress = 100.0
         if grade is not None:
             self.grade = grade
+        
+        # Trigger automatic reinduction status update if this is a reinduction course
+        self._check_and_update_reinduction_status()
 
     def start_enrollment(self):
         """Start the enrollment"""
@@ -92,3 +95,29 @@ class Enrollment(Base):
         self.progress = max(0.0, min(100.0, progress))
         if self.progress >= 95.0 and self.status == EnrollmentStatus.ACTIVE:  # Auto-complete at 95% progress
             self.complete_enrollment()
+    
+    def _check_and_update_reinduction_status(self):
+        """Check and update reinduction status when enrollment is completed"""
+        from app.models.course import CourseType
+        from app.models.reinduction import ReinductionRecord, ReinductionStatus
+        from app.database import SessionLocal
+        
+        # Only process if this is a reinduction course
+        if self.course and self.course.course_type == CourseType.REINDUCTION:
+            db = SessionLocal()
+            try:
+                # Find the corresponding reinduction record
+                record = db.query(ReinductionRecord).filter(
+                    ReinductionRecord.enrollment_id == self.id
+                ).first()
+                
+                if record and record.status != ReinductionStatus.COMPLETED:
+                    record.status = ReinductionStatus.COMPLETED
+                    record.completed_date = self.completed_at.date() if self.completed_at else datetime.utcnow().date()
+                    db.commit()
+                    print(f"Reinducción automáticamente marcada como completada para el registro {record.id}")
+            except Exception as e:
+                print(f"Error actualizando estado de reinducción: {str(e)}")
+                db.rollback()
+            finally:
+                db.close()

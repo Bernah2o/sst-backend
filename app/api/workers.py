@@ -34,6 +34,7 @@ from app.models.enrollment import Enrollment
 from app.models.course import Course
 from app.models.survey import Survey, UserSurvey
 from app.models.evaluation import Evaluation, UserEvaluation
+from app.models.reinduction import ReinductionRecord
 
 router = APIRouter()
 
@@ -942,3 +943,55 @@ async def export_workers_to_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+@router.get("/{worker_id}/reinduction-history")
+async def get_worker_reinduction_history(
+    worker_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """
+    Obtener historial de reinducciones de un trabajador específico
+    """
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trabajador no encontrado"
+        )
+    
+    # Verificar permisos: el trabajador solo puede ver su propio historial
+    # Los supervisores y admins pueden ver cualquier historial
+    if (current_user.role.value not in ["admin", "supervisor"] and 
+        current_user.worker and current_user.worker.id != worker_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tiene permisos para ver este historial"
+        )
+    
+    # Obtener registros de reinducción ordenados por fecha descendente
+    reinduction_records = db.query(ReinductionRecord).filter(
+        ReinductionRecord.worker_id == worker_id
+    ).order_by(ReinductionRecord.created_at.desc()).all()
+    
+    # Formatear respuesta
+    history = []
+    for record in reinduction_records:
+        history.append({
+            "id": record.id,
+            "year": record.year,
+            "status": record.status.value,
+            "due_date": record.due_date.isoformat() if record.due_date else None,
+            "completion_date": record.completion_date.isoformat() if record.completion_date else None,
+            "created_at": record.created_at.isoformat() if record.created_at else None,
+            "updated_at": record.updated_at.isoformat() if record.updated_at else None
+        })
+    
+    return {
+        "worker_id": worker_id,
+        "worker_name": worker.full_name,
+        "total_records": len(history),
+        "reinduction_history": history
+    }

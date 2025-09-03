@@ -252,6 +252,20 @@
                     🔗 Acceder al Sistema ROWL
                 </a>
                 {% endif %}
+                
+                <!-- Botón de confirmación de recepción -->
+                {% if api_base_url and exam_id and worker_id %}
+                <div style="margin: 20px 0; padding: 15px; background-color: #f0f8ff; border-radius: 8px; border-left: 4px solid #2196f3;">
+                    <h4 style="margin-top: 0; color: #2196f3;">✅ Confirmar Recepción</h4>
+                    <p style="margin: 10px 0; font-size: 14px;">Si ya recibió esta notificación y desea dejar de recibir recordatorios para este examen, haga clic en el botón de abajo:</p>
+                    <a href="{{ api_base_url }}/api/occupational-exams/acknowledge-notification/{{ exam_id }}?worker_id={{ worker_id }}&notification_type={% if days_until_exam <= 0 %}overdue{% elif days_until_exam <= 7 %}reminder{% else %}first_notification{% endif %}" 
+                       class="cta-button" 
+                       style="background: linear-gradient(135deg, #2196f3, #42a5f5); font-size: 14px; padding: 10px 20px;">
+                        ✅ Marcar como Recibido
+                    </a>
+                    <p style="margin: 10px 0 0 0; font-size: 12px; color: #666;">Al hacer clic, confirmará que recibió esta notificación y no recibirá más recordatorios del mismo tipo para este examen.</p>
+                </div>
+                {% endif %}
             </div>
 
             <div style="background-color: #e3f2fd; padding: 15px; border-radius: 8px; margin: 20px 0;">

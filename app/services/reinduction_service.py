@@ -242,11 +242,12 @@ class ReinductionService:
         if not config.auto_notification_enabled:
             return {"sent": 0, "errors": 0}
         
-        # Buscar registros que necesitan notificación
+        # Buscar registros que necesitan notificación (excluir los completados)
         records = self.db.query(ReinductionRecord).join(Worker).filter(
             and_(
                 Worker.is_active == True,
-                ReinductionRecord.status.in_([ReinductionStatus.PENDING, ReinductionStatus.SCHEDULED])
+                ReinductionRecord.status.in_([ReinductionStatus.PENDING, ReinductionStatus.SCHEDULED]),
+                ReinductionRecord.status != ReinductionStatus.COMPLETED  # No enviar notificaciones para reinducciones completadas
             )
         ).all()
         

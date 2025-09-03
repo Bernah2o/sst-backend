@@ -17,6 +17,7 @@ from .session import Session
 from .audit import AuditLog
 from .enrollment import Enrollment, EnrollmentStatus
 from .user_progress import UserMaterialProgress, UserModuleProgress, MaterialProgressStatus
+from .notification_acknowledgment import NotificationAcknowledgment
 
 __all__ = [
     "User",
@@ -68,4 +69,5 @@ __all__ = [
     "Absenteeism",
     "EventMonth",
     "EventType",
+    "NotificationAcknowledgment",
 ]

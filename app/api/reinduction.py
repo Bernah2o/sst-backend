@@ -332,6 +332,41 @@ def run_manual_check_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/test-completion-webhook")
+def test_completion_webhook(
+    enrollment_id: int,
+    current_user: User = Depends(require_supervisor_or_admin),
+    db: Session = Depends(get_db)
+):
+    """Endpoint para probar la actualización automática de reinducción al completar curso"""
+    try:
+        from app.models.enrollment import Enrollment
+        
+        # Buscar la inscripción
+        enrollment = db.query(Enrollment).filter(Enrollment.id == enrollment_id).first()
+        if not enrollment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Enrollment not found"
+            )
+        
+        # Simular completar la inscripción
+        enrollment.complete_enrollment()
+        db.commit()
+        
+        return {
+            "message": "Webhook de completación ejecutado exitosamente",
+            "enrollment_id": enrollment_id,
+            "status": "completed"
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error ejecutando webhook de completación: {str(e)}"
+        )
+
+
 @router.post("/send-anniversary-notification/{worker_id}")
 def send_anniversary_notification(
     worker_id: int,

@@ -10,6 +10,7 @@ from app.models.worker import Worker
 from app.models.occupational_exam import OccupationalExam
 from app.models.cargo import Cargo
 from app.models.user import User
+from app.models.notification_acknowledgment import NotificationAcknowledgment
 from app.services.email_service import EmailService
 from app.config import settings
 import logging
@@ -153,6 +154,35 @@ Sistema de Gestión SST
                 logger.warning(f"No se encontró email para el trabajador {worker.full_name}")
                 return False
             
+            # Verificar si el trabajador ya confirmó la recepción de notificaciones para este examen
+            # Buscar el examen más reciente del trabajador
+            latest_exam = self.db.query(OccupationalExam).filter(
+                OccupationalExam.worker_id == worker.id
+            ).order_by(OccupationalExam.exam_date.desc()).first()
+            
+            if latest_exam:
+                # Determinar el tipo de notificación según el estado
+                if status == "vencido":
+                    notification_type = "overdue"
+                elif days_until_exam <= 7:
+                    notification_type = "reminder"
+                else:
+                    notification_type = "first_notification"
+                
+                # Verificar si ya existe una confirmación para este tipo de notificación
+                existing_acknowledgment = self.db.query(NotificationAcknowledgment).filter(
+                    and_(
+                        NotificationAcknowledgment.worker_id == worker.id,
+                        NotificationAcknowledgment.occupational_exam_id == latest_exam.id,
+                        NotificationAcknowledgment.notification_type == notification_type,
+                        NotificationAcknowledgment.stops_notifications == True
+                    )
+                ).first()
+                
+                if existing_acknowledgment:
+                    logger.info(f"Notificación omitida para {worker.full_name} - Ya confirmó recepción de {notification_type}")
+                    return True  # Retornamos True porque no es un error, simplemente no se envía
+            
             # Determinar el asunto según el estado
             if status == "sin_examenes":
                 subject = "🚨 Examen Médico Ocupacional Requerido"
@@ -184,7 +214,11 @@ Sistema de Gestión SST
                 "current_date": datetime.now().strftime('%d/%m/%Y'),
                 "current_time": datetime.now().strftime('%H:%M:%S'),
                 "system_url": getattr(settings, 'FRONTEND_URL', None),
-                "contact_email": getattr(settings, 'SUPPORT_EMAIL', None)
+                "contact_email": getattr(settings, 'SUPPORT_EMAIL', None),
+                # Variables para el botón de confirmación
+                "api_base_url": getattr(settings, 'API_BASE_URL', None),
+                "exam_id": latest_exam.id if latest_exam else None,
+                "worker_id": worker.id
             }
             
             # Renderizar la plantilla
