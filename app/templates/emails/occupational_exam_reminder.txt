@@ -1,0 +1,41 @@
+RECORDATORIO DE EXAMEN MÉDICO OCUPACIONAL
+
+Estimado/a {{ worker_name }},
+
+Le recordamos que tiene un examen médico ocupacional {% if days_until_exam <= 0 %}VENCIDO{% elif days_until_exam <= 7 %}PRÓXIMO A VENCER{% else %}PROGRAMADO{% endif %}.
+
+INFORMACIÓN DEL TRABAJADOR:
+- Nombre: {{ worker_name }}
+- Documento: {{ worker_document }}
+- Cargo: {{ worker_position }}
+{% if worker_department %}- Departamento: {{ worker_department }}{% endif %}
+
+INFORMACIÓN DEL EXAMEN:
+- Tipo: {{ exam_type_label }}
+- Fecha programada: {{ exam_date }}
+{% if medical_center %}- Centro médico: {{ medical_center }}{% endif %}
+- Estado: {% if days_until_exam <= 0 %}VENCIDO por {{ days_until_exam|abs }} día{% if days_until_exam|abs != 1 %}s{% endif %}{% elif days_until_exam <= 7 %}URGENTE ({{ days_until_exam }} día{% if days_until_exam != 1 %}s{% endif %} restantes){% else %}PENDIENTE ({{ days_until_exam }} día{% if days_until_exam != 1 %}s{% endif %} restantes){% endif %}
+{% if next_exam_date %}- Próximo examen: {{ next_exam_date }}{% endif %}
+
+ACCIONES REQUERIDAS:
+{% if days_until_exam <= 0 %}- Contacte inmediatamente al área de SST para reprogramar
+- Coordine una nueva fecha lo antes posible{% else %}- Confirme su asistencia al examen
+- Prepare la documentación requerida
+- Llegue puntualmente a la cita{% endif %}
+- Mantenga actualizada su información de contacto
+
+INFORMACIÓN IMPORTANTE:
+- Los exámenes médicos ocupacionales son OBLIGATORIOS según la normativa vigente
+- Su periodicidad depende del nivel de riesgo de su cargo
+- El incumplimiento puede afectar su vinculación laboral
+- Para dudas o reprogramación, contacte al área de SST
+
+{% if system_url %}Acceda al sistema: {{ system_url }}{% endif %}
+
+Atentamente,
+ROWL - Sistema de Gestión de Seguridad y Salud en el Trabajo
+
+---
+Este es un mensaje automático del sistema. Por favor, no responda a este correo.
+Generado el {{ current_date }} a las {{ current_time }}
+{% if contact_email %}Para soporte técnico: {{ contact_email }}{% endif %}

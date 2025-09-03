@@ -433,7 +433,7 @@ class ReinductionService:
                 'due_date': record.due_date.strftime('%d/%m/%Y'),
                 'notification_type': 'anniversary',
                 'course_name': course_name,
-                'system_url': 'http://localhost:8000'  # TODO: Obtener de configuración
+                'system_url': settings.react_app_api_url  
             }
             
             # Enviar email de aniversario

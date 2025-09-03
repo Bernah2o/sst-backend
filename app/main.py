@@ -18,6 +18,10 @@ from app.config import settings
 from app.database import create_tables
 from app.schemas.common import HealthCheck
 from app.scheduler import start_scheduler, stop_scheduler
+from app.scheduler.occupational_exam_scheduler import (
+    start_occupational_exam_scheduler,
+    stop_occupational_exam_scheduler
+)
 
 # Configure logging
 logging.basicConfig(
@@ -54,12 +58,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         pass
     
+    # Start occupational exam scheduler
+    try:
+        start_occupational_exam_scheduler()
+    except Exception as e:
+        pass
+    
     yield
     
     # Shutdown
     # Stop scheduler
     try:
         stop_scheduler()
+    except Exception as e:
+        pass
+    
+    # Stop occupational exam scheduler
+    try:
+        stop_occupational_exam_scheduler()
     except Exception as e:
         pass
 

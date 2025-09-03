@@ -2,13 +2,14 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
-from datetime import date
+from datetime import date, timedelta
 
 from app.database import get_db
 from app.dependencies import get_current_user, require_admin, require_supervisor_or_admin
 from app.models.user import User
 from app.models.worker import Worker
 from app.models.occupational_exam import OccupationalExam
+from app.models.cargo import Cargo
 from app.schemas.occupational_exam import (
     OccupationalExamCreate,
     OccupationalExamUpdate,
@@ -69,9 +70,16 @@ async def get_occupational_exams(
     for exam in exams:
         worker = exam.worker
         
-        # Calcular fecha del próximo examen (1 año después)
-        from datetime import timedelta
-        next_exam_date = exam.exam_date + timedelta(days=365)
+        # Calcular fecha del próximo examen basado en la periodicidad del cargo
+        cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
+        periodicidad = cargo.periodicidad_emo if cargo else "anual"
+        
+        if periodicidad == "semestral":
+            next_exam_date = exam.exam_date + timedelta(days=180)  # 6 meses
+        elif periodicidad == "bianual":
+            next_exam_date = exam.exam_date + timedelta(days=730)  # 2 años
+        else:  # anual por defecto
+            next_exam_date = exam.exam_date + timedelta(days=365)  # 1 año
         
         # Mapear medical_aptitude_concept a result legacy
         result_mapping = {
@@ -125,6 +133,66 @@ async def get_occupational_exams(
     }
 
 
+@router.get("/calculate-next-exam-date/{worker_id}")
+async def calculate_next_exam_date(
+    worker_id: int,
+    exam_date: str = Query(..., description="Fecha del examen en formato YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> Any:
+    """
+    Calcular la fecha del próximo examen basado en el trabajador y fecha del examen
+    """
+    try:
+        from datetime import datetime
+        
+        # Obtener información del trabajador
+        worker = db.query(Worker).filter(Worker.id == worker_id).first()
+        if not worker:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Trabajador no encontrado"
+            )
+        
+        # Obtener cargo del trabajador
+        cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
+        
+        # Convertir la fecha del examen
+        try:
+            exam_date_obj = datetime.strptime(exam_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Formato de fecha inválido. Use YYYY-MM-DD"
+            )
+        
+        # Calcular fecha del próximo examen basado en la periodicidad del cargo
+        periodicidad = cargo.periodicidad_emo if cargo else "anual"
+        
+        if periodicidad == "semestral":
+            next_exam_date = exam_date_obj + timedelta(days=180)  # 6 meses
+        elif periodicidad == "bianual":
+            next_exam_date = exam_date_obj + timedelta(days=730)  # 2 años
+        else:  # anual por defecto
+            next_exam_date = exam_date_obj + timedelta(days=365)  # 1 año
+        
+        return {
+            "next_exam_date": next_exam_date.isoformat(),
+            "periodicidad": periodicidad,
+            "worker_name": worker.full_name,
+            "worker_position": worker.position,
+            "cargo_name": cargo.nombre_cargo if cargo else "No especificado"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error calculando fecha del próximo examen: {str(e)}"
+        )
+
+
 @router.post("/", response_model=OccupationalExamResponse)
 @router.post("", response_model=OccupationalExamResponse)
 async def create_occupational_exam(
@@ -149,9 +217,16 @@ async def create_occupational_exam(
     db.commit()
     db.refresh(exam)
     
-    # Calcular fecha del próximo examen (1 año después)
-    from datetime import timedelta
-    next_exam_date = exam.exam_date + timedelta(days=365)
+    # Calcular fecha del próximo examen basado en la periodicidad del cargo
+    cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
+    periodicidad = cargo.periodicidad_emo if cargo else "anual"
+    
+    if periodicidad == "semestral":
+        next_exam_date = exam.exam_date + timedelta(days=180)  # 6 meses
+    elif periodicidad == "bianual":
+        next_exam_date = exam.exam_date + timedelta(days=730)  # 2 años
+    else:  # anual por defecto
+        next_exam_date = exam.exam_date + timedelta(days=365)  # 1 año
     
     # Mapear medical_aptitude_concept a result legacy
     result_mapping = {

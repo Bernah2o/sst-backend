@@ -84,6 +84,7 @@ async def get_notifications(
 @router.post("/", response_model=NotificationResponse)
 async def create_notification(
     notification_data: NotificationCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:
@@ -112,6 +113,33 @@ async def create_notification(
     db.add(notification)
     db.commit()
     db.refresh(notification)
+    
+    # If notification type is EMAIL, send email automatically
+    if notification.notification_type == NotificationType.EMAIL and user.email:
+        from app.utils.email import send_email
+        
+        background_tasks.add_task(
+            send_email,
+            recipient=user.email,
+            subject=notification.title,
+            body=notification.message,
+            template="notification",
+            context={
+                "user_name": f"{user.first_name} {user.last_name}",
+                "title": notification.title,
+                "message": notification.message,
+                "notification_type": notification.notification_type.value,
+                "priority": notification.priority.value,
+                "created_at": notification.created_at.strftime('%d/%m/%Y %H:%M'),
+                "system_url": settings.react_app_api_url
+            }
+        )
+        
+        # Update notification status to SENT
+        notification.status = NotificationStatus.SENT
+        notification.sent_at = datetime.now()
+        db.commit()
+        db.refresh(notification)
     
     return notification
 
@@ -527,6 +555,7 @@ async def get_unread_count(
 @router.post("/bulk", response_model=MessageResponse)
 async def create_bulk_notifications(
     bulk_data: BulkNotificationCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:
@@ -600,6 +629,49 @@ async def create_bulk_notifications(
     
     db.add_all(notifications)
     db.commit()
+    
+    # If notification type is EMAIL, send emails automatically
+    if bulk_data.notification_type == NotificationType.EMAIL:
+        from app.utils.email import send_email
+        
+        # Get users with emails for sending
+        users_with_emails = db.query(User).filter(
+            and_(
+                User.id.in_(target_user_ids),
+                User.email.isnot(None),
+                User.email != ""
+            )
+        ).all()
+        
+        # Send emails and update notification status
+        for user in users_with_emails:
+            # Find the corresponding notification
+            notification = next((n for n in notifications if n.user_id == user.id), None)
+            if notification:
+                background_tasks.add_task(
+                    send_email,
+                    recipient=user.email,
+                    subject=bulk_data.title,
+                    body=bulk_data.message,
+                    template="notification",
+                    context={
+                        "user_name": f"{user.first_name} {user.last_name}",
+                        "title": bulk_data.title,
+                        "message": bulk_data.message,
+                        "notification_type": bulk_data.notification_type.value,
+                        "priority": bulk_data.priority.value,
+                        "created_at": notification.created_at.strftime('%d/%m/%Y %H:%M'),
+                        "system_url": settings.react_app_api_url
+                    }
+                )
+                
+                # Update notification status to SENT
+                notification.status = NotificationStatus.SENT
+                notification.sent_at = datetime.now()
+        
+        db.commit()
+        
+        return MessageResponse(message=f"Created {len(notifications)} notifications, {len(users_with_emails)} emails sent")
     
     return MessageResponse(message=f"Created {len(notifications)} notifications")
 
@@ -984,6 +1056,57 @@ async def update_notification_preferences(
     """
     Update notification preferences for current user
     """
-    # This would typically update a preferences table
+    # Update user preferences logic here
+    return preferences
+
+
+@router.post("/send-test-email", response_model=MessageResponse)
+async def send_test_email(
+    recipient_email: str,
+    title: str = "Email de Prueba - Sistema SST",
+    message: str = "Este es un email de prueba del sistema de notificaciones SST.",
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Send test email to any email address (admin only)
+    """
+    if current_user.role.value != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    from app.utils.email import send_email
+    
+    try:
+        background_tasks.add_task(
+            send_email,
+            recipient=recipient_email,
+            subject=title,
+            body=message,
+            template="notification",
+            context={
+                "user_name": "Usuario de Prueba",
+                "title": title,
+                "message": message,
+                "notification_type": "email",
+                "priority": "normal",
+                "created_at": datetime.now().strftime('%d/%m/%Y %H:%M'),
+                "system_url": settings.react_app_api_url
+            }
+        )
+        
+        return {
+            "success": True,
+            "message": f"Email de prueba enviado exitosamente a {recipient_email}"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al enviar email: {str(e)}"
+        )
+    
     # For now, just return the provided preferences
     return preferences

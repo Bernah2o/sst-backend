@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recordatorio de Examen Médico Ocupacional</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #1976d2, #42a5f5);
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
+        }
+        .header .subtitle {
+            margin: 10px 0 0 0;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px 20px;
+        }
+        .alert-box {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            border-left: 4px solid #f39c12;
+        }
+        .alert-box.urgent {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            border-left-color: #e74c3c;
+        }
+        .worker-info {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            border-left: 4px solid #1976d2;
+        }
+        .exam-details {
+            background-color: #e8f5e8;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            border-left: 4px solid #4caf50;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            padding: 5px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        .label {
+            font-weight: 600;
+            color: #555;
+        }
+        .value {
+            color: #333;
+        }
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #4caf50, #66bb6a);
+            color: white;
+            padding: 12px 30px;
+            text-decoration: none;
+            border-radius: 25px;
+            font-weight: 600;
+            margin: 20px 0;
+            text-align: center;
+            transition: transform 0.2s;
+        }
+        .cta-button:hover {
+            transform: translateY(-2px);
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            border-top: 1px solid #eee;
+        }
+        .logo {
+            width: 60px;
+            height: 60px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            margin: 0 auto 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .status-pending {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .status-urgent {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .status-overdue {
+            background-color: #f5c6cb;
+            color: #721c24;
+        }
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            .content {
+                padding: 20px 15px;
+            }
+            .info-row {
+                flex-direction: column;
+            }
+            .info-row .label {
+                margin-bottom: 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">🏥</div>
+            <h1>ROWL - Sistema de Gestión SST</h1>
+            <p class="subtitle">Recordatorio de Examen Médico Ocupacional</p>
+        </div>
+        
+        <div class="content">
+            <div class="alert-box {% if days_until_exam <= 0 %}urgent{% endif %}">
+                <strong>⚠️ Atención Requerida</strong><br>
+                {% if days_until_exam > 0 %}
+                    Su examen médico ocupacional está programado para <strong>{{ exam_date }}</strong> 
+                    (en {{ days_until_exam }} día{% if days_until_exam != 1 %}s{% endif %}).
+                {% elif days_until_exam == 0 %}
+                    Su examen médico ocupacional está programado para <strong>HOY</strong>.
+                {% else %}
+                    Su examen médico ocupacional estaba programado para <strong>{{ exam_date }}</strong> 
+                    y está <strong>VENCIDO</strong> por {{ days_until_exam|abs }} día{% if days_until_exam|abs != 1 %}s{% endif %}.
+                {% endif %}
+            </div>
+
+            <div class="worker-info">
+                <h3 style="margin-top: 0; color: #1976d2;">👤 Información del Trabajador</h3>
+                <div class="info-row">
+                    <span class="label">Nombre:</span>
+                    <span class="value">{{ worker_name }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Documento:</span>
+                    <span class="value">{{ worker_document }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Cargo:</span>
+                    <span class="value">{{ worker_position }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Departamento:</span>
+                    <span class="value">{{ worker_department|default('No especificado') }}</span>
+                </div>
+            </div>
+
+            <div class="exam-details">
+                <h3 style="margin-top: 0; color: #4caf50;">🩺 Detalles del Examen</h3>
+                <div class="info-row">
+                    <span class="label">Tipo de Examen:</span>
+                    <span class="value">{{ exam_type_label }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Fecha Programada:</span>
+                    <span class="value">{{ exam_date }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Centro Médico:</span>
+                    <span class="value">{{ medical_center|default('Por definir') }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Estado:</span>
+                    <span class="value">
+                        <span class="status-badge {% if days_until_exam <= 0 %}status-overdue{% elif days_until_exam <= 7 %}status-urgent{% else %}status-pending{% endif %}">
+                            {% if days_until_exam <= 0 %}
+                                Vencido
+                            {% elif days_until_exam <= 7 %}
+                                Urgente
+                            {% else %}
+                                Pendiente
+                            {% endif %}
+                        </span>
+                    </span>
+                </div>
+                {% if next_exam_date %}
+                <div class="info-row">
+                    <span class="label">Próximo Examen:</span>
+                    <span class="value">{{ next_exam_date }}</span>
+                </div>
+                {% endif %}
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+                <h3 style="color: #333;">📋 Acciones Requeridas</h3>
+                <p style="margin: 15px 0;">Por favor, tome las siguientes acciones:</p>
+                <ul style="text-align: left; max-width: 400px; margin: 0 auto;">
+                    {% if days_until_exam <= 0 %}
+                    <li><strong>Contacte inmediatamente</strong> al área de SST para reprogramar</li>
+                    <li>Coordine una nueva fecha lo antes posible</li>
+                    {% else %}
+                    <li>Confirme su asistencia al examen</li>
+                    <li>Prepare la documentación requerida</li>
+                    <li>Llegue puntualmente a la cita</li>
+                    {% endif %}
+                    <li>Mantenga actualizada su información de contacto</li>
+                </ul>
+                
+                {% if system_url %}
+                <a href="{{ system_url }}" class="cta-button">
+                    🔗 Acceder al Sistema ROWL
+                </a>
+                {% endif %}
+            </div>
+
+            <div style="background-color: #e3f2fd; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <h4 style="margin-top: 0; color: #1976d2;">💡 Información Importante</h4>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li>Los exámenes médicos ocupacionales son <strong>obligatorios</strong> según la normativa vigente</li>
+                    <li>Su periodicidad depende del nivel de riesgo de su cargo</li>
+                    <li>El incumplimiento puede afectar su vinculación laboral</li>
+                    <li>Para dudas o reprogramación, contacte al área de SST</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p><strong>ROWL - Sistema de Gestión de Seguridad y Salud en el Trabajo</strong></p>
+            <p>Este es un mensaje automático del sistema. Por favor, no responda a este correo.</p>
+            <p>Generado el {{ current_date }} a las {{ current_time }}</p>
+            {% if contact_email %}
+            <p>Para soporte técnico: <a href="mailto:{{ contact_email }}">{{ contact_email }}</a></p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

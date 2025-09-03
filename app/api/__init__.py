@@ -22,6 +22,7 @@ from .permissions import router as permissions_router
 from .absenteeism import router as absenteeism_router
 from .audit import router as audit_router
 from .occupational_exams import router as occupational_exams_router
+from .occupational_exam_notifications import router as occupational_exam_notifications_router
 
 
 
@@ -50,3 +51,5 @@ api_router.include_router(permissions_router, prefix="/permissions", tags=["perm
 api_router.include_router(absenteeism_router, prefix="/absenteeism", tags=["absenteeism"])
 api_router.include_router(audit_router, prefix="/audit", tags=["audit"])
 api_router.include_router(occupational_exams_router, prefix="/occupational-exams", tags=["occupational-exams"])
+api_router.include_router(occupational_exam_notifications_router, prefix="/occupational-exam-notifications", tags=["occupational-exam-notifications"])
+api_router.include_router(occupational_exam_notifications_router, prefix="/exam-scheduler", tags=["exam-scheduler"])
