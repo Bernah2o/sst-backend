@@ -61,7 +61,7 @@ class OccupationalExamNotificationService:
             )
             .join(Cargo, Worker.position == Cargo.nombre_cargo)
             .outerjoin(latest_exams, Worker.id == latest_exams.c.worker_id)
-            .filter(Worker.activo == True)
+            .filter(Worker.is_active == True)
         )
         
         workers_with_pending_exams = []
@@ -285,7 +285,7 @@ Sistema de Gestión SST
         today = date.today()
         
         # Trabajadores activos
-        total_workers = self.db.query(Worker).filter(Worker.activo == True).count()
+        total_workers = self.db.query(Worker).filter(Worker.is_active == True).count()
         
         # Trabajadores sin exámenes
         workers_without_exams = (
@@ -293,7 +293,7 @@ Sistema de Gestión SST
             .outerjoin(OccupationalExam)
             .filter(
                 and_(
-                    Worker.activo == True,
+                    Worker.is_active == True,
                     OccupationalExam.id.is_(None)
                 )
             )
@@ -306,7 +306,7 @@ Sistema de Gestión SST
             .join(Worker)
             .filter(
                 and_(
-                    Worker.activo == True,
+                    Worker.is_active == True,
                     OccupationalExam.exam_date < today - timedelta(days=365)
                 )
             )

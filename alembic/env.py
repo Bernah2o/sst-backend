@@ -1,13 +1,27 @@
 import asyncio
+import os
 from logging.config import fileConfig
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
+from dotenv import load_dotenv
 
 # Import your models here
 from app.database import Base
 from app.models import *  # Import all models
+
+# Configurar entorno antes de importar settings
+env_file = os.getenv('ENV_FILE')
+if env_file and os.path.exists(env_file):
+    load_dotenv(env_file, override=True)
+    print(f"[ALEMBIC] Usando configuracion de: {env_file}")
+elif os.path.exists('.env.local'):
+    load_dotenv('.env.local', override=True)
+    print("[ALEMBIC] Usando configuracion de: .env.local")
+else:
+    print("[ALEMBIC] Usando configuracion por defecto")
+
 from app.config import settings
 
 # this is the Alembic Config object, which provides
@@ -15,6 +29,7 @@ from app.config import settings
 config = context.config
 
 # Override sqlalchemy.url with the one from settings
+print(f"[ALEMBIC] Conectando a: {settings.database_url}")
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
 # Interpret the config file for Python logging.

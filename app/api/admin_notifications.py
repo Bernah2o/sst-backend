@@ -27,7 +27,7 @@ from app.schemas.admin_notifications import (
     NotificationTypeEnum
 )
 from app.services.occupational_exam_notifications import OccupationalExamNotificationService
-from app.schemas.common import MessageResponse
+from app.schemas.common import MessageResponse, PaginatedResponse
 
 router = APIRouter(prefix="/admin/notifications", tags=["Admin Notifications"])
 
@@ -70,7 +70,7 @@ def determine_exam_status(next_exam_date: date, last_exam_date: Optional[date]) 
         return ExamStatus.AL_DIA
 
 
-@router.get("/exam-notifications", response_model=List[WorkerExamNotificationResponse])
+@router.get("/exam-notifications", response_model=PaginatedResponse[WorkerExamNotificationResponse])
 async def get_exam_notifications(
     filters: NotificationFilters = Depends(),
     skip: int = Query(0, ge=0),
@@ -82,117 +82,150 @@ async def get_exam_notifications(
     Obtiene la lista de trabajadores y el estado de sus notificaciones de exámenes ocupacionales.
     Permite filtrar y paginar los resultados.
     """
-    verify_admin_permissions(current_user)
-    
-    # Subconsulta para obtener el último examen de cada trabajador
-    latest_exams_subq = (
-        db.query(
-            OccupationalExam.worker_id,
-            func.max(OccupationalExam.exam_date).label('last_exam_date')
+    try:
+        verify_admin_permissions(current_user)
+        
+        # Subconsulta para obtener el último examen de cada trabajador
+        latest_exams_subq = (
+            db.query(
+                OccupationalExam.worker_id,
+                func.max(OccupationalExam.exam_date).label('last_exam_date')
+            )
+            .group_by(OccupationalExam.worker_id)
+            .subquery()
         )
-        .group_by(OccupationalExam.worker_id)
-        .subquery()
-    )
-    
-    # Consulta principal
-    query = (
-        db.query(
-            Worker,
-            Cargo,
-            latest_exams_subq.c.last_exam_date,
-            User.email
+        
+        # Consulta principal
+        query = (
+            db.query(
+                Worker,
+                Cargo,
+                latest_exams_subq.c.last_exam_date,
+                User.email
+            )
+            .join(Cargo, Worker.position == Cargo.nombre_cargo)
+            .outerjoin(latest_exams_subq, Worker.id == latest_exams_subq.c.worker_id)
+            .outerjoin(User, Worker.document_number == User.document_number)
+            .filter(Worker.is_active == True)
         )
-        .join(Cargo, Worker.position == Cargo.nombre_cargo)
-        .outerjoin(latest_exams_subq, Worker.id == latest_exams_subq.c.worker_id)
-        .outerjoin(User, Worker.document_number == User.document_number)
-        .filter(Worker.is_active == True)
-    )
-    
-    # Aplicar filtros
-    if filters.position:
-        query = query.filter(Worker.position.ilike(f"%{filters.position}%"))
-    
-    if filters.has_email is not None:
-        if filters.has_email:
-            query = query.filter(User.email.isnot(None))
-        else:
-            query = query.filter(User.email.is_(None))
-    
-    results = query.offset(skip).limit(limit).all()
-    
-    notifications = []
-    today = date.today()
-    
-    for worker, cargo, last_exam_date, email in results:
-        # Calcular próxima fecha de examen
-        if last_exam_date:
-            next_exam_date = calculate_next_exam_date(last_exam_date, cargo.periodicidad_emo or "anual")
-        else:
-            next_exam_date = today  # Necesita examen inmediatamente
         
-        days_until_exam = (next_exam_date - today).days
-        exam_status = determine_exam_status(next_exam_date, last_exam_date)
+        # Aplicar filtros
+        if filters.position:
+            query = query.filter(Worker.position.ilike(f"%{filters.position}%"))
         
-        # Aplicar filtros de estado
-        if filters.exam_status and exam_status != filters.exam_status:
-            continue
+        if filters.has_email is not None:
+            if filters.has_email:
+                query = query.filter(User.email.isnot(None))
+            else:
+                query = query.filter(User.email.is_(None))
         
-        if filters.days_until_exam_min is not None and days_until_exam < filters.days_until_exam_min:
-            continue
+        # Obtener el total de registros antes de aplicar paginación
+        total = query.count()
         
-        if filters.days_until_exam_max is not None and days_until_exam > filters.days_until_exam_max:
-            continue
+        # Aplicar paginación
+        results = query.offset(skip).limit(limit).all()
         
-        # Obtener información de confirmaciones
-        acknowledgments = db.query(NotificationAcknowledgment).filter(
-            NotificationAcknowledgment.worker_id == worker.id
-        ).all()
+        notifications = []
+        today = date.today()
         
-        acknowledgment_count = len(acknowledgments)
-        notification_types_sent = list(set([ack.notification_type for ack in acknowledgments]))
-        last_acknowledgment = max(acknowledgments, key=lambda x: x.acknowledged_at) if acknowledgments else None
-        
-        # Determinar si se puede enviar notificación
-        can_send_notification = email is not None
-        
-        # Determinar estado de notificación
-        if acknowledgments and any(ack.stops_notifications for ack in acknowledgments):
-            notification_status = NotificationStatus.ACKNOWLEDGED
-        elif exam_status == ExamStatus.AL_DIA:
-            notification_status = NotificationStatus.PENDING
-        else:
-            notification_status = NotificationStatus.PENDING
-        
-        # Aplicar filtro de confirmación
-        if filters.acknowledged is not None:
-            has_acknowledgment = acknowledgment_count > 0
-            if filters.acknowledged != has_acknowledgment:
+        for worker, cargo, last_exam_date, email in results:
+            # Calcular próxima fecha de examen
+            if last_exam_date:
+                next_exam_date = calculate_next_exam_date(last_exam_date, cargo.periodicidad_emo or "anual")
+            else:
+                next_exam_date = today  # Necesita examen inmediatamente
+            
+            days_until_exam = (next_exam_date - today).days
+            exam_status = determine_exam_status(next_exam_date, last_exam_date)
+            
+            # Aplicar filtros de estado
+            if filters.exam_status and exam_status != filters.exam_status:
                 continue
-        
-        # Aplicar filtro de estado de notificación
-        if filters.notification_status and notification_status != filters.notification_status:
-            continue
-        
-        notifications.append(WorkerExamNotificationResponse(
-            worker_id=worker.id,
-            worker_name=worker.full_name,
-            worker_document=worker.document_number,
-            worker_position=worker.position,
-            worker_email=email,
-            last_exam_date=last_exam_date,
-            next_exam_date=next_exam_date,
-            days_until_exam=days_until_exam,
-            exam_status=exam_status,
-            periodicidad=cargo.periodicidad_emo or "anual",
-            notification_status=notification_status,
-            last_notification_sent=last_acknowledgment.acknowledged_at if last_acknowledgment else None,
-            acknowledgment_count=acknowledgment_count,
-            can_send_notification=can_send_notification,
-            notification_types_sent=notification_types_sent,
-            last_acknowledgment_date=last_acknowledgment.acknowledged_at if last_acknowledgment else None
-        ))
+            
+            if filters.days_until_exam_min is not None and days_until_exam < filters.days_until_exam_min:
+                continue
+            
+            if filters.days_until_exam_max is not None and days_until_exam > filters.days_until_exam_max:
+                continue
+            
+            # Obtener información de confirmaciones
+            acknowledgments = db.query(NotificationAcknowledgment).filter(
+                NotificationAcknowledgment.worker_id == worker.id
+            ).all()
+            
+            acknowledgment_count = len(acknowledgments)
+            notification_types_sent = list(set([ack.notification_type for ack in acknowledgments])) if acknowledgments else []
+            last_acknowledgment = max(acknowledgments, key=lambda x: x.acknowledged_at) if acknowledgments else None
+            
+            # Determinar si se puede enviar notificación
+            can_send_notification = email is not None
+            
+            # Determinar estado de notificación
+            if acknowledgments and any(ack.stops_notifications for ack in acknowledgments):
+                notification_status = NotificationStatus.ACKNOWLEDGED
+            elif exam_status == ExamStatus.AL_DIA:
+                notification_status = NotificationStatus.PENDING
+            else:
+                notification_status = NotificationStatus.PENDING
+            
+            # Aplicar filtro de confirmación
+            if filters.acknowledged is not None:
+                has_acknowledgment = acknowledgment_count > 0
+                if filters.acknowledged != has_acknowledgment:
+                    continue
+            
+            # Aplicar filtro de estado de notificación
+            if filters.notification_status and notification_status != filters.notification_status:
+                continue
+            
+            notifications.append(WorkerExamNotificationResponse(
+                worker_id=worker.id,
+                worker_name=worker.full_name,
+                worker_document=worker.document_number,
+                worker_position=worker.position,
+                worker_email=email,
+                last_exam_date=last_exam_date,
+                next_exam_date=next_exam_date,
+                days_until_exam=days_until_exam,
+                exam_status=exam_status,
+                periodicidad=cargo.periodicidad_emo or "anual",
+                notification_status=notification_status,
+                last_notification_sent=last_acknowledgment.acknowledged_at if last_acknowledgment else None,
+                acknowledgment_count=acknowledgment_count,
+                can_send_notification=can_send_notification,
+                notification_types_sent=notification_types_sent,
+                last_acknowledgment_date=last_acknowledgment.acknowledged_at if last_acknowledgment else None
+            ))
     
-    return notifications
+        # Calcular información de paginación
+        page = (skip // limit) + 1 if limit > 0 else 1
+        pages = (total + limit - 1) // limit if limit > 0 else 1
+        has_next = skip + limit < total
+        has_prev = skip > 0
+        
+        # Devolver respuesta paginada
+        return PaginatedResponse(
+            items=notifications if notifications is not None else [],
+            total=total,
+            page=page,
+            size=limit,
+            pages=pages,
+            has_next=has_next,
+            has_prev=has_prev
+        )
+    
+    except Exception as e:
+        # En caso de error, devolver respuesta paginada vacía
+        print(f"Error in get_exam_notifications: {str(e)}")
+        return PaginatedResponse(
+            items=[],
+            total=0,
+            page=1,
+            size=limit,
+            pages=0,
+            has_next=False,
+            has_prev=False
+        )
 
 
 @router.post("/send-notifications", response_model=NotificationSendResponse)
