@@ -41,14 +41,18 @@ class WorkerExamNotificationBase(BaseModel):
 
 
 class WorkerExamNotificationResponse(WorkerExamNotificationBase):
-    id: int = Field(alias="worker_id")
     can_send_notification: bool
     notification_types_sent: List[str] = []
     last_acknowledgment_date: Optional[datetime]
     
+    def __init__(self, **data):
+        # Asegurar que notification_types_sent siempre sea una lista
+        if 'notification_types_sent' not in data or data['notification_types_sent'] is None:
+            data['notification_types_sent'] = []
+        super().__init__(**data)
+    
     class Config:
         from_attributes = True
-        allow_population_by_field_name = True
 
 
 class NotificationSendRequest(BaseModel):

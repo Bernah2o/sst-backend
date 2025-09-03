@@ -54,8 +54,9 @@ COPY --chown=appuser:appuser alembic/ /app/alembic/
 COPY --chown=appuser:appuser alembic.ini /app/
 COPY --chown=appuser:appuser logging.conf /app/
 COPY --chown=appuser:appuser migrate.py /app/
-COPY --chown=appuser:appuser create_admin.py /app/
-COPY --chown=appuser:appuser create_default_admin.py /app/
+COPY --chown=appuser:appuser admin.py /app/
+COPY --chown=appuser:appuser backup.py /app/
+COPY --chown=appuser:appuser database.py /app/
 
 # Create necessary directories with proper permissions
 RUN mkdir -p /app/uploads /app/logs /app/certificates /app/static /app/templates \
