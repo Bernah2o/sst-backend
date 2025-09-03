@@ -14,6 +14,7 @@ from app.dependencies import get_current_active_user
 from app.models.user import User
 from app.models.course import Course, CourseModule, CourseMaterial, MaterialType
 from app.schemas.common import MessageResponse
+from app.schemas.course import CourseMaterialResponse
 from app.config import settings
 from app.utils.storage import storage_manager
 
@@ -227,13 +228,13 @@ async def upload_profile_picture(
         )
 
 
-@router.post("/course-material/{module_id}")
+@router.post("/course-material/{module_id}", response_model=CourseMaterialResponse)
 async def upload_course_material(
     module_id: int,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
-) -> Any:
+) -> CourseMaterialResponse:
     """
     Upload course material (PDF or Video) to a specific module
     """
@@ -310,14 +311,20 @@ async def upload_course_material(
         db.commit()
         db.refresh(course_material)
         
-        return {
-            "message": "Course material uploaded successfully",
-            "material_id": course_material.id,
-            "material_type": material_type.value,
-            "file_url": result["url"],
-            "storage_type": result["storage_type"],
-            "title": course_material.title
-        }
+        # Create response manually to avoid serialization issues with SQLAlchemy relationships
+        return CourseMaterialResponse(
+            id=course_material.id,
+            title=course_material.title,
+            description=course_material.description,
+            material_type=course_material.material_type,
+            file_url=course_material.file_url,
+            order_index=course_material.order_index,
+            is_downloadable=course_material.is_downloadable,
+            is_required=course_material.is_required,
+            module_id=course_material.module_id,
+            created_at=course_material.created_at,
+            updated_at=course_material.updated_at
+        )
         
     except Exception as e:
         db.rollback()

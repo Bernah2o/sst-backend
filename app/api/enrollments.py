@@ -874,7 +874,6 @@ async def get_enrollments(
 
 
 @router.post("/")
-@router.post("")
 async def create_enrollment(
     enrollment_data: EnrollmentCreate,
     current_user: User = Depends(get_current_active_user),
@@ -1013,7 +1012,7 @@ async def get_enrollment_stats(
     for status_result, count in stats_query:
         if status_result == EnrollmentStatus.COMPLETED:
             stats["completed_enrollments"] = count
-        elif status_result == EnrollmentStatus.ENROLLED:
+        elif status_result == EnrollmentStatus.ACTIVE:
             stats["active_enrollments"] = count
         elif status_result == EnrollmentStatus.PENDING:
             stats["pending_enrollments"] = count

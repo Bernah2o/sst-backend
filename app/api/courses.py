@@ -522,7 +522,8 @@ async def delete_course_module(
 
 
 @router.get(
-    "/modules/{module_id}/materials"
+    "/modules/{module_id}/materials",
+    response_model=List[CourseMaterialWithProgressResponse]
 )
 async def get_module_materials(
     module_id: int,
@@ -580,19 +581,45 @@ async def get_module_materials(
                 )
             ).first()
             
-            # Convertir a dict para poder añadir campos
-            material_dict = material.__dict__.copy()
-            if "_sa_instance_state" in material_dict:
-                del material_dict["_sa_instance_state"]
+            # Crear objeto de respuesta manualmente
+            material_response = CourseMaterialWithProgressResponse(
+                id=material.id,
+                module_id=material.module_id,
+                title=material.title,
+                description=material.description,
+                material_type=material.material_type,
+                file_url=material.file_url,
+                order_index=material.order_index,
+                is_downloadable=material.is_downloadable,
+                is_required=material.is_required,
+                created_at=material.created_at,
+                updated_at=material.updated_at,
+                completed=material_progress is not None and material_progress.status == MaterialProgressStatus.COMPLETED,
+                progress=material_progress.progress_percentage if material_progress else 0
+            )
             
-            # Añadir información de progreso
-            material_dict["completed"] = material_progress is not None and material_progress.status == MaterialProgressStatus.COMPLETED
-            material_dict["progress"] = material_progress.progress_percentage if material_progress else 0
-            
-            result.append(material_dict)
+            result.append(material_response)
         return result
     
-    return materials
+    # Para administradores, convertir a CourseMaterialResponse
+    result = []
+    for material in materials:
+        material_response = CourseMaterialResponse(
+            id=material.id,
+            module_id=material.module_id,
+            title=material.title,
+            description=material.description,
+            material_type=material.material_type,
+            file_url=material.file_url,
+            order_index=material.order_index,
+            is_downloadable=material.is_downloadable,
+            is_required=material.is_required,
+            created_at=material.created_at,
+            updated_at=material.updated_at
+        )
+        result.append(material_response)
+    
+    return result
 
 
 @router.post("/modules/{module_id}/materials", response_model=CourseMaterialResponse)
@@ -626,7 +653,20 @@ async def create_course_material(
     db.commit()
     db.refresh(material)
 
-    return material
+    # Create response manually to avoid serialization issues with SQLAlchemy relationships
+    return CourseMaterialResponse(
+        id=material.id,
+        title=material.title,
+        description=material.description,
+        material_type=material.material_type,
+        file_url=material.file_url,
+        order_index=material.order_index,
+        is_downloadable=material.is_downloadable,
+        is_required=material.is_required,
+        module_id=material.module_id,
+        created_at=material.created_at,
+        updated_at=material.updated_at
+    )
 
 
 @router.put("/materials/{material_id}", response_model=CourseMaterialResponse)
@@ -659,7 +699,20 @@ async def update_course_material(
     db.commit()
     db.refresh(material)
 
-    return material
+    # Create response manually to avoid serialization issues with SQLAlchemy relationships
+    return CourseMaterialResponse(
+        id=material.id,
+        title=material.title,
+        description=material.description,
+        material_type=material.material_type,
+        file_url=material.file_url,
+        order_index=material.order_index,
+        is_downloadable=material.is_downloadable,
+        is_required=material.is_required,
+        module_id=material.module_id,
+        created_at=material.created_at,
+        updated_at=material.updated_at
+    )
 
 
 @router.delete("/materials/{material_id}", response_model=MessageResponse)
