@@ -106,6 +106,8 @@ async def get_occupational_exams(
             "observations": exam.observations,
             "examining_doctor": exam.examining_doctor,
             "medical_center": exam.medical_center,
+            "supplier_id": exam.supplier_id,
+            "doctor_id": exam.doctor_id,
             "next_exam_date": next_exam_date.isoformat(),
             
             # Campos legacy para compatibilidad con el frontend
@@ -249,6 +251,8 @@ async def create_occupational_exam(
         "observations": exam.observations,
         "examining_doctor": exam.examining_doctor,
         "medical_center": exam.medical_center,
+        "supplier_id": exam.supplier_id,
+        "doctor_id": exam.doctor_id,
         "worker_id": exam.worker_id,
         "worker_name": worker.full_name if worker else None,
         "worker_document": worker.document_number if worker else None,
@@ -309,6 +313,8 @@ async def get_occupational_exam(
         "observations": exam.observations,
         "examining_doctor": exam.examining_doctor,
         "medical_center": exam.medical_center,
+        "supplier_id": exam.supplier_id,
+        "doctor_id": exam.doctor_id,
         "worker_id": exam.worker_id,
         "worker_name": worker.full_name if worker else None,
         "worker_document": worker.document_number if worker else None,

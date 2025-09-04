@@ -60,7 +60,7 @@ class Course(Base):
     order_index = Column(Integer, default=0)  # For ordering courses
 
     # Relationships
-    creator = relationship("User", foreign_keys=[created_by])
+    creator = relationship("User", foreign_keys=[created_by], overlaps="created_courses")
     modules = relationship("CourseModule", back_populates="course", cascade="all, delete-orphan")
     enrollments = relationship("Enrollment", back_populates="course")
     # Note: Other relationships (evaluations, surveys, certificates, attendances) 

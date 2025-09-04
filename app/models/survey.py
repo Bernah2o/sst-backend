@@ -62,7 +62,7 @@ class Survey(Base):
     expires_at = Column(DateTime)
 
     # Relationships
-    creator = relationship("User", foreign_keys=[created_by])
+    creator = relationship("User", foreign_keys=[created_by], overlaps="created_surveys")
     course = relationship("Course", back_populates="surveys")
     questions = relationship("SurveyQuestion", back_populates="survey", cascade="all, delete-orphan")
     user_surveys = relationship("UserSurvey", back_populates="survey")

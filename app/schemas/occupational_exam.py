@@ -16,6 +16,8 @@ class OccupationalExamBase(BaseModel):
     observations: Optional[str] = Field(None, description="Observaciones adicionales")
     examining_doctor: Optional[str] = Field(None, description="Médico que realizó el examen")
     medical_center: Optional[str] = Field(None, description="Centro médico donde se realizó")
+    supplier_id: Optional[int] = Field(None, description="ID del centro médico/proveedor")
+    doctor_id: Optional[int] = Field(None, description="ID del médico examinador")
 
 
 class OccupationalExamCreate(OccupationalExamBase):
@@ -33,6 +35,8 @@ class OccupationalExamUpdate(BaseModel):
     observations: Optional[str] = Field(None, description="Observaciones adicionales")
     examining_doctor: Optional[str] = Field(None, description="Médico que realizó el examen")
     medical_center: Optional[str] = Field(None, description="Centro médico donde se realizó")
+    supplier_id: Optional[int] = Field(None, description="ID del centro médico/proveedor")
+    doctor_id: Optional[int] = Field(None, description="ID del médico examinador")
 
 
 class OccupationalExamResponse(OccupationalExamBase):
