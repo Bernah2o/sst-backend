@@ -1,5 +1,6 @@
 from .user import User, UserRole
 from .custom_role import CustomRole
+from .permission import Permission
 from .worker import Worker, WorkerContract, Gender, DocumentType, ContractType, RiskLevel, BloodType, EPS, AFP, ARL
 from .cargo import Cargo
 from .seguridad_social import SeguridadSocial
@@ -75,4 +76,5 @@ __all__ = [
     "EventMonth",
     "EventType",
     "NotificationAcknowledgment",
+    "Permission",
 ]

@@ -25,6 +25,7 @@ from .occupational_exams import router as occupational_exams_router
 from .occupational_exam_notifications import router as occupational_exam_notifications_router
 from .admin_notifications import router as admin_notifications_router
 from .suppliers import router as suppliers_router
+from .supervisor_dashboard import router as supervisor_dashboard_router
 
 
 
@@ -57,3 +58,4 @@ api_router.include_router(occupational_exam_notifications_router, prefix="/occup
 api_router.include_router(occupational_exam_notifications_router, prefix="/exam-scheduler", tags=["exam-scheduler"])
 api_router.include_router(admin_notifications_router, tags=["admin-notifications"])
 api_router.include_router(suppliers_router, prefix="/suppliers", tags=["suppliers"])
+api_router.include_router(supervisor_dashboard_router, prefix="/supervisor", tags=["supervisor"])

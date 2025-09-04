@@ -207,7 +207,8 @@ class PermissionChecker:
                 "attendance": ["view", "read"],
                 "reports": ["view", "read"],
                 "users": ["view", "read"],
-                "notifications": ["view", "read"]
+                "notifications": ["view", "read"],
+                "suppliers": ["view", "read"]
             },
             UserRole.EMPLOYEE: {
                 "dashboard": ["view"],
