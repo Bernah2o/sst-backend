@@ -136,6 +136,7 @@ class Worker(Base):
     country = Column(String(100), default="Colombia")
     department = Column(String(100))
     city = Column(String(100))
+    direccion = Column(String(255))  # Dirección completa del trabajador
     
     # Información Médica
     blood_type = Column(SQLEnum(BloodType))

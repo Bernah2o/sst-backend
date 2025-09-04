@@ -43,7 +43,7 @@ class DatabaseManager:
         self.env = env
         self.project_root = Path(__file__).parent
         self.alembic_ini = self.project_root / "alembic.ini"
-        self.env_file = f'.env.{env}' if env != 'local' else '.env.local'
+        self.env_file = '.env' if env == 'local' else '.env.production'
         
         # Cargar variables de entorno
         if os.path.exists(self.env_file):
@@ -382,7 +382,7 @@ class DatabaseManager:
         print("=" * 50)
         
         # Verificar archivos de configuración
-        config_files = ['.env.local', '.env.production']
+        config_files = ['.env', '.env.production']
         print("📁 Archivos de configuración:")
         for config in config_files:
             status = "✅" if os.path.exists(config) else "❌"
@@ -391,7 +391,7 @@ class DatabaseManager:
         # Verificar estado de Alembic para cada entorno
         print("\n🔧 Estado de migraciones:")
         for env in ['local', 'production']:
-            env_file = f'.env.{env}' if env != 'production' else '.env.production'
+            env_file = '.env' if env == 'local' else '.env.production'
             if os.path.exists(env_file):
                 print(f"\n   📍 Entorno: {env}")
                 temp_manager = DatabaseManager(env)

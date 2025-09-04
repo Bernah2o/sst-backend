@@ -35,7 +35,7 @@ class DatabaseManager:
     def __init__(self, env: str = "local"):
         """Inicializar el gestor de base de datos"""
         self.env = env
-        self.env_file = f".env.{env}"
+        self.env_file = '.env' if env == 'local' else '.env.production'
         self.load_environment()
         
     def load_environment(self):

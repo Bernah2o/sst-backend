@@ -62,7 +62,7 @@ class Evaluation(Base):
 
     # Relationships
     course = relationship("Course", back_populates="evaluations")
-    creator = relationship("User", foreign_keys=[created_by])
+    creator = relationship("User", foreign_keys=[created_by], overlaps="created_evaluations")
     questions = relationship("Question", back_populates="evaluation", cascade="all, delete-orphan")
     user_evaluations = relationship("UserEvaluation", back_populates="evaluation")
 

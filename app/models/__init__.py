@@ -5,6 +5,7 @@ from .cargo import Cargo
 from .seguridad_social import SeguridadSocial
 from .absenteeism import Absenteeism, EventMonth, EventType
 from .occupational_exam import OccupationalExam, ExamType, MedicalAptitude
+from .supplier import Supplier, Doctor, SupplierType, SupplierStatus
 from .seguimiento import Seguimiento, EstadoSeguimiento, ValoracionRiesgo
 from .reinduction import ReinductionRecord, ReinductionStatus
 from .course import Course, CourseModule, CourseMaterial
@@ -36,6 +37,10 @@ __all__ = [
     "OccupationalExam",
     "ExamType",
     "MedicalAptitude",
+    "Supplier",
+    "Doctor",
+    "SupplierType",
+    "SupplierStatus",
     "Course",
     "CourseModule",
     "CourseMaterial",

@@ -42,6 +42,12 @@ class OccupationalExam(Base):
     
     # Información adicional
     observations = Column(Text)  # Observaciones adicionales
+    
+    # Relaciones con Supplier y Doctor (nuevos campos)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
+    doctor_id = Column(Integer, ForeignKey("doctors.id"), nullable=True)
+    
+    # Campos legacy para compatibilidad (se pueden eliminar gradualmente)
     examining_doctor = Column(String(200))  # Médico que realizó el examen
     medical_center = Column(String(200))  # Centro médico donde se realizó
     
@@ -51,6 +57,8 @@ class OccupationalExam(Base):
     
     # Relationships
     worker = relationship("Worker", back_populates="occupational_exams")
+    supplier = relationship("Supplier", back_populates="occupational_exams")
+    doctor = relationship("Doctor", back_populates="occupational_exams")
     
     def __repr__(self):
         return f"<OccupationalExam(id={self.id}, worker_id={self.worker_id}, type='{self.exam_type}', date='{self.exam_date}')>"

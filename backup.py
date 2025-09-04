@@ -34,7 +34,7 @@ class BackupManager:
     def __init__(self, env: str = "local"):
         """Inicializar el sistema de respaldos"""
         self.env = env
-        self.env_file = f".env.{env}"
+        self.env_file = '.env' if env == 'local' else '.env.production'
         self.load_environment()
         self.setup_directories()
         

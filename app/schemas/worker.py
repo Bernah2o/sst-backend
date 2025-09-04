@@ -58,6 +58,7 @@ class WorkerBase(BaseModel):
     country: str = "Colombia"
     department: Optional[str] = None
     city: Optional[str] = None
+    direccion: Optional[str] = None
     blood_type: Optional[BloodType] = None
     observations: Optional[str] = None
     is_active: bool = True
@@ -105,6 +106,7 @@ class WorkerUpdate(BaseModel):
     country: Optional[str] = None
     department: Optional[str] = None
     city: Optional[str] = None
+    direccion: Optional[str] = None
     blood_type: Optional[BloodType] = None
     observations: Optional[str] = None
     is_active: Optional[bool] = None
@@ -146,6 +148,7 @@ class WorkerList(BaseModel):
     email: str
     position: str
     department: Optional[str] = None
+    direccion: Optional[str] = None
     age: int
     risk_level: RiskLevel
     fecha_de_ingreso: Optional[date] = None
