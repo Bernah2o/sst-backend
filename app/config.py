@@ -3,9 +3,9 @@ import os
 from dotenv import load_dotenv
 
 # Cargar variables de entorno según el entorno
-# En desarrollo: .env.local o .env
-# En producción: variables de entorno del servidor
-env_file = '.env.local' if os.path.exists('.env.local') else '.env'
+# En desarrollo: .env
+# En producción: .env.production
+env_file = '.env'
 load_dotenv(env_file)
 
 class Settings:

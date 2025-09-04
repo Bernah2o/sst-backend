@@ -23,7 +23,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Cargar variables de entorno
-load_dotenv('.env.local')
+load_dotenv('.env')
 
 # Agregar el directorio raíz al path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
