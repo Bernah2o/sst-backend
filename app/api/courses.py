@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any, List, Union
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -892,12 +892,13 @@ async def validate_course_requirements(
     }
 
 
-@router.get("/{course_id}/attendance-report", response_model=PaginatedResponse[AttendanceReportResponse])
+@router.get("/{course_id}/attendance-report", response_model=Union[PaginatedResponse, None])
 async def get_course_attendance_report(
     course_id: int,
     skip: int = 0,
     limit: int = 100,
-    format: str = None,
+    format: str = "json",
+    download: bool = Query(False, description="Set to true to download the file with a custom filename"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:
@@ -1054,19 +1055,37 @@ async def get_course_attendance_report(
                 "attendance_percentage": round(attendance_percentage, 2)
             }
             
+            # Prepare template data with the correct structure
+            template_data = {
+                "session": session_data,
+                "attendees": attendees_data
+            }
+            
             # Generate PDF from HTML template
-            pdf_content = converter.generate_attendance_list_pdf(session_data, attendees_data)
+            pdf_content = converter.generate_attendance_list_pdf(template_data)
             
             # Write PDF content to file
             with open(local_filepath, 'wb') as pdf_file:
                 pdf_file.write(pdf_content)
             
-            # Return the PDF file
-            return FileResponse(
-                path=local_filepath,
-                filename=filename,
-                media_type="application/pdf"
-            )
+            # Preparar parámetros de respuesta
+            response_params = {
+                "path": local_filepath,
+                "media_type": "application/pdf"
+            }
+            
+            # Si se solicita descarga, agregar un nombre de archivo personalizado
+            if download:
+                # Limpiar nombre del curso para el nombre de archivo
+                import re
+                clean_course_name = re.sub(r'[^\w\s-]', '', course.title).strip()
+                clean_course_name = re.sub(r'[-\s]+', '_', clean_course_name)
+                
+                # Agregar nombre de archivo a los parámetros de respuesta
+                response_params["filename"] = f"Reporte_Asistencia_{clean_course_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
+            
+            # Devolver respuesta de archivo con los parámetros apropiados
+            return FileResponse(**response_params)
             
         except Exception as e:
             raise HTTPException(

@@ -1,6 +1,6 @@
 from typing import Any, List
 from datetime import datetime, date
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func
@@ -554,16 +554,20 @@ async def generate_certificate_pdf(
         )
 
 
-@router.get("/{certificate_id}/download")
-async def download_certificate(
+# Endpoint eliminado: download_certificate se ha fusionado con get_certificate_pdf
+
+
+@router.get("/{certificate_id}/pdf", response_class=FileResponse)
+async def get_certificate_pdf(
     certificate_id: int,
+    download: bool = Query(False, description="Set to true to download the file with a custom filename"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
-) -> FileResponse:
+) -> Any:
     """
-    Download certificate PDF
+    View or download certificate PDF file
     """
-    # Check if certificate exists
+    # Get certificate
     certificate = db.query(Certificate).filter(Certificate.id == certificate_id).first()
     if not certificate:
         raise HTTPException(
@@ -571,7 +575,7 @@ async def download_certificate(
             detail="Certificate not found"
         )
     
-    # Users can only download their own certificates unless they are admin
+    # Check permissions
     if current_user.role.value not in ["admin", "capacitador"] and certificate.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -585,13 +589,17 @@ async def download_certificate(
             detail="Certificate is not issued yet"
         )
     
-    # Generate PDF if it doesn't exist
-    generator = CertificateGenerator(db)
-    file_path = generator.get_certificate_path(certificate_id)
+    # Get file path from certificate or generate if needed
+    file_path = certificate.file_path
     
-    if not file_path:
+    if not file_path or not os.path.exists(file_path):
         try:
-            file_path = generator.generate_certificate_pdf(certificate_id)
+            # Importante: usar await ya que generate_certificate_pdf es una función asíncrona
+            generator = CertificateGenerator(db)
+            file_path = await generator.generate_certificate_pdf(certificate_id)
+            # Actualizar el certificado para obtener la ruta actualizada
+            db.refresh(certificate)
+            file_path = certificate.file_path
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -604,22 +612,28 @@ async def download_certificate(
             detail="Certificate file not found"
         )
     
-    # Get course information for filename
-    course = db.query(Course).filter(Course.id == certificate.course_id).first()
-    course_name = course.title if course else "Curso"
+    # Prepare response parameters
+    response_params = {
+        "path": file_path,
+        "media_type": "application/pdf"
+    }
     
-    # Clean course name for filename (remove special characters)
-    import re
-    clean_course_name = re.sub(r'[^\w\s-]', '', course_name).strip()
-    clean_course_name = re.sub(r'[-\s]+', '_', clean_course_name)
+    # If download is requested, add a custom filename
+    if download:
+        # Get course information for filename
+        course = db.query(Course).filter(Course.id == certificate.course_id).first()
+        course_name = course.title if course else "Curso"
+        
+        # Clean course name for filename (remove special characters)
+        import re
+        clean_course_name = re.sub(r'[^\w\s-]', '', course_name).strip()
+        clean_course_name = re.sub(r'[-\s]+', '_', clean_course_name)
+        
+        # Add filename to response parameters
+        response_params["filename"] = f"Certificado_{clean_course_name}_{certificate.certificate_number}.pdf"
     
-    # Return file with course name
-    filename = f"Certificado_{clean_course_name}_{certificate.certificate_number}.pdf"
-    return FileResponse(
-        path=file_path,
-        filename=filename,
-        media_type="application/pdf"
-    )
+    # Return file response with appropriate parameters
+    return FileResponse(**response_params)
 
 
 @router.post("/generate-from-course", response_model=CertificateResponse)

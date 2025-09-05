@@ -1,17 +1,11 @@
 from typing import Any, List
 from datetime import datetime, date
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
 import os
 import io
-from reportlab.lib.pagesizes import letter, A4
-from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from app.utils.storage import StorageManager
 from app.config import settings
 
@@ -1050,6 +1044,7 @@ async def bulk_register_attendance(
 @router.get("/sessions/{session_id}/attendance-list")
 async def generate_attendance_list_pdf(
     session_id: int,
+    download: bool = Query(False, description="Set to true to download the file with a custom filename"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -1107,15 +1102,18 @@ async def generate_attendance_list_pdf(
     try:
         # Import HTML to PDF converter
         from app.services.html_to_pdf import HTMLToPDFConverter
-        
-        # Create attendance_lists directory if it doesn't exist
-        attendance_dir = "attendance_lists"
-        if not os.path.exists(attendance_dir):
-            os.makedirs(attendance_dir)
+        from app.utils.storage import storage_manager
+        from app.config import settings
         
         # Generate filename with simple naming to avoid encoding issues
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f"reporte_asistencia_{session_id}_{timestamp}.pdf"
+        
+        # Create attendance_lists directory if it doesn't exist (for local storage)
+        attendance_dir = "attendance_lists"
+        if not os.path.exists(attendance_dir):
+            os.makedirs(attendance_dir)
+        
         local_filepath = os.path.join(attendance_dir, filename)
         
         # Initialize HTML to PDF converter
@@ -1143,31 +1141,56 @@ async def generate_attendance_list_pdf(
             'attendance_percentage': 100  # Por defecto 100% para los presentes
         }
         
+        # Preparar los datos en el formato esperado por la plantilla
+        template_data = {
+            "session": session_data,
+            "attendees": attendees_data
+        }
+        
         # Generar el PDF directamente en memoria
-        pdf_content = converter.generate_attendance_list_pdf(session_data, attendees_data)
+        pdf_content = converter.generate_attendance_list_pdf(template_data)
         
         # Nombre de archivo simplificado para evitar problemas de codificación
         safe_filename = f"reporte_asistencia_{session_id}.pdf"
         
-        # Configurar headers para mejorar compatibilidad con Adobe Acrobat
-        headers = {
-            'Content-Type': 'application/pdf',
-            'Content-Disposition': f'attachment; filename="{safe_filename}"',
-            'Cache-Control': 'public, max-age=0',
-            'Pragma': 'public',
-            'X-Content-Type-Options': 'nosniff',
-            'Accept-Ranges': 'bytes',
-            'Content-Length': str(len(pdf_content))
+        # Determinar si usar Firebase Storage o almacenamiento local
+        use_firebase = getattr(settings, 'USE_FIREBASE_STORAGE', 'False').lower() == 'true'
+        
+        # Ruta en Firebase Storage
+        firebase_path = f"attendance_lists/{filename}"
+        
+        if use_firebase:
+            # Subir a Firebase Storage
+            storage_manager.upload_file(firebase_path, pdf_content, content_type="application/pdf")
+            # Obtener URL pública
+            file_url = storage_manager.get_public_url(firebase_path)
+            # También guardar localmente para poder usar FileResponse
+            with open(local_filepath, "wb") as f:
+                f.write(pdf_content)
+        else:
+            # Guardar el PDF en disco para poder usar FileResponse
+            with open(local_filepath, "wb") as f:
+                f.write(pdf_content)
+            file_url = None
+        
+        # Preparar parámetros de respuesta
+        response_params = {
+            "path": local_filepath,
+            "media_type": "application/pdf"
         }
         
-        # Crear una respuesta con el contenido del PDF directamente desde memoria
-        response = Response(
-            content=pdf_content,
-            media_type='application/pdf',
-            headers=headers
-        )
+        # Si se solicita descarga, agregar un nombre de archivo personalizado
+        if download:
+            # Limpiar nombre del curso para el nombre de archivo
+            import re
+            clean_course_name = re.sub(r'[^\w\s-]', '', course.title).strip()
+            clean_course_name = re.sub(r'[-\s]+', '_', clean_course_name)
+            
+            # Agregar nombre de archivo a los parámetros de respuesta
+            response_params["filename"] = f"Lista_Asistencia_{clean_course_name}_{formatted_date}.pdf"
         
-        return response
+        # Devolver respuesta de archivo con los parámetros apropiados
+        return FileResponse(**response_params)
         
     except Exception as e:
         raise HTTPException(

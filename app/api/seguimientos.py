@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
@@ -229,6 +229,7 @@ def generate_medical_recommendation_pdf(
 @router.get("/{seguimiento_id}/download-medical-recommendation")
 def download_medical_recommendation_pdf(
     seguimiento_id: int,
+    download: bool = Query(True, description="Set to true to download the file with a custom filename"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_supervisor_or_admin)
 ) -> FileResponse:
@@ -248,15 +249,21 @@ def download_medical_recommendation_pdf(
         if not os.path.exists(filepath):
             raise HTTPException(status_code=404, detail="Archivo PDF no encontrado")
         
-        # Obtener información del trabajador para el nombre del archivo
-        worker = db.query(Worker).filter(Worker.id == seguimiento.worker_id).first()
-        filename = f"recomendaciones_medicas_{worker.document_number if worker else seguimiento_id}.pdf"
+        # Preparar parámetros de respuesta
+        response_params = {
+            "path": filepath,
+            "media_type": "application/pdf"
+        }
         
-        return FileResponse(
-            path=filepath,
-            filename=filename,
-            media_type="application/pdf"
-        )
+        # Si se solicita descarga, agregar un nombre de archivo personalizado
+        if download:
+            # Obtener información del trabajador para el nombre del archivo
+            worker = db.query(Worker).filter(Worker.id == seguimiento.worker_id).first()
+            filename = f"recomendaciones_medicas_{worker.document_number if worker else seguimiento_id}.pdf"
+            response_params["filename"] = filename
+        
+        # Devolver respuesta de archivo con los parámetros apropiados
+        return FileResponse(**response_params)
     except Exception as e:
         raise HTTPException(
             status_code=500,

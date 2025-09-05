@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="format-detection" content="date=no">
+    <meta name="format-detection" content="address=no">
+    <meta name="format-detection" content="email=no">
+    <meta name="pdf-engine" content="WeasyPrint">
+    <title>Certificado de Finalización</title>
+    <link rel="stylesheet" href="css/certificate.css">
+</head>
+<body>
+    <div class="certificate">
+        <div class="border-outer"></div>
+        <div class="border-inner"></div>
+        
+        <div class="corner top-left"></div>
+        <div class="corner top-right"></div>
+        <div class="corner bottom-left"></div>
+        <div class="corner bottom-right"></div>
+        
+        <div class="content">
+            <div class="header">
+                <div class="logo-container">
+                    {% if logo_base64 %}
+                    <img class="logo" src="data:image/png;base64,{{ logo_base64 }}" alt="Logo">
+                    {% else %}
+                    <div class="logo-placeholder">Logo no disponible</div>
+                    {% endif %}
+                </div>
+                
+                <h1 class="title">CERTIFICADO DE FINALIZACIÓN</h1>
+                <p class="subtitle">Se certifica que</p>
+                
+                <h2 class="name">{{ user.full_name }}</h2>
+                <p class="document">Cédula de Ciudadanía: {{ user.document_number }}</p>
+                
+                <p class="description">ha completado satisfactoriamente el curso</p>
+                
+                <h3 class="course-title">{{ course.title }}</h3>
+                
+                {% if certificate.score_achieved %}
+                <p class="score">Con una calificación de: {{ certificate.score_achieved }}%</p>
+                {% endif %}
+                
+                <p class="completion-date">Fecha de finalización: {{ completion_date }}</p>
+            </div>
+            
+            <div class="certificate-info">
+                <table>
+                    <tr>
+                        <td class="label">Número de Certificado:</td>
+                        <td class="value">{{ certificate.certificate_number }}</td>
+                    </tr>
+                    <tr>
+                        <td class="label">Fecha de Emisión:</td>
+                        <td class="value">{{ issue_date }}</td>
+                    </tr>
+                    <tr>
+                        <td class="label">Código de Verificación:</td>
+                        <td class="value">{{ certificate.verification_code }}</td>
+                    </tr>
+                    {% if certificate.expiry_date %}
+                    <tr>
+                        <td class="label">Fecha de Expiración:</td>
+                        <td class="value">{{ expiry_date }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+            </div>
+            
+            <div class="signature">
+                <div class="signature-line"></div>
+                <p class="signature-name">Bernardino de Aguas - Profesional en SST</p>
+                <p class="signature-title">Firma Autorizada</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

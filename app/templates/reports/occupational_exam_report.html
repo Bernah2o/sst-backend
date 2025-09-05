@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="format-detection" content="date=no">
+    <meta name="format-detection" content="address=no">
+    <meta name="format-detection" content="email=no">
+    <meta name="pdf-engine" content="WeasyPrint">
+    <title>Reporte de Exámenes Ocupacionales</title>
+    <link rel="stylesheet" href="css/occupational_exam_report.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo-container">
+                {% if logo_base64 %}
+                <img class="logo" src="data:image/png;base64,{{ logo_base64 }}" alt="Logo">
+                {% else %}
+                <div class="logo">Logo no disponible</div>
+                {% endif %}
+            </div>
+            <div class="header-info">
+                <h1>Reporte de Exámenes Ocupacionales</h1>
+                <p>Fecha de generación: {{ generated_at }}</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2 class="section-title">Estadísticas</h2>
+            <div class="stats-container">
+                <div class="stat-box">
+                    <h3>Total Trabajadores</h3>
+                    <p>{{ statistics.total_workers }}</p>
+                </div>
+                <div class="stat-box">
+                    <h3>Exámenes Pendientes</h3>
+                    <p>{{ total_pending }}</p>
+                </div>
+                <div class="stat-box">
+                    <h3>Exámenes Vencidos</h3>
+                    <p>{{ total_overdue }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2 class="section-title">Exámenes Pendientes (Próximos 15 días)</h2>
+            {% if pending_exams %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Trabajador</th>
+                        <th>Documento</th>
+                        <th>Cargo</th>
+                        <th>Último Examen</th>
+                        <th>Próximo Examen</th>
+                        <th>Días Restantes</th>
+                        <th>Tipo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for exam in pending_exams %}
+                    <tr>
+                        <td>{{ exam.worker_name }}</td>
+                        <td>{{ exam.worker_document }}</td>
+                        <td>{{ exam.cargo }}</td>
+                        <td>{{ exam.last_exam_date }}</td>
+                        <td>{{ exam.next_exam_date }}</td>
+                        <td>{{ exam.days_until_exam }}</td>
+                        <td>{{ exam.exam_type }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p>No hay exámenes pendientes en los próximos 15 días.</p>
+            {% endif %}
+        </div>
+
+        <div class="section">
+            <h2 class="section-title">Exámenes Vencidos</h2>
+            {% if overdue_exams %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Trabajador</th>
+                        <th>Documento</th>
+                        <th>Cargo</th>
+                        <th>Último Examen</th>
+                        <th>Fecha Vencimiento</th>
+                        <th>Días Vencido</th>
+                        <th>Tipo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for exam in overdue_exams %}
+                    <tr>
+                        <td>{{ exam.worker_name }}</td>
+                        <td>{{ exam.worker_document }}</td>
+                        <td>{{ exam.cargo }}</td>
+                        <td>{{ exam.last_exam_date }}</td>
+                        <td>{{ exam.next_exam_date }}</td>
+                        <td class="danger">{{ exam.days_overdue }}</td>
+                        <td>{{ exam.exam_type }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p>No hay exámenes vencidos.</p>
+            {% endif %}
+        </div>
+
+        <div class="footer">
+            <p>Este reporte fue generado automáticamente por el Sistema de Gestión de SST.</p>
+        </div>
+    </div>
+</body>
+</html>

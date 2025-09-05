@@ -1,8 +1,10 @@
 from typing import Any, List, Dict
 from datetime import datetime, date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func, extract
+import os
 
 from app.dependencies import get_current_active_user
 from app.database import get_db
@@ -1067,3 +1069,165 @@ async def get_occupational_exam_reports(
         has_next=has_next,
         has_prev=has_prev
     )
+
+
+@router.get("/occupational-exams/pdf")
+async def generate_occupational_exam_report_pdf(
+    worker_id: int = None,
+    exam_type: str = None,
+    start_date: date = None,
+    end_date: date = None,
+    overdue_only: bool = False,
+    download: bool = Query(True, description="Si se debe descargar el archivo"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Generate PDF report for occupational exams
+    """
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    try:
+        # Import HTML to PDF converter and storage manager
+        from app.services.html_to_pdf import HTMLToPDFConverter
+        from app.utils.storage import storage_manager
+        from app.config import settings
+        
+        # Get occupational exam data using the same logic as the get endpoint
+        query = db.query(OccupationalExam).join(Worker)
+        
+        # Apply filters
+        if worker_id:
+            query = query.filter(OccupationalExam.worker_id == worker_id)
+        
+        if exam_type:
+            query = query.filter(OccupationalExam.exam_type == exam_type)
+        
+        if start_date:
+            query = query.filter(OccupationalExam.exam_date >= start_date)
+        
+        if end_date:
+            query = query.filter(OccupationalExam.exam_date <= end_date)
+        
+        # Get all exams (no pagination for PDF)
+        exams = query.all()
+        
+        # Build report data
+        today = date.today()
+        pending_exams = []
+        overdue_exams = []
+        
+        for exam in exams:
+            worker = exam.worker
+            
+            # Calculate next exam date based on exam type
+            if exam.exam_type == ExamType.INGRESO:
+                next_exam_date = exam.exam_date + timedelta(days=365)  # Annual
+            elif exam.exam_type == ExamType.PERIODICO:
+                next_exam_date = exam.exam_date + timedelta(days=365)  # Annual
+            elif exam.exam_type == ExamType.RETIRO:
+                next_exam_date = None  # No next exam for exit exams
+            else:
+                next_exam_date = exam.exam_date + timedelta(days=365)  # Default annual
+            
+            exam_data = {
+                'employee_name': worker.full_name,
+                'document': worker.document_number or 'N/A',
+                'position': worker.position or 'N/A',
+                'exam_type': exam.exam_type.value,
+                'exam_date': exam.exam_date.strftime('%d/%m/%Y'),
+                'due_date': next_exam_date.strftime('%d/%m/%Y') if next_exam_date else 'N/A'
+            }
+            
+            # Categorize exams
+            if next_exam_date:
+                if next_exam_date < today:
+                    overdue_exams.append(exam_data)
+                elif next_exam_date <= today + timedelta(days=30):  # Due within 30 days
+                    pending_exams.append(exam_data)
+        
+        # Filter by overdue only if requested
+        if overdue_only:
+            pending_exams = []
+        
+        # Prepare statistics
+        total_workers = db.query(Worker).count()
+        total_pending = len(pending_exams)
+        total_overdue = len(overdue_exams)
+        up_to_date = total_workers - total_pending - total_overdue
+        
+        statistics = {
+            'total_workers': total_workers,
+            'up_to_date': up_to_date,
+            'pending': total_pending,
+            'overdue': total_overdue
+        }
+        
+        # Prepare template data
+        template_data = {
+            'statistics': statistics,
+            'pending_exams': pending_exams,
+            'overdue_exams': overdue_exams,
+            'total_pending': total_pending,
+            'total_overdue': total_overdue
+        }
+        
+        # Generate filename
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"reporte_examenes_ocupacionales_{timestamp}.pdf"
+        
+        # Create medical_reports directory if it doesn't exist (for local storage)
+        reports_dir = "medical_reports"
+        if not os.path.exists(reports_dir):
+            os.makedirs(reports_dir)
+        
+        local_filepath = os.path.join(reports_dir, filename)
+        
+        # Initialize HTML to PDF converter
+        converter = HTMLToPDFConverter()
+        
+        # Generate PDF content
+        pdf_content = converter.generate_occupational_exam_report_pdf(template_data)
+        
+        # Determine if use Firebase Storage or local storage
+        use_firebase = getattr(settings, 'USE_FIREBASE_STORAGE', 'False').lower() == 'true'
+        
+        # Firebase Storage path
+        firebase_path = f"medical_reports/{filename}"
+        
+        if use_firebase:
+            # Upload to Firebase Storage
+            storage_manager.upload_file(firebase_path, pdf_content, content_type="application/pdf")
+            # Get public URL
+            file_url = storage_manager.get_public_url(firebase_path)
+            # Also save locally for FileResponse
+            with open(local_filepath, "wb") as f:
+                f.write(pdf_content)
+        else:
+            # Save PDF to disk for FileResponse
+            with open(local_filepath, "wb") as f:
+                f.write(pdf_content)
+            file_url = None
+        
+        # Prepare response parameters
+        response_params = {
+            "path": local_filepath,
+            "media_type": "application/pdf"
+        }
+        
+        # Add filename for download if requested
+        if download:
+            response_params["filename"] = f"Reporte_Examenes_Ocupacionales_{datetime.now().strftime('%d_%m_%Y')}.pdf"
+        
+        # Return file response
+        return FileResponse(**response_params)
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al generar el PDF: {str(e)}"
+        )

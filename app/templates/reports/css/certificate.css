@@ -1,0 +1,215 @@
+@page {
+    size: A4 portrait;
+    margin: 0;
+}
+
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    line-height: 1.5;
+    color: #2C3E50;
+    margin: 0;
+    padding: 0;
+    background-color: #fff;
+}
+
+.certificate {
+    position: relative;
+    width: 21cm;
+    height: 29.7cm;
+    margin: 0 auto;
+    padding: 2cm;
+    box-sizing: border-box;
+}
+
+/* Bordes decorativos */
+.border-outer {
+    position: absolute;
+    top: 30px;
+    left: 30px;
+    right: 30px;
+    bottom: 30px;
+    border: 4px solid #2E4FAB;
+    z-index: 1;
+}
+
+.border-inner {
+    position: absolute;
+    top: 45px;
+    left: 45px;
+    right: 45px;
+    bottom: 45px;
+    border: 2px solid #FFD700;
+    z-index: 1;
+}
+
+/* Esquinas decorativas */
+.corner {
+    position: absolute;
+    width: 60px;
+    height: 60px;
+    z-index: 2;
+}
+
+.top-left {
+    top: 60px;
+    left: 60px;
+    border-top: 1px solid #2E4FAB;
+    border-left: 1px solid #2E4FAB;
+}
+
+.top-right {
+    top: 60px;
+    right: 60px;
+    border-top: 1px solid #2E4FAB;
+    border-right: 1px solid #2E4FAB;
+}
+
+.bottom-left {
+    bottom: 60px;
+    left: 60px;
+    border-bottom: 1px solid #2E4FAB;
+    border-left: 1px solid #2E4FAB;
+}
+
+.bottom-right {
+    bottom: 60px;
+    right: 60px;
+    border-bottom: 1px solid #2E4FAB;
+    border-right: 1px solid #2E4FAB;
+}
+
+/* Contenido del certificado */
+.content {
+    position: relative;
+    z-index: 3;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.header {
+    text-align: center;
+}
+
+.logo-container {
+    margin-bottom: 20px;
+}
+
+.logo {
+    max-width: 150px;
+    max-height: 80px;
+}
+
+.logo-placeholder {
+    height: 80px;
+    line-height: 80px;
+    color: #ccc;
+    font-style: italic;
+}
+
+.title {
+    font-size: 36px;
+    color: #2E4FAB;
+    margin: 20px 0 30px;
+    font-weight: bold;
+}
+
+.subtitle {
+    font-size: 16px;
+    color: #2C3E50;
+    margin-bottom: 25px;
+}
+
+.name {
+    font-size: 32px;
+    color: #2E4FAB;
+    margin: 15px 0 25px;
+    font-weight: bold;
+}
+
+.document {
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+
+.description {
+    font-size: 14px;
+    margin-bottom: 6px;
+}
+
+.course-title {
+    font-size: 24px;
+    color: #2E4FAB;
+    margin: 15px 0 30px;
+    font-weight: bold;
+}
+
+.score {
+    font-size: 14px;
+    margin-bottom: 15px;
+}
+
+.completion-date {
+    font-size: 14px;
+    margin-bottom: 20px;
+}
+
+/* Tabla de información del certificado */
+.certificate-info {
+    margin: 20px 0;
+}
+
+table {
+    width: 80%;
+    margin: 0 auto;
+    border-collapse: collapse;
+}
+
+td {
+    padding: 6px 10px;
+    font-size: 10px;
+    vertical-align: middle;
+}
+
+.label {
+    font-weight: bold;
+    color: #2C3E50;
+    width: 40%;
+}
+
+.value {
+    color: #000;
+}
+
+/* Firma */
+.signature {
+    text-align: center;
+    margin-top: 30px;
+}
+
+.signature-line {
+    width: 200px;
+    height: 1px;
+    background-color: #000;
+    margin: 0 auto 5px;
+}
+
+.signature-name {
+    font-size: 12px;
+    font-weight: bold;
+    margin: 5px 0 0;
+}
+
+.signature-title {
+    font-size: 12px;
+    font-style: italic;
+    margin: 0;
+}
+
+@media print {
+    body {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+    }
+}
