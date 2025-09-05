@@ -305,12 +305,48 @@ async def update_worker(
                     detail="Ya existe otro trabajador con este email"
                 )
     
+    # Verificar si se está actualizando la fecha de ingreso
+    fecha_ingreso_changed = "fecha_de_ingreso" in update_data and update_data["fecha_de_ingreso"] != worker.fecha_de_ingreso
+    
     # Actualizar campos
     for field, value in update_data.items():
         setattr(worker, field, value)
     
     db.commit()
     db.refresh(worker)
+    
+    # Si se actualizó la fecha de ingreso, regenerar registros de reinducción
+    if fecha_ingreso_changed and worker.fecha_de_ingreso:
+        try:
+            from app.services.reinduction_service import ReinductionService
+            from app.models.reinduction import ReinductionRecord, ReinductionStatus
+            
+            service = ReinductionService(db)
+            
+            # Eliminar registros existentes que no estén completados
+            existing_records = db.query(ReinductionRecord).filter(
+                ReinductionRecord.worker_id == worker_id,
+                ReinductionRecord.status.in_([
+                    ReinductionStatus.PENDING,
+                    ReinductionStatus.SCHEDULED,
+                    ReinductionStatus.IN_PROGRESS,
+                    ReinductionStatus.OVERDUE
+                ])
+            ).all()
+            
+            for record in existing_records:
+                db.delete(record)
+            
+            db.commit()
+            
+            # Regenerar registros faltantes
+            service.generate_missing_reinduction_records(worker_id=worker_id)
+            
+            print(f"Registros de reinducción regenerados para trabajador {worker_id} debido a cambio en fecha de ingreso")
+            
+        except Exception as e:
+            print(f"Error al regenerar registros de reinducción para trabajador {worker_id}: {str(e)}")
+            # No fallar la actualización del trabajador por este error
     
     return worker
 

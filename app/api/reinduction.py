@@ -45,13 +45,17 @@ def get_reinduction_records(
     worker_id: Optional[int] = Query(None, description="Filtrar por ID de trabajador"),
     year: Optional[int] = Query(None, description="Filtrar por año"),
     status: Optional[str] = Query(None, description="Filtrar por estado"),
+    search: Optional[str] = Query(None, description="Buscar por nombre o documento del trabajador"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_supervisor_or_admin)
 ):
     """Obtiene la lista de registros de reinducción con filtros"""
-    query = db.query(ReinductionRecord)
+    from app.models.worker import Worker
+    from sqlalchemy import or_, func
+    
+    query = db.query(ReinductionRecord).join(Worker)
     
     if worker_id:
         query = query.filter(ReinductionRecord.worker_id == worker_id)
@@ -59,6 +63,16 @@ def get_reinduction_records(
         query = query.filter(ReinductionRecord.year == year)
     if status:
         query = query.filter(ReinductionRecord.status == status)
+    if search:
+        search_term = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                func.concat(Worker.first_name, ' ', Worker.last_name).ilike(search_term),
+                Worker.document_number.ilike(search_term),
+                Worker.first_name.ilike(search_term),
+                Worker.last_name.ilike(search_term)
+            )
+        )
     
     records = query.offset(skip).limit(limit).all()
     
@@ -422,6 +436,66 @@ def send_reinduction_notifications(
             "message": "Notificaciones procesadas",
             "sent": result["sent"],
             "errors": result["errors"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/regenerate-worker/{worker_id}")
+def regenerate_worker_reinduction_records(
+    worker_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+):
+    """Regenera los registros de reinducción para un trabajador específico después de actualizar su fecha de ingreso"""
+    from app.models.worker import Worker
+    
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trabajador no encontrado"
+        )
+    
+    if not worker.fecha_de_ingreso:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El trabajador no tiene fecha de ingreso configurada"
+        )
+    
+    service = ReinductionService(db)
+    try:
+        # Eliminar registros existentes que no estén completados
+        from app.models.reinduction import ReinductionRecord, ReinductionStatus
+        
+        existing_records = db.query(ReinductionRecord).filter(
+            ReinductionRecord.worker_id == worker_id,
+            ReinductionRecord.status.in_([
+                ReinductionStatus.PENDING,
+                ReinductionStatus.SCHEDULED,
+                ReinductionStatus.IN_PROGRESS,
+                ReinductionStatus.OVERDUE
+            ])
+        ).all()
+        
+        deleted_count = len(existing_records)
+        for record in existing_records:
+            db.delete(record)
+        
+        db.commit()
+        
+        # Regenerar registros faltantes
+        result = service.generate_missing_reinduction_records(worker_id=worker_id)
+        
+        return {
+            "message": f"Registros de reinducción regenerados para el trabajador {worker.full_name}",
+            "worker_id": worker_id,
+            "worker_name": worker.full_name,
+            "fecha_de_ingreso": worker.fecha_de_ingreso.isoformat(),
+            "deleted_records": deleted_count,
+            "created_records": result["created"],
+            "updated_records": result["updated"]
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

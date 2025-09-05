@@ -61,7 +61,7 @@ class AttendanceReportResponse(BaseModel):
     username: str
     full_name: str
     course_title: str
-    date: date
+    date: Optional[date]
     status: str
     check_in_time: Optional[datetime]
     check_out_time: Optional[datetime]

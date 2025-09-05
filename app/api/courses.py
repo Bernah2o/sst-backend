@@ -1,8 +1,11 @@
 from typing import Any, List
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_
+import os
 
 from app.database import get_db
 from app.dependencies import get_current_active_user
@@ -15,6 +18,9 @@ from app.models.course import (
     CourseType,
 )
 from app.models.enrollment import Enrollment, EnrollmentStatus
+from app.schemas.report import AttendanceReportResponse
+from app.schemas.common import PaginatedResponse
+from app.models.attendance import Attendance, AttendanceStatus
 from app.models.user_progress import UserMaterialProgress, MaterialProgressStatus
 from app.models.user_progress import MaterialProgressStatus
 from app.schemas.common import MessageResponse, PaginatedResponse
@@ -32,6 +38,7 @@ from app.schemas.course import (
     CourseMaterialResponse,
     CourseMaterialWithProgressResponse,
 )
+from app.schemas.report import AttendanceReportResponse
 
 router = APIRouter()
 
@@ -883,3 +890,203 @@ async def validate_course_requirements(
             "status": evaluation.status.value
         } for evaluation in evaluations]
     }
+
+
+@router.get("/{course_id}/attendance-report", response_model=PaginatedResponse[AttendanceReportResponse])
+async def get_course_attendance_report(
+    course_id: int,
+    skip: int = 0,
+    limit: int = 100,
+    format: str = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get attendance report for a specific course
+    """
+    # Check if course exists
+    course = db.query(Course).filter(Course.id == course_id).first()
+    if not course:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Course not found"
+        )
+    
+    # Check permissions
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    
+    # Get all enrolled users for this course
+    enrolled_users_query = db.query(
+        User.id,
+        User.email,
+        User.first_name,
+        User.last_name,
+        User.document_number,
+        User.position,
+        User.department.label("area"),
+        Enrollment.id.label("enrollment_id")
+    ).join(
+        Enrollment, User.id == Enrollment.user_id
+    ).filter(
+        Enrollment.course_id == course_id,
+        Enrollment.status == EnrollmentStatus.ACTIVE
+    )
+    
+    # Get total count of enrolled users
+    total_enrolled = enrolled_users_query.count()
+    
+    if total_enrolled == 0:
+        if format == "pdf":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No enrolled users found for this course"
+            )
+        return PaginatedResponse(
+            items=[],
+            total=0,
+            page=1,
+            size=limit,
+            pages=0,
+            has_next=False,
+            has_prev=False
+        )
+    
+    # Get all enrolled users for PDF generation or paginated users for API response
+    if format == "pdf":
+        enrolled_users = enrolled_users_query.all()
+    else:
+        enrolled_users = enrolled_users_query.offset(skip).limit(limit).all()
+    
+    # Get attendance records for these users
+    user_ids = [user.id for user in enrolled_users]
+    attendance_records = db.query(Attendance).filter(
+        Attendance.user_id.in_(user_ids),
+        Attendance.course_id == course_id
+    ).all()
+    
+    # Create a mapping of user_id to attendance records
+    attendance_by_user = {}
+    for record in attendance_records:
+        if record.user_id not in attendance_by_user:
+            attendance_by_user[record.user_id] = []
+        attendance_by_user[record.user_id].append(record)
+    
+    # Build the response
+    attendance_reports = []
+    for user in enrolled_users:
+        user_attendance = attendance_by_user.get(user.id, [])
+        
+        if user_attendance:
+            # If user has attendance records, include them
+            for record in user_attendance:
+                attendance_reports.append(AttendanceReportResponse(
+                    attendance_id=record.id,
+                    user_id=user.id,
+                    username=user.email,
+                    full_name=f"{user.first_name} {user.last_name}",
+                    course_title=course.title,
+                    date=record.session_date.date() if record.session_date else None,
+                    status=record.status.value,
+                    check_in_time=record.check_in_time,
+                    check_out_time=record.check_out_time,
+                    notes=record.notes
+                ))
+        else:
+            # If user has no attendance records, show as not registered
+            attendance_reports.append(AttendanceReportResponse(
+                attendance_id=0,  # No attendance record
+                user_id=user.id,
+                username=user.email,
+                full_name=f"{user.first_name} {user.last_name}",
+                course_title=course.title,
+                date=None,
+                status="not_registered",
+                check_in_time=None,
+                check_out_time=None,
+                notes="No attendance registered"
+            ))
+    
+    # If PDF format is requested, generate PDF
+    if format == "pdf":
+        try:
+            # Import HTML to PDF converter
+            from app.services.html_to_pdf import HTMLToPDFConverter
+            
+            # Create attendance_lists directory if it doesn't exist
+            attendance_dir = "attendance_lists"
+            if not os.path.exists(attendance_dir):
+                os.makedirs(attendance_dir)
+            
+            # Generate filename with simple naming to avoid encoding issues
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"reporte_asistencia_curso_{course_id}_{timestamp}.pdf"
+            local_filepath = os.path.join(attendance_dir, filename)
+            
+            # Initialize HTML to PDF converter
+            converter = HTMLToPDFConverter()
+            
+            # Prepare attendees data for the template
+            attendees_data = []
+            for user in enrolled_users:
+                attendees_data.append({
+                    "name": f"{user.first_name} {user.last_name}",
+                    "document": user.document_number or "N/A",
+                    "position": user.position or "N/A",
+                    "area": user.department or "N/A"  # Usar department en lugar de area
+                })
+            
+            # Calculate attendance percentage
+            present_count = sum(1 for report in attendance_reports if report.status == "present")
+            attendance_percentage = (present_count / len(attendance_reports)) * 100 if attendance_reports else 0
+            
+            # Prepare data for the template
+            session_data = {
+                "title": "Reporte de Asistencia del Curso",
+                "course_title": course.title,
+                "session_date": datetime.now().strftime("%d/%m/%Y"),
+                "instructor_name": current_user.first_name + " " + current_user.last_name,
+                "location": course.location or "No especificado",
+                "duration": str(course.duration_hours) if course.duration_hours else "N/A",
+                "attendance_percentage": round(attendance_percentage, 2)
+            }
+            
+            # Generate PDF from HTML template
+            pdf_content = converter.generate_attendance_list_pdf(session_data, attendees_data)
+            
+            # Write PDF content to file
+            with open(local_filepath, 'wb') as pdf_file:
+                pdf_file.write(pdf_content)
+            
+            # Return the PDF file
+            return FileResponse(
+                path=local_filepath,
+                filename=filename,
+                media_type="application/pdf"
+            )
+            
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error generating PDF: {str(e)}"
+            )
+    
+    # Calculate pagination info for API response
+    page = (skip // limit) + 1 if limit > 0 else 1
+    size = limit
+    pages = (total_enrolled + limit - 1) // limit if limit > 0 else 1
+    has_next = skip + limit < total_enrolled
+    has_prev = skip > 0
+    
+    return PaginatedResponse(
+        items=attendance_reports,
+        total=total_enrolled,
+        page=page,
+        size=size,
+        pages=pages,
+        has_next=has_next,
+        has_prev=has_prev
+    )
