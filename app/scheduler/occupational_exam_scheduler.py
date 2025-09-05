@@ -1,6 +1,6 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import asyncio
 
@@ -85,16 +85,31 @@ class OccupationalExamScheduler:
             
             from app.database import get_db
             from app.services.occupational_exam_notifications import OccupationalExamNotificationService
+            from app.services.email_service import EmailService
             
             db = next(get_db())
             try:
                 service = OccupationalExamNotificationService(db)
                 stats = service.get_exam_statistics()
                 
-                # Aquí podrías enviar un correo de resumen a los administradores
+                # Preparar resumen para administradores
+                summary = f"""Resumen Semanal de Exámenes Ocupacionales:
+                - Total de trabajadores activos: {stats['total_workers']}
+                - Trabajadores sin exámenes: {stats['workers_without_exams']}
+                - Exámenes vencidos: {stats['exams_overdue']}
+                - Exámenes próximos a vencer (15 días): {stats['exams_upcoming']}
+                - Fecha del reporte: {datetime.now().strftime('%d/%m/%Y %H:%M')}
+                """
+                
                 logger.info(f"Estadísticas semanales de exámenes: {stats}")
                 
                 # TODO: Implementar envío de correo de resumen a administradores
+                # email_service = EmailService()
+                # email_service.send_email(
+                #     to_email="admin@example.com",
+                #     subject="Resumen Semanal de Exámenes Ocupacionales",
+                #     message_html=f"<pre>{summary}</pre>"
+                # )
                 
             finally:
                 db.close()

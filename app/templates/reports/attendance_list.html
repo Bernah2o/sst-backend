@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="format-detection" content="date=no">
+    <meta name="format-detection" content="address=no">
+    <meta name="format-detection" content="email=no">
+    <meta name="pdf-engine" content="WeasyPrint">
+    <title>Lista de Asistencia</title>
+    <link rel="stylesheet" href="css/attendance_list.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                {% if logo_base64 %}
+                <img src="data:image/png;base64,{{ logo_base64 }}" alt="Logo">
+                {% else %}
+                <div class="logo-placeholder">Logo no disponible</div>
+                {% endif %}
+            </div>
+            <div class="header-info">
+                <h1>LISTA DE ASISTENCIA</h1>
+                <h2>{{ session.title }}</h2>
+                <div class="date">{{ session.session_date }}</div>
+            </div>
+        </header>
+        
+        <div class="session-info">
+            <div class="info-row">
+                <div class="info-item">
+                    <span class="label">Curso:</span> {{ session.course_title }}
+                </div>
+                <div class="info-item">
+                    <span class="label">Instructor:</span> {{ session.instructor_name }}
+                </div>
+            </div>
+            <div class="info-row">
+                <div class="info-item">
+                    <span class="label">Ubicación:</span> {{ session.location }}
+                </div>
+                <div class="info-item">
+                    <span class="label">Duración:</span> {{ session.duration }}
+                </div>
+            </div>
+        </div>
+        
+        <div class="attendance-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Nombre</th>
+                        <th>Documento</th>
+                        <th>Cargo</th>
+                        <th>Área</th>
+                        <th>Firma</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for attendee in attendees %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ attendee.name }}</td>
+                        <td>{{ attendee.document }}</td>
+                        <td>{{ attendee.position }}</td>
+                        <td>{{ attendee.area }}</td>
+                        <td class="signature"></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="summary">
+            <div class="summary-row">
+                <div class="summary-item">
+                    <span class="label">Total de Asistentes:</span> {{ attendees|length }}
+                </div>
+                <div class="summary-item">
+                    <span class="label">Porcentaje de Asistencia:</span> {{ session.attendance_percentage }}%
+                </div>
+            </div>
+        </div>
+        
+        <div class="signatures">
+            <div class="signature-box">
+                <div class="signature-line"></div>
+                <p>Firma del Instructor</p>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line"></div>
+                <p>Firma del Responsable SST</p>
+            </div>
+        </div>
+        
+        <footer>
+            <p>Este documento es generado automáticamente por el Sistema de Gestión SST.</p>
+            <div class="page-number">Página 1 de 1</div>
+        </footer>
+    </div>
+</body>
+</html>

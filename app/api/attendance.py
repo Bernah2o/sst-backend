@@ -1,17 +1,11 @@
 from typing import Any, List
 from datetime import datetime, date
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
 import os
 import io
-from reportlab.lib.pagesizes import letter, A4
-from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from app.utils.storage import StorageManager
 from app.config import settings
 
@@ -445,7 +439,33 @@ async def create_attendance_record(
         )
     
     # Create new attendance record
-    attendance = Attendance(**attendance_data.dict())
+    attendance_dict = attendance_data.dict()
+    
+    # Calculate duration automatically if both check_in_time and check_out_time are provided
+    if attendance_dict.get('check_in_time') and attendance_dict.get('check_out_time'):
+        check_in = attendance_dict['check_in_time']
+        check_out = attendance_dict['check_out_time']
+        
+        # Ensure both are datetime objects
+        if isinstance(check_in, str):
+            check_in = datetime.fromisoformat(check_in.replace('Z', '+00:00'))
+        if isinstance(check_out, str):
+            check_out = datetime.fromisoformat(check_out.replace('Z', '+00:00'))
+        
+        # Calculate duration in minutes
+        duration = check_out - check_in
+        attendance_dict['duration_minutes'] = int(duration.total_seconds() / 60)
+        
+        # Set scheduled_duration_minutes to the same value if not provided
+        if not attendance_dict.get('scheduled_duration_minutes'):
+            attendance_dict['scheduled_duration_minutes'] = attendance_dict['duration_minutes']
+        
+        # Calculate completion percentage
+        if attendance_dict['scheduled_duration_minutes'] and attendance_dict['scheduled_duration_minutes'] > 0:
+            attendance_dict['completion_percentage'] = min(100.0, 
+                (attendance_dict['duration_minutes'] / attendance_dict['scheduled_duration_minutes']) * 100)
+    
+    attendance = Attendance(**attendance_dict)
     
     db.add(attendance)
     db.commit()
@@ -557,8 +577,28 @@ async def update_attendance_record(
     
     # Update attendance fields
     update_data = attendance_data.dict(exclude_unset=True)
+    
+    # Apply updates first
     for field, value in update_data.items():
         setattr(attendance, field, value)
+    
+    # Calculate duration automatically if both check_in_time and check_out_time are present
+    if attendance.check_in_time and attendance.check_out_time:
+        check_in = attendance.check_in_time
+        check_out = attendance.check_out_time
+        
+        # Calculate duration in minutes
+        duration = check_out - check_in
+        attendance.duration_minutes = int(duration.total_seconds() / 60)
+        
+        # Set scheduled_duration_minutes to the same value if not already set
+        if not attendance.scheduled_duration_minutes:
+            attendance.scheduled_duration_minutes = attendance.duration_minutes
+        
+        # Calculate completion percentage
+        if attendance.scheduled_duration_minutes and attendance.scheduled_duration_minutes > 0:
+            attendance.completion_percentage = min(100.0, 
+                (attendance.duration_minutes / attendance.scheduled_duration_minutes) * 100)
     
     db.commit()
     db.refresh(attendance)
@@ -1004,6 +1044,7 @@ async def bulk_register_attendance(
 @router.get("/sessions/{session_id}/attendance-list")
 async def generate_attendance_list_pdf(
     session_id: int,
+    download: bool = Query(False, description="Set to true to download the file with a custom filename"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -1057,322 +1098,99 @@ async def generate_attendance_list_pdf(
             detail="No enrolled users found for this course or all users are marked as absent"
         )
     
-    # Create PDF
+    # Create PDF using HTML template
     try:
-        # Initialize storage manager
-        storage_manager = StorageManager()
+        # Import HTML to PDF converter
+        from app.services.html_to_pdf import HTMLToPDFConverter
+        from app.utils.storage import storage_manager
+        from app.config import settings
         
-        # Create attendance_lists directory if it doesn't exist (for fallback)
+        # Generate filename with simple naming to avoid encoding issues
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"reporte_asistencia_{session_id}_{timestamp}.pdf"
+        
+        # Create attendance_lists directory if it doesn't exist (for local storage)
         attendance_dir = "attendance_lists"
         if not os.path.exists(attendance_dir):
             os.makedirs(attendance_dir)
         
-        # Generate filename
-        filename = f"lista_asistencia_sesion_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
         local_filepath = os.path.join(attendance_dir, filename)
         
-        # Create PDF document with margins
-        doc = SimpleDocTemplate(
-            local_filepath, 
-            pagesize=A4,
-            rightMargin=50,
-            leftMargin=50,
-            topMargin=50,
-            bottomMargin=50
-        )
-        story = []
-        styles = getSampleStyleSheet()
+        # Initialize HTML to PDF converter
+        converter = HTMLToPDFConverter()
         
-        # Custom styles with corporate colors
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=20,
-            spaceAfter=20,
-            spaceBefore=10,
-            alignment=TA_CENTER,
-            textColor=colors.HexColor('#1976d2'),  # Blue corporate color
-            fontName='Helvetica-Bold'
-        )
+        # Format date for display
+        formatted_date = session.session_date.strftime("%d/%m/%Y") if hasattr(session, 'session_date') else datetime.now().strftime("%d/%m/%Y")
         
-        subtitle_style = ParagraphStyle(
-            'CustomSubtitle',
-            parent=styles['Heading2'],
-            fontSize=14,
-            spaceAfter=25,
-            alignment=TA_CENTER,
-            textColor=colors.HexColor('#424242'),  # Dark gray
-            fontName='Helvetica'
-        )
+        # Prepare attendees data
+        attendees_data = [{
+            "name": f"{user.first_name} {user.last_name}",
+            "document": user.document_number or "N/A",
+            "position": user.position or "N/A",
+            "area": user.area or "N/A"
+        } for user in enrolled_users]
         
-        header_style = ParagraphStyle(
-            'CustomHeader',
-            parent=styles['Normal'],
-            fontSize=11,
-            spaceAfter=8,
-            spaceBefore=2,
-            alignment=TA_LEFT,
-            textColor=colors.HexColor('#333333'),
-            fontName='Helvetica'
-        )
+        # Prepare session data
+        session_data = {
+            'title': 'Lista de Asistencia',
+            'session_date': formatted_date,
+            'course_title': course.title,
+            'instructor_name': f"{current_user.first_name} {current_user.last_name}",
+            'location': session.location or "No especificado",
+            'duration': str(course.duration_hours) if hasattr(course, 'duration_hours') and course.duration_hours else 'N/A',
+            'attendance_percentage': 100  # Por defecto 100% para los presentes
+        }
         
-        info_box_style = ParagraphStyle(
-            'InfoBox',
-            parent=styles['Normal'],
-            fontSize=10,
-            spaceAfter=5,
-            spaceBefore=2,
-            alignment=TA_LEFT,
-            textColor=colors.HexColor('#555555'),
-            fontName='Helvetica',
-            leftIndent=10,
-            rightIndent=10
-        )
+        # Preparar los datos en el formato esperado por la plantilla
+        template_data = {
+            "session": session_data,
+            "attendees": attendees_data
+        }
         
-        # Header with company/system name
-        company_header = Paragraph(
-            "<b>SISTEMA DE GESTIÓN DE CAPACITACIÓN</b>", 
-            ParagraphStyle(
-                'CompanyHeader',
-                parent=styles['Normal'],
-                fontSize=12,
-                alignment=TA_CENTER,
-                textColor=colors.HexColor('#666666'),
-                spaceAfter=10
-            )
-        )
-        story.append(company_header)
+        # Generar el PDF directamente en memoria
+        pdf_content = converter.generate_attendance_list_pdf(template_data)
         
-        # Decorative line
-        from reportlab.platypus import HRFlowable
-        story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor('#1976d2')))
-        story.append(Spacer(1, 15))
+        # Nombre de archivo simplificado para evitar problemas de codificación
+        safe_filename = f"reporte_asistencia_{session_id}.pdf"
         
-        # Title
-        title = Paragraph("LISTA DE ASISTENCIA", title_style)
-        story.append(title)
+        # Determinar si usar Firebase Storage o almacenamiento local
+        use_firebase = getattr(settings, 'USE_FIREBASE_STORAGE', 'False').lower() == 'true'
         
-        # Subtitle with session info
-        subtitle = Paragraph(f"Sesión: {session.title}", subtitle_style)
-        story.append(subtitle)
-        story.append(Spacer(1, 20))
+        # Ruta en Firebase Storage
+        firebase_path = f"attendance_lists/{filename}"
         
-        # Session information in a styled box
-        info_table_data = [
-            ["Curso:", course.title],
-            ["Fecha:", session.session_date.strftime('%d de %B de %Y')],
-            ["Horario:", f"{session.start_time.strftime('%H:%M')} - {session.end_time.strftime('%H:%M')}"],
-            ["Ubicación:", session.location or 'No especificada'],
-            ["Total Inscritos:", str(len(enrolled_users))]
-        ]
-        
-        info_table = Table(info_table_data, colWidths=[1.5*inch, 4*inch])
-        info_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f5f5f5')),
-            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#1976d2')),
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
-            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e0e0e0')),
-            ('LEFTPADDING', (0, 0), (-1, -1), 8),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ]))
-        
-        story.append(info_table)
-        story.append(Spacer(1, 25))
-        
-        # Instructions
-        instructions = Paragraph(
-            "<b>Instrucciones:</b> Por favor firme en la columna correspondiente para confirmar su asistencia.",
-            ParagraphStyle(
-                'Instructions',
-                parent=styles['Normal'],
-                fontSize=9,
-                alignment=TA_CENTER,
-                textColor=colors.HexColor('#666666'),
-                spaceAfter=15,
-                fontName='Helvetica-Oblique'
-            )
-        )
-        story.append(instructions)
-        
-        # Create table data
-        table_data = []
-        # Header row
-        table_data.append(['N°', 'Nombre Completo', 'Email', 'Firma'])
-        
-        # Add enrolled users
-        for i, user in enumerate(enrolled_users, 1):
-            table_data.append([
-                str(i),
-                user.full_name or user.username,
-                user.email,
-                ''  # Empty space for signature
-            ])
-        
-        # Create table with improved column widths
-        table = Table(table_data, colWidths=[0.6*inch, 2.8*inch, 2.2*inch, 1.8*inch])
-        
-        # Enhanced table style
-        table.setStyle(TableStyle([
-            # Header row style with corporate colors
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1976d2')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 11),
-            ('TOPPADDING', (0, 0), (-1, 0), 10),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
-            
-            # Data rows style
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 9),
-            ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Number column centered
-            ('ALIGN', (1, 1), (2, -1), 'LEFT'),    # Name and email left aligned
-            ('ALIGN', (3, 1), (3, -1), 'CENTER'),  # Signature column centered
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            
-            # Padding for better spacing
-            ('LEFTPADDING', (0, 1), (-1, -1), 8),
-            ('RIGHTPADDING', (0, 1), (-1, -1), 8),
-            ('TOPPADDING', (0, 1), (-1, -1), 12),
-            ('BOTTOMPADDING', (0, 1), (-1, -1), 12),
-            
-            # Alternating row colors for better readability
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
-            
-            # Grid and borders with subtle colors
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dee2e6')),
-            ('LINEBELOW', (0, 0), (-1, 0), 2, colors.HexColor('#1976d2')),
-            
-            # Special styling for signature column
-            ('BACKGROUND', (3, 0), (3, 0), colors.HexColor('#1565c0')),  # Darker blue for signature header
-            ('GRID', (3, 1), (3, -1), 1, colors.HexColor('#e3f2fd')),  # Light blue grid for signature column
-        ]))
-        
-        # Set minimum row height for signature space (increased for better usability)
-        for i in range(1, len(table_data)):
-            table._argH[i] = 0.75*inch  # Increased height for signatures
-        
-        story.append(table)
-        
-        # Add spacing and additional information
-        story.append(Spacer(1, 25))
-        
-        # Summary section
-        summary_data = [
-            ["Total de participantes:", str(len(enrolled_users))],
-            ["Presentes:", "_____"],
-            ["Ausentes:", "_____"],
-            ["Observaciones:", ""]
-        ]
-        
-        summary_table = Table(summary_data, colWidths=[1.5*inch, 2*inch])
-        summary_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
-            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 5),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 5),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-            ('GRID', (0, 0), (-1, -2), 0.5, colors.HexColor('#dee2e6')),
-            ('SPAN', (1, -1), (1, -1)),  # Span for observations
-            ('LINEBELOW', (1, -1), (1, -1), 0.5, colors.HexColor('#dee2e6')),
-        ]))
-        
-        story.append(summary_table)
-        story.append(Spacer(1, 30))
-        
-        # Signature section for instructor/supervisor
-        signature_section = Table([
-            ["Firma del Instructor/Capacitador:", "", "Fecha:", ""]
-        ], colWidths=[2*inch, 2*inch, 1*inch, 1.5*inch])
-        
-        signature_section.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-            ('ALIGN', (2, 0), (2, -1), 'LEFT'),
-            ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
-            ('LINEBELOW', (1, 0), (1, 0), 1, colors.black),
-            ('LINEBELOW', (3, 0), (3, 0), 1, colors.black),
-            ('LEFTPADDING', (0, 0), (-1, -1), 0),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-            ('TOPPADDING', (0, 0), (-1, -1), 20),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-        ]))
-        
-        story.append(signature_section)
-        story.append(Spacer(1, 20))
-        
-        # Footer with generation info
-        footer_line = HRFlowable(width="100%", thickness=1, color=colors.HexColor('#e0e0e0'))
-        story.append(footer_line)
-        story.append(Spacer(1, 10))
-        
-        footer_text = f"Documento generado el {datetime.now().strftime('%d de %B de %Y a las %H:%M')} por {current_user.full_name or current_user.username}"
-        footer = Paragraph(
-            footer_text, 
-            ParagraphStyle(
-                'Footer',
-                parent=styles['Normal'],
-                fontSize=8,
-                alignment=TA_CENTER,
-                textColor=colors.HexColor('#888888'),
-                fontName='Helvetica-Oblique'
-            )
-        )
-        story.append(footer)
-        
-        # Add page number functionality
-        def add_page_number(canvas, doc):
-            canvas.saveState()
-            canvas.setFont('Helvetica', 8)
-            canvas.setFillColor(colors.HexColor('#888888'))
-            page_num = canvas.getPageNumber()
-            text = f"Página {page_num}"
-            canvas.drawRightString(A4[0] - 50, 30, text)
-            canvas.restoreState()
-        
-        # Build PDF with page numbers
-        doc.build(story, onFirstPage=add_page_number, onLaterPages=add_page_number)
-        
-        # Upload to Firebase Storage if enabled
-        if settings.use_firebase_storage:
-            try:
-                firebase_path = f"{settings.firebase_attendance_lists_path}/{filename}"
-                file_url = await storage_manager.upload_file(local_filepath, firebase_path)
-                
-                # Delete local file after upload
-                if os.path.exists(local_filepath):
-                    os.remove(local_filepath)
-                
-                # Return redirect to Firebase URL
-                from fastapi.responses import RedirectResponse
-                return RedirectResponse(url=file_url)
-            except Exception as e:
-                # If Firebase upload fails, return local file
-                return FileResponse(
-                    path=local_filepath,
-                    filename=f"lista_asistencia_{session.title.replace(' ', '_')}_{session.session_date.strftime('%Y%m%d')}.pdf",
-                    media_type='application/pdf'
-                )
+        if use_firebase:
+            # Subir a Firebase Storage
+            storage_manager.upload_file(firebase_path, pdf_content, content_type="application/pdf")
+            # Obtener URL pública
+            file_url = storage_manager.get_public_url(firebase_path)
+            # También guardar localmente para poder usar FileResponse
+            with open(local_filepath, "wb") as f:
+                f.write(pdf_content)
         else:
-            # Return local file
-            return FileResponse(
-                path=local_filepath,
-                filename=f"lista_asistencia_{session.title.replace(' ', '_')}_{session.session_date.strftime('%Y%m%d')}.pdf",
-                media_type='application/pdf'
-            )
+            # Guardar el PDF en disco para poder usar FileResponse
+            with open(local_filepath, "wb") as f:
+                f.write(pdf_content)
+            file_url = None
+        
+        # Preparar parámetros de respuesta
+        response_params = {
+            "path": local_filepath,
+            "media_type": "application/pdf"
+        }
+        
+        # Si se solicita descarga, agregar un nombre de archivo personalizado
+        if download:
+            # Limpiar nombre del curso para el nombre de archivo
+            import re
+            clean_course_name = re.sub(r'[^\w\s-]', '', course.title).strip()
+            clean_course_name = re.sub(r'[-\s]+', '_', clean_course_name)
+            
+            # Agregar nombre de archivo a los parámetros de respuesta
+            response_params["filename"] = f"Lista_Asistencia_{clean_course_name}_{formatted_date}.pdf"
+        
+        # Devolver respuesta de archivo con los parámetros apropiados
+        return FileResponse(**response_params)
         
     except Exception as e:
         raise HTTPException(

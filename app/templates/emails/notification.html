@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }}</title>
+    {% if external_css is defined %}
+    <style>
+        {{ external_css }}
+    </style>
+    {% else %}
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -48,6 +53,7 @@
             color: white;
             padding: 12px 25px;
             text-decoration: none;
+    {% endif %}
             border-radius: 5px;
             margin-top: 15px;
             text-align: center;

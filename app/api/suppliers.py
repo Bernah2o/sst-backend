@@ -151,6 +151,7 @@ async def get_all_doctors(
 
 
 @router.post("/doctors", response_model=DoctorSchema)
+@router.post("/doctors/", response_model=DoctorSchema)
 async def create_doctor_general(
     doctor_data: DoctorCreate,
     db: Session = Depends(get_db),

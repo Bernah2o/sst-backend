@@ -1,5 +1,6 @@
 from typing import Dict, List, Optional, Any
 from pathlib import Path
+import os
 from jinja2 import Environment, FileSystemLoader
 
 from app.config import settings
@@ -39,6 +40,20 @@ def send_email(
             try:
                 template_file = f"{template}.html"
                 template_obj = env.get_template(template_file)
+                
+                # Verificar si existe un archivo CSS correspondiente en la carpeta de reportes
+                css_content = ""
+                css_file_path = Path(__file__).parent.parent / "templates" / "reports" / "css" / f"{template}.css"
+                
+                if css_file_path.exists():
+                    with open(css_file_path, "r", encoding="utf-8") as css_file:
+                        css_content = css_file.read()
+                    
+                    # Agregar el CSS al contexto para que pueda ser utilizado en la plantilla
+                    if context is None:
+                        context = {}
+                    context["external_css"] = css_content
+                
                 html_content = template_obj.render(**(context or {}))
             except Exception as e:
                 print(f"Error al renderizar la plantilla de correo {template}: {str(e)}")

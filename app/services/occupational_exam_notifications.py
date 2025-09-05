@@ -36,8 +36,12 @@ class OccupationalExamNotificationService:
             # Por defecto anual si no se especifica
             return exam_date + timedelta(days=365)
     
-    def get_workers_with_pending_exams(self, days_ahead: int = 30) -> List[Dict[str, Any]]:
-        """Obtiene trabajadores que necesitan exámenes ocupacionales"""
+    def get_workers_with_pending_exams(self, days_ahead: int = 15) -> List[Dict[str, Any]]:
+        """Obtiene trabajadores que necesitan exámenes ocupacionales
+        
+        Args:
+            days_ahead: Días de anticipación para enviar notificaciones (por defecto 15 días)
+        """
         today = date.today()
         notification_date = today + timedelta(days=days_ahead)
         
@@ -45,7 +49,8 @@ class OccupationalExamNotificationService:
         latest_exams = (
             self.db.query(
                 OccupationalExam.worker_id,
-                OccupationalExam.exam_date.label('last_exam_date')
+                OccupationalExam.exam_date.label('last_exam_date'),
+                OccupationalExam.exam_type
             )
             .distinct(OccupationalExam.worker_id)
             .order_by(OccupationalExam.worker_id, OccupationalExam.exam_date.desc())
@@ -57,7 +62,8 @@ class OccupationalExamNotificationService:
             self.db.query(
                 Worker,
                 Cargo,
-                latest_exams.c.last_exam_date
+                latest_exams.c.last_exam_date,
+                latest_exams.c.exam_type
             )
             .join(Cargo, Worker.position == Cargo.nombre_cargo)
             .outerjoin(latest_exams, Worker.id == latest_exams.c.worker_id)
@@ -66,14 +72,14 @@ class OccupationalExamNotificationService:
         
         workers_with_pending_exams = []
         
-        for worker, cargo, last_exam_date in workers_query.all():
+        for worker, cargo, last_exam_date, exam_type in workers_query.all():
             # Si no tiene exámenes previos, necesita uno inmediatamente
             if not last_exam_date:
                 next_exam_date = today
                 days_until_exam = 0
                 status = "sin_examenes"
             else:
-                # Calcular próxima fecha basada en periodicidad del cargo
+                # Calcular próxima fecha basada en periodicidad del cargo y la fecha del último examen
                 next_exam_date = self.calculate_next_exam_date(
                     last_exam_date, 
                     cargo.periodicidad_emo or "anual"
@@ -255,8 +261,8 @@ Sistema de Gestión SST
         """Envía notificaciones diarias de exámenes ocupacionales"""
         logger.info("Iniciando envío de notificaciones diarias de exámenes ocupacionales")
         
-        # Obtener trabajadores con exámenes pendientes (30 días de anticipación)
-        workers_with_pending_exams = self.get_workers_with_pending_exams(days_ahead=30)
+        # Obtener trabajadores con exámenes pendientes (15 días de anticipación)
+        workers_with_pending_exams = self.get_workers_with_pending_exams(days_ahead=15)
         
         stats = {
             "total_workers": len(workers_with_pending_exams),
@@ -300,23 +306,19 @@ Sistema de Gestión SST
             .count()
         )
         
-        # Exámenes vencidos (aproximación)
-        exams_overdue = (
-            self.db.query(OccupationalExam)
-            .join(Worker)
-            .filter(
-                and_(
-                    Worker.is_active == True,
-                    OccupationalExam.exam_date < today - timedelta(days=365)
-                )
-            )
-            .count()
-        )
+        # Obtener trabajadores con exámenes vencidos basados en la periodicidad del cargo
+        workers_with_pending_exams = self.get_workers_with_pending_exams(days_ahead=0)
+        exams_overdue = sum(1 for worker_data in workers_with_pending_exams if worker_data["status"] == "vencido")
+        
+        # Exámenes próximos a vencer (15 días)
+        workers_with_upcoming_exams = self.get_workers_with_pending_exams(days_ahead=15)
+        exams_upcoming = sum(1 for worker_data in workers_with_upcoming_exams if worker_data["status"] == "proximo_a_vencer")
         
         return {
             "total_workers": total_workers,
             "workers_without_exams": workers_without_exams,
-            "exams_overdue_approx": exams_overdue,
+            "exams_overdue": exams_overdue,
+            "exams_upcoming": exams_upcoming,
             "last_check": datetime.now().isoformat()
         }
 

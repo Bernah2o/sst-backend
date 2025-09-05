@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ subject }}</title>
+    {% if external_css is defined %}
+    <style>
+        {{ external_css }}
+    </style>
+    {% else %}
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -42,6 +47,7 @@
             margin-top: 15px;
         }
     </style>
+    {% endif %}
 </head>
 <body>
     <div class="header">

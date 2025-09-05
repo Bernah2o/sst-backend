@@ -149,14 +149,14 @@ PERMISSIONS_DATA = [
     {"id": 74, "resource_type": "files", "action": "update", "description": "Editar archivos", "is_active": True},
     {"id": 75, "resource_type": "files", "action": "delete", "description": "Eliminar archivos", "is_active": True},
     {"id": 76, "resource_type": "files", "action": "download", "description": "Descargar archivos", "is_active": True},
-    {"id": 49, "resource_type": "seguimiento", "action": "update", "description": "Actualizar seguimientos de salud ocupacional", "is_active": True},
-    {"id": 50, "resource_type": "seguimiento", "action": "delete", "description": "Eliminar seguimientos de salud ocupacional", "is_active": True},
-    {"id": 51, "resource_type": "occupational_exam", "action": "create", "description": "Crear exámenes ocupacionales", "is_active": True},
-    {"id": 52, "resource_type": "occupational_exam", "action": "read", "description": "Ver exámenes ocupacionales", "is_active": True},
-    {"id": 53, "resource_type": "occupational_exam", "action": "update", "description": "Actualizar exámenes ocupacionales", "is_active": True},
-    {"id": 54, "resource_type": "occupational_exam", "action": "delete", "description": "Eliminar exámenes ocupacionales", "is_active": True},
-    {"id": 55, "resource_type": "progress", "action": "read", "description": "Ver progreso de usuarios", "is_active": True},
-    {"id": 56, "resource_type": "progress", "action": "update", "description": "Actualizar progreso de usuarios", "is_active": True},
+    {"id": 87, "resource_type": "seguimiento", "action": "update", "description": "Actualizar seguimientos de salud ocupacional", "is_active": True},
+    {"id": 88, "resource_type": "seguimiento", "action": "delete", "description": "Eliminar seguimientos de salud ocupacional", "is_active": True},
+    {"id": 89, "resource_type": "occupational_exam", "action": "create", "description": "Crear exámenes ocupacionales", "is_active": True},
+    {"id": 90, "resource_type": "occupational_exam", "action": "read", "description": "Ver exámenes ocupacionales", "is_active": True},
+    {"id": 91, "resource_type": "occupational_exam", "action": "update", "description": "Actualizar exámenes ocupacionales", "is_active": True},
+    {"id": 92, "resource_type": "occupational_exam", "action": "delete", "description": "Eliminar exámenes ocupacionales", "is_active": True},
+    {"id": 93, "resource_type": "progress", "action": "read", "description": "Ver progreso de usuarios", "is_active": True},
+    {"id": 94, "resource_type": "progress", "action": "update", "description": "Actualizar progreso de usuarios", "is_active": True},
 ]
 
 @router.get("/", response_model=List[Permission])
