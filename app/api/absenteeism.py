@@ -51,7 +51,7 @@ def create_absenteeism(
     
     return db_absenteeism
 
-
+@router.get("", response_model=AbsenteeismList)
 @router.get("/", response_model=AbsenteeismList)
 def get_absenteeism_list(
     skip: int = Query(0, ge=0, description="Número de registros a omitir"),
