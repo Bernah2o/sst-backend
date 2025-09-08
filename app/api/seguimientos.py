@@ -19,6 +19,7 @@ from app.services.medical_recommendation_generator import MedicalRecommendationG
 
 router = APIRouter()
 
+@router.get("", response_model=List[SeguimientoResponse])
 @router.get("/", response_model=List[SeguimientoResponse])
 def get_seguimientos(
     skip: int = Query(0, ge=0),

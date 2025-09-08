@@ -296,6 +296,7 @@ async def delete_session(
 
 
 # Attendance endpoints
+@router.get("", response_model=PaginatedResponse[AttendanceListResponse])
 @router.get("/", response_model=PaginatedResponse[AttendanceListResponse])
 async def get_attendance_records(
     skip: int = 0,
