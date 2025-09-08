@@ -39,14 +39,14 @@ async def enroll_in_course(
     if not course:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Course not found"
+            detail="Curso no encontrado"
         )
     
     # Only allow enrollment in published courses
     if course.status != CourseStatus.PUBLISHED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only published courses are available for enrollment"
+            detail="Solo los cursos publicados están disponibles para inscripción"
         )
     
     # Check if user is already enrolled (excluding cancelled enrollments)
@@ -61,7 +61,7 @@ async def enroll_in_course(
     if existing_enrollment:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Already enrolled in this course"
+            detail="Ya está inscrito en este curso"
         )
     
     # Create enrollment
@@ -77,7 +77,7 @@ async def enroll_in_course(
     db.refresh(enrollment)
     
     return {
-        "message": "Successfully enrolled in course",
+        "message": "Inscripción exitosa en el curso",
         "enrollment_id": enrollment.id,
         "course_title": course.title
     }
@@ -94,7 +94,7 @@ async def bulk_assign_courses(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     successful_enrollments = []
@@ -105,14 +105,14 @@ async def bulk_assign_courses(
     if not course:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Course not found"
+            detail="Curso no encontrado"
         )
     
     # Only allow assignment of published courses
     if course.status != CourseStatus.PUBLISHED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only published courses can be assigned to users"
+            detail="Solo los cursos publicados pueden ser asignados a usuarios"
         )
     
     for user_id in assignment_data.user_ids:
@@ -123,7 +123,7 @@ async def bulk_assign_courses(
                 failed_enrollments.append({
                     "user_id": user_id,
                     "course_id": assignment_data.course_id,
-                    "error": "User not found"
+                    "error": "Usuario no encontrado"
                 })
                 continue
             
@@ -220,7 +220,7 @@ async def mark_course_completed(
     if current_user.role.value != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only administrators can mark courses as completed"
+            detail="Solo los administradores pueden marcar cursos como completados"
         )
     
     # Check if course exists
@@ -228,14 +228,14 @@ async def mark_course_completed(
     if not course:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Course not found"
+            detail="Curso no encontrado"
         )
     
     # Check if course type is optional or training
     if course.course_type not in [CourseType.OPTIONAL, CourseType.TRAINING]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only optional and training courses can be marked as completed"
+            detail="Solo los cursos opcionales y de entrenamiento pueden ser marcados como completados"
         )
     
     # Check if user exists
@@ -243,7 +243,7 @@ async def mark_course_completed(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            detail="Usuario no encontrado"
         )
     
     # Check if enrollment exists
@@ -257,7 +257,7 @@ async def mark_course_completed(
     if not enrollment:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User is not enrolled in this course"
+            detail="El usuario no está inscrito en este curso"
         )
     
     # Mark as completed
@@ -268,7 +268,7 @@ async def mark_course_completed(
     db.refresh(enrollment)
     
     return {
-        "message": "Course marked as completed successfully",
+        "message": "Curso marcado como completado exitosamente",
         "enrollment_id": enrollment.id,
         "course_title": course.title,
         "user_name": user.full_name,
@@ -290,7 +290,7 @@ async def start_course(
     if not course:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Course not found"
+            detail="Curso no encontrado"
         )
     
     # Check if user is enrolled
@@ -303,8 +303,8 @@ async def start_course(
     
     if not enrollment:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User is not enrolled in this course"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="El usuario no está inscrito en este curso"
         )
     
     # Start the enrollment if it's pending
@@ -314,7 +314,7 @@ async def start_course(
         db.refresh(enrollment)
     
     return {
-        "message": "Course started successfully",
+        "message": "Curso iniciado exitosamente",
         "enrollment_id": enrollment.id,
         "course_title": course.title,
         "status": enrollment.status,
@@ -335,7 +335,7 @@ async def bulk_assign_courses_to_workers(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     successful_enrollments = []
@@ -346,14 +346,14 @@ async def bulk_assign_courses_to_workers(
     if not course:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Course not found"
+            detail="Curso no encontrado"
         )
     
     # Only allow assignment of published courses
     if course.status != CourseStatus.PUBLISHED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only published courses can be assigned to workers"
+            detail="Solo los cursos publicados pueden ser asignados a trabajadores"
         )
     
     # Process each worker ID
@@ -369,7 +369,7 @@ async def bulk_assign_courses_to_workers(
                 failed_enrollments.append({
                     "user_id": worker_id,
                     "course_id": assignment_data.course_id,
-                    "error": "Worker not found"
+                    "error": "Trabajador no encontrado"
                 })
                 continue
             
@@ -553,7 +553,7 @@ async def delete_enrollment(
     if not enrollment:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Enrollment not found"
+            detail="Inscripción no encontrada"
         )
     
     # Get user and course info for logging
@@ -620,17 +620,17 @@ async def delete_enrollment(
         db.commit()
         
         return MessageResponse(
-            message=f"Enrollment permanently deleted. Removed: {attendance_count} attendance records, "
-                   f"{material_progress_count} material progress records, {module_progress_count} module progress records, "
-                   f"{evaluations_count} evaluations, {surveys_count} surveys, {certificates_count} certificates, "
-                   f"and the enrollment for user {user.email if user else 'N/A'} in course {course.title if course else 'N/A'}"
+            message=f"Inscripción eliminada permanentemente. Removidos: {attendance_count} registros de asistencia, "
+                   f"{material_progress_count} registros de progreso de material, {module_progress_count} registros de progreso de módulo, "
+                   f"{evaluations_count} evaluaciones, {surveys_count} encuestas, {certificates_count} certificados, "
+                   f"y la inscripción para el usuario {user.email if user else 'N/A'} en el curso {course.title if course else 'N/A'}"
         )
         
     except Exception as e:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error deleting enrollment: {str(e)}"
+            detail=f"Error eliminando inscripción: {str(e)}"
         )
 
 
@@ -654,7 +654,7 @@ async def get_course_workers(
     if not course:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Course not found"
+            detail="Curso no encontrado"
         )
     
     # Get all enrollments for this course
@@ -734,14 +734,14 @@ async def remove_worker_from_course(
     if not worker:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Worker not found"
+            detail="Trabajador no encontrado"
         )
     
     # Check if worker has a user account
     if not worker.user_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Worker is not registered in the system"
+            detail="El trabajador no está registrado en el sistema"
         )
     
     # Check if worker is enrolled in the course
@@ -753,7 +753,7 @@ async def remove_worker_from_course(
     if not enrollment:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Worker is not enrolled in this course"
+            detail="El trabajador no está inscrito en este curso"
         )
     
     try:
@@ -796,7 +796,7 @@ async def remove_worker_from_course(
         
         db.commit()
         return {
-            "message": "Worker successfully removed from course",
+            "message": "Trabajador removido exitosamente del curso",
             "worker_id": worker_id,
             "course_id": course_id,
             "reason": reason
@@ -806,7 +806,7 @@ async def remove_worker_from_course(
         import traceback
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error removing worker from course: {str(e)}"
+            detail=f"Error removiendo trabajador del curso: {str(e)}"
         )
 
 
@@ -875,6 +875,7 @@ async def get_enrollments(
 
 
 @router.post("/")
+@router.post("")  # Add route without trailing slash to avoid 307 redirect
 async def create_enrollment(
     enrollment_data: EnrollmentCreate,
     current_user: User = Depends(get_current_active_user),
@@ -908,7 +909,7 @@ async def create_enrollment(
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
+                detail="Usuario no encontrado"
             )
     elif enrollment_data.worker_id:
         # Worker_id provided, need to get the associated user_id
@@ -916,25 +917,25 @@ async def create_enrollment(
         worker = db.query(Worker).filter(Worker.id == enrollment_data.worker_id).first()
         if not worker:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Worker not found"
-            )
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trabajador no encontrado"
+        )
         if not worker.user_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Worker is not registered in the system. Please register the worker first."
+                detail="El trabajador no está registrado en el sistema. Por favor registre al trabajador primero."
             )
         user_id = worker.user_id
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Associated user not found"
+                detail="Usuario asociado no encontrado"
             )
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Either user_id or worker_id must be provided"
+            detail="Se debe proporcionar user_id o worker_id"
         )
     
     # Check if already enrolled (excluding cancelled enrollments)
@@ -950,7 +951,7 @@ async def create_enrollment(
     if existing_enrollment:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User is already enrolled in this course"
+            detail="El usuario ya está inscrito en este curso"
         )
 
     
@@ -972,7 +973,7 @@ async def create_enrollment(
     db.refresh(enrollment)
     
     return {
-        "message": "Enrollment created successfully",
+        "message": "Inscripción creada exitosamente",
         "enrollment_id": enrollment.id,
         "user_id": enrollment.user_id,
         "course_id": enrollment.course_id,
@@ -1050,7 +1051,17 @@ async def get_my_enrollments(
             "id": enrollment.id,
             "user_id": enrollment.user_id,
             "course_id": enrollment.course_id,
-            "course_title": course.title if course else None,
+            "course": {
+                "id": course.id if course else None,
+                "title": course.title if course else None,
+                "description": course.description if course else None,
+                "duration_hours": course.duration_hours if course else None,
+                "course_type": course.course_type if course else None,
+                "is_mandatory": course.is_mandatory if course else None,
+                "thumbnail": course.thumbnail if course else None,
+                "status": course.status if course else None
+            },
+            "course_title": course.title if course else None,  # Keep for backward compatibility
             "status": enrollment.status,
             "progress": enrollment.progress,
             "grade": enrollment.grade,
@@ -1089,7 +1100,7 @@ async def get_enrollment(
     if not enrollment:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Enrollment not found"
+            detail="Inscripción no encontrada"
         )
     
     # Get user and course details
@@ -1139,7 +1150,7 @@ async def update_enrollment(
     if not enrollment:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Enrollment not found"
+            detail="Inscripción no encontrada"
         )
     
     # Update enrollment fields
@@ -1176,7 +1187,7 @@ async def update_enrollment(
     course = db.query(Course).filter(Course.id == enrollment.course_id).first()
     
     return {
-        "message": "Enrollment updated successfully",
+        "message": "Inscripción actualizada exitosamente",
         "enrollment": {
             "id": enrollment.id,
             "user_id": enrollment.user_id,

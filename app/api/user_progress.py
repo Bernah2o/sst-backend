@@ -197,7 +197,7 @@ async def get_user_progress_by_id(
     if current_user.role.value not in ["admin", "capacitador"] and current_user.id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     # Get user enrollments
@@ -248,7 +248,7 @@ async def get_course_progress(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     # Get course enrollments

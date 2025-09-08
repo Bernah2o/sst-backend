@@ -93,8 +93,8 @@ class Enrollment(Base):
     def update_progress(self, progress: float):
         """Update enrollment progress"""
         self.progress = max(0.0, min(100.0, progress))
-        if self.progress >= 95.0 and self.status == EnrollmentStatus.ACTIVE:  # Auto-complete at 95% progress
-            self.complete_enrollment()
+        # Note: Enrollment completion is now handled by the course completion logic
+        # that considers materials, surveys, and evaluations together
     
     def _check_and_update_reinduction_status(self):
         """Check and update reinduction status when enrollment is completed"""

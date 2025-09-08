@@ -58,7 +58,7 @@ async def login(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="Correo electrónico o contraseña incorrectos",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
@@ -199,7 +199,7 @@ async def refresh_token(
         if not user or not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid refresh token"
+                detail="Token de actualización inválido"
             )
         
         tokens = auth_service.create_user_tokens(user)
@@ -208,7 +208,7 @@ async def refresh_token(
     except HTTPException:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token"
+            detail="Token de actualización inválido"
         )
 
 

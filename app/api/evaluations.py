@@ -115,7 +115,7 @@ async def get_evaluation_stats(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     # Get counts by status
@@ -153,7 +153,7 @@ async def create_evaluation(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     # Create new evaluation
@@ -279,10 +279,94 @@ async def get_user_evaluation_results(
             status_code=500,
             content={
                 "success": False,
-                "message": f"Error retrieving evaluation results: {str(e)}",
+                "message": f"Error al obtener resultados de evaluación: {str(e)}",
                 "data": []
             }
         )
+
+
+@router.get("/{evaluation_id}/user-status")
+async def get_evaluation_user_status(
+    evaluation_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get evaluation status for current user (blocked, available, etc.)
+    """
+    evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
+    
+    if not evaluation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluación no encontrada"
+        )
+    
+    # Check existing attempts count
+    existing_attempts = db.query(UserEvaluation).filter(
+        and_(
+            UserEvaluation.user_id == current_user.id,
+            UserEvaluation.evaluation_id == evaluation_id
+        )
+    ).count()
+    
+    # Check if user has any passed attempts
+    passed_attempt = db.query(UserEvaluation).filter(
+        and_(
+            UserEvaluation.user_id == current_user.id,
+            UserEvaluation.evaluation_id == evaluation_id,
+            UserEvaluation.passed == True
+        )
+    ).first()
+    
+    # If user has passed, evaluation is completed
+    if passed_attempt:
+        return {
+            "status": "COMPLETED",
+            "attempts_used": existing_attempts,
+            "max_attempts": evaluation.max_attempts,
+            "attempts_remaining": evaluation.max_attempts - existing_attempts,
+            "can_retake": False
+        }
+    
+    # Check if user has exceeded max attempts without passing
+    if existing_attempts >= evaluation.max_attempts:
+        return {
+            "status": "BLOCKED",
+            "attempts_used": existing_attempts,
+            "max_attempts": evaluation.max_attempts,
+            "attempts_remaining": 0,
+            "can_retake": False,
+            "message": f"Has agotado todos los intentos disponibles ({evaluation.max_attempts}) sin superar la puntuación mínima requerida."
+        }
+    
+    # Check if there's an active attempt
+    active_attempt = db.query(UserEvaluation).filter(
+        and_(
+            UserEvaluation.user_id == current_user.id,
+            UserEvaluation.evaluation_id == evaluation_id,
+            UserEvaluation.status == UserEvaluationStatus.IN_PROGRESS
+        )
+    ).first()
+    
+    if active_attempt:
+        return {
+            "status": "IN_PROGRESS",
+            "attempts_used": existing_attempts,
+            "max_attempts": evaluation.max_attempts,
+            "attempts_remaining": evaluation.max_attempts - existing_attempts,
+            "can_retake": False,
+            "active_attempt_id": active_attempt.id
+        }
+    
+    # User can take the evaluation
+    return {
+        "status": "AVAILABLE",
+        "attempts_used": existing_attempts,
+        "max_attempts": evaluation.max_attempts,
+        "attempts_remaining": evaluation.max_attempts - existing_attempts,
+        "can_retake": existing_attempts > 0
+    }
 
 
 @router.post("/{evaluation_id}/submit")
@@ -303,8 +387,58 @@ async def submit_evaluation(
     if not evaluation:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evaluation not found"
+            detail="Evaluación no encontrada"
         )
+    
+    # Validate learning flow: course completion and required surveys
+    if evaluation.course_id:
+        from app.models.enrollment import Enrollment
+        from app.models.survey import Survey, UserSurvey, SurveyStatus, UserSurveyStatus
+        
+        # Check if user is enrolled and has completed the course
+        enrollment = db.query(Enrollment).filter(
+            and_(
+                Enrollment.user_id == current_user.id,
+                Enrollment.course_id == evaluation.course_id
+            )
+        ).first()
+        
+        if not enrollment:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Debe estar inscrito en el curso para realizar la evaluación"
+            )
+        
+        # Check if course is completed (100% progress)
+        if enrollment.progress < 100:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Debe completar todo el material del curso antes de realizar la evaluación"
+            )
+        
+        # Check if all required surveys are completed
+        required_surveys = db.query(Survey).filter(
+            and_(
+                Survey.course_id == evaluation.course_id,
+                Survey.required_for_completion == True,
+                Survey.status == SurveyStatus.PUBLISHED
+            )
+        ).all()
+        
+        for survey in required_surveys:
+            user_submission = db.query(UserSurvey).filter(
+                and_(
+                    UserSurvey.user_id == current_user.id,
+                    UserSurvey.survey_id == survey.id,
+                    UserSurvey.status == UserSurveyStatus.COMPLETED
+                )
+            ).first()
+            
+            if not user_submission:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Debe completar la encuesta '{survey.title}' antes de realizar la evaluación"
+                )
     
     # Get the user's current evaluation attempt
     user_evaluation = db.query(UserEvaluation).filter(
@@ -316,10 +450,108 @@ async def submit_evaluation(
     ).first()
     
     if not user_evaluation:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No active evaluation attempt found"
+        # Auto-start evaluation if no active attempt exists
+        # Validate learning flow: course completion and required surveys
+        if evaluation.course_id:
+            from app.models.enrollment import Enrollment
+            from app.models.survey import Survey, UserSurvey, SurveyStatus, UserSurveyStatus
+            
+            # Check if user is enrolled and has completed the course
+            enrollment = db.query(Enrollment).filter(
+                and_(
+                    Enrollment.user_id == current_user.id,
+                    Enrollment.course_id == evaluation.course_id
+                )
+            ).first()
+            
+            if not enrollment:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Debe estar inscrito en el curso para realizar la evaluación"
+                )
+            
+            # Check if course is completed (100% progress)
+            if enrollment.progress < 100:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Debe completar todo el material del curso antes de realizar la evaluación"
+                )
+            
+            # Check if all required surveys are completed
+            required_surveys = db.query(Survey).filter(
+                and_(
+                    Survey.course_id == evaluation.course_id,
+                    Survey.required_for_completion == True,
+                    Survey.status == SurveyStatus.PUBLISHED
+                )
+            ).all()
+            
+            for survey in required_surveys:
+                user_submission = db.query(UserSurvey).filter(
+                    and_(
+                        UserSurvey.user_id == current_user.id,
+                        UserSurvey.survey_id == survey.id,
+                        UserSurvey.status == UserSurveyStatus.COMPLETED
+                    )
+                ).first()
+                
+                if not user_submission:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Debe completar la encuesta '{survey.title}' antes de realizar la evaluación"
+                    )
+        
+        # Check existing attempts count
+        existing_attempts = db.query(UserEvaluation).filter(
+            and_(
+                UserEvaluation.user_id == current_user.id,
+                UserEvaluation.evaluation_id == evaluation_id
+            )
+        ).count()
+        
+        # Check if user has exceeded max attempts
+        if existing_attempts >= evaluation.max_attempts:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Se excedió el número máximo de intentos ({evaluation.max_attempts})"
+            )
+        
+        # Get enrollment if this evaluation is associated with a course
+        enrollment_id = None
+        if evaluation.course_id:
+            from app.models.enrollment import Enrollment
+            enrollment = db.query(Enrollment).filter(
+                and_(
+                    Enrollment.user_id == current_user.id,
+                    Enrollment.course_id == evaluation.course_id
+                )
+            ).first()
+            
+            if enrollment:
+                enrollment_id = enrollment.id
+        
+        # Create new evaluation attempt
+        from datetime import datetime, timedelta
+        current_time = datetime.utcnow()
+        
+        # Calculate expires_at if time_limit_minutes is set
+        expires_at = None
+        if evaluation.time_limit_minutes:
+            expires_at = current_time + timedelta(minutes=evaluation.time_limit_minutes)
+        
+        user_evaluation = UserEvaluation(
+            user_id=current_user.id,
+            evaluation_id=evaluation_id,
+            enrollment_id=enrollment_id,
+            attempt_number=existing_attempts + 1,
+            status=UserEvaluationStatus.IN_PROGRESS,
+            started_at=current_time,
+            expires_at=expires_at
         )
+        
+        db.add(user_evaluation)
+        db.commit()
+        db.refresh(user_evaluation)
     
     # Check if evaluation has expired
     if user_evaluation.expires_at and datetime.utcnow() > user_evaluation.expires_at:
@@ -328,7 +560,7 @@ async def submit_evaluation(
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Evaluation time has expired"
+            detail="El tiempo de la evaluación ha expirado"
         )
     
     # Get all questions for this evaluation
@@ -345,13 +577,13 @@ async def submit_evaluation(
         
         error_details = []
         if missing_questions:
-            error_details.append(f"Missing answers for questions: {list(missing_questions)}")
+            error_details.append(f"Faltan respuestas para las preguntas: {list(missing_questions)}")
         if extra_questions:
-            error_details.append(f"Extra answers for non-existent questions: {list(extra_questions)}")
+            error_details.append(f"Respuestas adicionales para preguntas inexistentes: {list(extra_questions)}")
         
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid answers: " + "; ".join(error_details)
+            detail="Respuestas inválidas: " + "; ".join(error_details)
         )
     
     # Delete existing answers for this attempt (in case of resubmission)
@@ -388,11 +620,20 @@ async def submit_evaluation(
         elif question.question_type == QuestionType.TRUE_FALSE:
             # For true/false, check if the answer matches the correct answer
             if answer_submission.boolean_answer is not None:
-                # Assuming the correct answer is stored in the question's correct_answer field
-                # You might need to adjust this based on your data model
-                if hasattr(question, 'correct_answer') and answer_submission.boolean_answer == question.correct_answer:
-                    points_earned = question.points
-                    is_correct = True
+                # Get the correct answer from the Answer table
+                correct_answer = db.query(Answer).filter(
+                    and_(
+                        Answer.question_id == question.id,
+                        Answer.is_correct == True
+                    )
+                ).first()
+                
+                if correct_answer:
+                    # Convert answer text to boolean for comparison
+                    correct_boolean = correct_answer.answer_text.lower() in ['true', 'verdadero', '1', 'sí', 'si']
+                    if answer_submission.boolean_answer == correct_boolean:
+                        points_earned = question.points
+                        is_correct = True
         
         elif question.question_type == QuestionType.SHORT_ANSWER:
             # For short answer, you might want to implement fuzzy matching or manual grading
@@ -440,6 +681,14 @@ async def submit_evaluation(
     user_evaluation.time_spent_minutes = time_spent_minutes
     
     db.commit()
+    
+    # Update user's best score for this evaluation
+    update_user_best_score(db, user_evaluation.user_id, user_evaluation.evaluation_id)
+    
+    # Check if course can be completed now that evaluation is passed
+    if passed and evaluation.course_id:
+        from app.api.courses import check_and_complete_course
+        check_and_complete_course(db, current_user.id, evaluation.course_id)
     
     # Generate certificate if passed
     certificate_url = None
@@ -502,7 +751,7 @@ async def submit_evaluation(
     
     return {
         "success": True,
-        "message": "Evaluation submitted successfully",
+        "message": "Evaluación enviada exitosamente",
         "results": {
             "user_evaluation_id": user_evaluation.id,
             "score": total_points,
@@ -585,7 +834,7 @@ async def get_my_evaluation_results(
             status_code=500,
             content={
                 "success": False,
-                "message": f"Error retrieving evaluation results: {str(e)}",
+                "message": f"Error al obtener resultados de evaluación: {str(e)}",
                 "data": []
             }
         )
@@ -609,7 +858,7 @@ async def get_user_evaluations(
     if current_user.role.value not in ["admin", "capacitador"] and current_user.id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     query = db.query(UserEvaluation).filter(UserEvaluation.user_id == user_id)
@@ -655,7 +904,7 @@ async def get_all_evaluation_results(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     try:
@@ -734,7 +983,7 @@ async def get_all_evaluation_results(
             status_code=500,
             content={
                 "success": False,
-                "message": f"Error retrieving evaluation results: {str(e)}",
+                "message": f"Error al obtener resultados de evaluación: {str(e)}",
                 "data": []
             }
         )
@@ -759,14 +1008,14 @@ async def get_evaluation(
     if not evaluation:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evaluation not found"
+            detail="Evaluación no encontrada"
         )
     
     # Check if user can access this evaluation
     if current_user.role.value not in ["admin", "capacitador"] and evaluation.status != EvaluationStatus.PUBLISHED:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Evaluation not available"
+            detail="Evaluación no disponible"
         )
     
     return evaluation
@@ -785,7 +1034,7 @@ async def update_evaluation(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
@@ -793,7 +1042,7 @@ async def update_evaluation(
     if not evaluation:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evaluation not found"
+            detail="Evaluación no encontrada"
         )
     
     # Update evaluation fields
@@ -819,7 +1068,7 @@ async def delete_evaluation(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
@@ -827,7 +1076,7 @@ async def delete_evaluation(
     if not evaluation:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evaluation not found"
+            detail="Evaluación no encontrada"
         )
     
     # Delete related user_answers first
@@ -843,7 +1092,7 @@ async def delete_evaluation(
     db.delete(evaluation)
     db.commit()
     
-    return MessageResponse(message="Evaluation deleted successfully")
+    return MessageResponse(message="Evaluación eliminada exitosamente")
 
 
 @router.get("/{evaluation_id}/delete-validation")
@@ -858,7 +1107,7 @@ async def validate_evaluation_deletion(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
@@ -866,7 +1115,7 @@ async def validate_evaluation_deletion(
     if not evaluation:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evaluation not found"
+            detail="Evaluación no encontrada"
         )
     
     # Check for user submissions
@@ -908,14 +1157,64 @@ async def start_evaluation(
     if not evaluation:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evaluation not found"
+            detail="Evaluación no encontrada"
         )
     
     if evaluation.status != EvaluationStatus.PUBLISHED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Evaluation is not active"
+            detail="La evaluación no está activa"
         )
+    
+    # Validate learning flow: course completion and required surveys
+    if evaluation.course_id:
+        from app.models.enrollment import Enrollment
+        from app.models.survey import Survey, UserSurvey, SurveyStatus, UserSurveyStatus
+        
+        # Check if user is enrolled and has completed the course
+        enrollment = db.query(Enrollment).filter(
+            and_(
+                Enrollment.user_id == current_user.id,
+                Enrollment.course_id == evaluation.course_id
+            )
+        ).first()
+        
+        if not enrollment:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Debe estar inscrito en el curso para realizar la evaluación"
+            )
+        
+        # Check if course is completed (100% progress)
+        if enrollment.progress < 100:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Debe completar todo el material del curso antes de realizar la evaluación"
+            )
+        
+        # Check if all required surveys are completed
+        required_surveys = db.query(Survey).filter(
+            and_(
+                Survey.course_id == evaluation.course_id,
+                Survey.required_for_completion == True,
+                Survey.status == SurveyStatus.PUBLISHED
+            )
+        ).all()
+        
+        for survey in required_surveys:
+            user_submission = db.query(UserSurvey).filter(
+                and_(
+                    UserSurvey.user_id == current_user.id,
+                    UserSurvey.survey_id == survey.id,
+                    UserSurvey.status == UserSurveyStatus.COMPLETED
+                )
+            ).first()
+            
+            if not user_submission:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Debe completar la encuesta '{survey.title}' antes de realizar la evaluación"
+                )
     
     # Check for existing in-progress attempt
     existing_in_progress = db.query(UserEvaluation).filter(
@@ -942,7 +1241,7 @@ async def start_evaluation(
     if existing_attempts >= evaluation.max_attempts:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Maximum attempts ({evaluation.max_attempts}) exceeded"
+            detail=f"Se excedió el número máximo de intentos ({evaluation.max_attempts})"
         )
     
     # Get enrollment if this evaluation is associated with a course
@@ -1000,7 +1299,7 @@ async def save_evaluation_progress(
     if not evaluation:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evaluation not found"
+            detail="Evaluación no encontrada"
         )
     
     # Get the user's current evaluation attempt
@@ -1015,7 +1314,7 @@ async def save_evaluation_progress(
     if not user_evaluation:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No active evaluation attempt found"
+            detail="No se encontró un intento de evaluación activo"
         )
     
     # Check if evaluation has expired
@@ -1024,7 +1323,7 @@ async def save_evaluation_progress(
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Evaluation attempt has expired"
+            detail="El intento de evaluación ha expirado"
         )
     
     try:
@@ -1069,16 +1368,16 @@ async def save_evaluation_progress(
         db.commit()
         
         return {
-            "message": "Progress saved successfully",
+            "message": "Progreso guardado exitosamente",
             "saved_answers": len(user_answers)
         }
         
     except Exception as e:
         db.rollback()
-        print(f"Error saving evaluation progress: {str(e)}")
+        print(f"Error al guardar progreso de evaluación: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error saving progress"
+            detail="Error al guardar progreso"
         )
 
 
@@ -1115,7 +1414,7 @@ async def reassign_evaluation(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     # Check if evaluation exists
@@ -1123,7 +1422,7 @@ async def reassign_evaluation(
     if not evaluation:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Evaluation not found"
+            detail="Evaluación no encontrada"
         )
     
     # Check if user exists
@@ -1132,7 +1431,7 @@ async def reassign_evaluation(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            detail="Usuario no encontrado"
         )
     
     # First, get the user evaluation IDs that will be deleted
@@ -1164,7 +1463,76 @@ async def reassign_evaluation(
     
     return {
         "success": True,
-        "message": f"Evaluation reassigned successfully to user {user.email}",
+        "message": f"Evaluación reasignada exitosamente al usuario {user.email}",
+        "user_id": user_id,
+        "evaluation_id": evaluation_id
+    }
+
+
+@router.post("/{evaluation_id}/reset-status/{user_id}")
+async def reset_evaluation_status(
+    evaluation_id: int,
+    user_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Reset evaluation status for a user (admin only) - allows retaking failed evaluations
+    """
+    # Only admin and capacitador can reset evaluation status
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permisos insuficientes"
+        )
+    
+    # Check if evaluation exists
+    evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
+    if not evaluation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluación no encontrada"
+        )
+    
+    # Check if user exists
+    from app.models.user import User as UserModel
+    user = db.query(UserModel).filter(UserModel.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado"
+        )
+    
+    # Get the user evaluation IDs that will be deleted
+    user_evaluations_to_delete = db.query(UserEvaluation.id).filter(
+        and_(
+            UserEvaluation.user_id == user_id,
+            UserEvaluation.evaluation_id == evaluation_id
+        )
+    ).all()
+    
+    user_evaluation_ids = [ue.id for ue in user_evaluations_to_delete]
+    
+    # Delete related user answers first (to avoid foreign key constraint violation)
+    if user_evaluation_ids:
+        from app.models.evaluation import UserAnswer
+        db.query(UserAnswer).filter(
+            UserAnswer.user_evaluation_id.in_(user_evaluation_ids)
+        ).delete(synchronize_session=False)
+    
+    # Then delete the user evaluations
+    db.query(UserEvaluation).filter(
+        and_(
+            UserEvaluation.user_id == user_id,
+            UserEvaluation.evaluation_id == evaluation_id
+        )
+    ).delete()
+    
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": f"Estado de evaluación restablecido exitosamente para el usuario {user.email}",
         "user_id": user_id,
         "evaluation_id": evaluation_id
     }
@@ -1234,12 +1602,12 @@ async def get_evaluation_results(
             }
         )
     except Exception as e:
-        print(f"Error getting evaluation results for evaluation {evaluation_id}: {str(e)}")
+        print(f"Error al obtener resultados de evaluación para la evaluación {evaluation_id}: {str(e)}")
         return JSONResponse(
             status_code=500,
             content={
                 "success": False,
-                "message": f"Error retrieving evaluation results: {str(e)}",
+                "message": f"Error al obtener resultados de evaluación: {str(e)}",
                 "data": []
             }
         )

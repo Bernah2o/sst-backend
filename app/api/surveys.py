@@ -1,11 +1,12 @@
 from typing import Any, List
 from datetime import datetime, date
+import time
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func
 
-from app.dependencies import get_current_active_user
+from app.dependencies import get_current_active_user, get_current_user
 from app.database import get_db
 from app.models.user import User
 from app.models.survey import Survey, SurveyQuestion, UserSurvey, UserSurveyAnswer, SurveyStatus, UserSurveyStatus
@@ -114,7 +115,7 @@ async def create_survey(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     # Check if course exists (if course_id is provided)
@@ -123,7 +124,7 @@ async def create_survey(
         if not course:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Course not found"
+                detail="Curso no encontrado"
             )
     
     # Create new survey
@@ -179,7 +180,20 @@ async def create_survey(
         "created_at": survey.created_at,
         "updated_at": survey.updated_at,
         "published_at": survey.published_at,
-        "questions": survey.questions
+        "questions": [{
+            "id": q.id,
+            "survey_id": q.survey_id,
+            "question_text": q.question_text,
+            "question_type": q.question_type,
+            "options": q.options,
+            "is_required": q.is_required,
+            "order_index": q.order_index,
+            "min_value": q.min_value,
+            "max_value": q.max_value,
+            "placeholder_text": q.placeholder_text,
+            "created_at": q.created_at,
+            "updated_at": q.updated_at
+        } for q in survey.questions]
     }
     
     return survey_dict
@@ -392,6 +406,91 @@ async def get_my_surveys(
                 "message": f"Error retrieving user surveys: {str(e)}",
                 "data": []
             }
+    )
+
+
+@router.get("/user-responses")
+async def get_user_survey_responses(
+    course_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Obtener las respuestas de encuestas del usuario para un curso específico
+    """
+    try:
+        # Verificar que el curso existe
+        course = db.query(Course).filter(Course.id == course_id).first()
+        if not course:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "success": False,
+                    "message": "El curso especificado no existe",
+                    "error_code": 404,
+                    "timestamp": time.time()
+                }
+            )
+        
+        # Obtener las encuestas del curso
+        surveys = db.query(Survey).filter(
+            Survey.course_id == course_id,
+            Survey.status == SurveyStatus.PUBLISHED
+        ).all()
+        
+        if not surveys:
+            return {
+                "success": True,
+                "message": "No hay encuestas disponibles para este curso",
+                "data": [],
+                "timestamp": time.time()
+            }
+        
+        # Obtener las respuestas del usuario para estas encuestas
+        user_responses = []
+        for survey in surveys:
+            user_survey = db.query(UserSurvey).filter(
+                UserSurvey.survey_id == survey.id,
+                UserSurvey.user_id == current_user.id
+            ).first()
+            
+            if user_survey:
+                # Obtener las respuestas detalladas
+                answers = db.query(UserSurveyAnswer).filter(
+                    UserSurveyAnswer.user_survey_id == user_survey.id
+                ).all()
+                
+                survey_response = {
+                    "survey_id": survey.id,
+                    "survey_title": survey.title,
+                    "survey_description": survey.description,
+                    "status": user_survey.status.value,
+                    "started_at": user_survey.started_at,
+                    "completed_at": user_survey.completed_at,
+                    "answers_count": len(answers),
+                    "total_questions": len(survey.questions)
+                }
+                user_responses.append(survey_response)
+        
+        return {
+            "success": True,
+            "message": "Respuestas de encuestas obtenidas exitosamente",
+            "data": user_responses,
+            "timestamp": time.time()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "success": False,
+                "message": "Error interno del servidor al obtener las respuestas de encuestas",
+                "detail": str(e),
+                "error_code": 500,
+                "timestamp": time.time()
+            }
         )
 
 
@@ -412,14 +511,14 @@ async def get_survey(
     if not survey:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Survey not found"
+            detail="Encuesta no encontrada"
         )
     
     # Check if user can access this survey
     if current_user.role.value != "admin" and survey.status != SurveyStatus.PUBLISHED:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Survey is not available"
+            detail="La encuesta no está disponible"
         )
     
     # Transform to include course information
@@ -441,7 +540,20 @@ async def get_survey(
         "published_at": survey.published_at,
         "closes_at": survey.closes_at,
         "expires_at": survey.expires_at,
-        "questions": survey.questions
+        "questions": [{
+            "id": q.id,
+            "survey_id": q.survey_id,
+            "question_text": q.question_text,
+            "question_type": q.question_type,
+            "options": q.options,
+            "is_required": q.is_required,
+            "order_index": q.order_index,
+            "min_value": q.min_value,
+            "max_value": q.max_value,
+            "placeholder_text": q.placeholder_text,
+            "created_at": q.created_at,
+            "updated_at": q.updated_at
+        } for q in survey.questions]
     }
     
     return survey_dict
@@ -460,7 +572,7 @@ async def update_survey(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     survey = db.query(Survey).options(joinedload(Survey.course)).filter(Survey.id == survey_id).first()
@@ -468,7 +580,7 @@ async def update_survey(
     if not survey:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Survey not found"
+            detail="Encuesta no encontrada"
         )
     
     # Update survey fields (excluding questions)
@@ -518,7 +630,20 @@ async def update_survey(
         "published_at": survey.published_at,
         "closes_at": survey.closes_at,
         "expires_at": survey.expires_at,
-        "questions": survey.questions
+        "questions": [{
+            "id": q.id,
+            "survey_id": q.survey_id,
+            "question_text": q.question_text,
+            "question_type": q.question_type,
+            "options": q.options,
+            "is_required": q.is_required,
+            "order_index": q.order_index,
+            "min_value": q.min_value,
+            "max_value": q.max_value,
+            "placeholder_text": q.placeholder_text,
+            "created_at": q.created_at,
+            "updated_at": q.updated_at
+        } for q in survey.questions]
     }
     
     return survey_dict
@@ -536,7 +661,7 @@ async def delete_survey(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     survey = db.query(Survey).filter(Survey.id == survey_id).first()
@@ -550,7 +675,7 @@ async def delete_survey(
     db.delete(survey)
     db.commit()
     
-    return MessageResponse(message="Survey deleted successfully")
+    return MessageResponse(message="Encuesta eliminada exitosamente")
 
 
 # Survey Questions endpoints
@@ -575,12 +700,12 @@ async def get_survey_questions(
     if current_user.role.value != "admin" and survey.status != SurveyStatus.PUBLISHED:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Survey is not available"
+            detail="La encuesta no está disponible"
         )
     
     questions = db.query(SurveyQuestion).filter(
         SurveyQuestion.survey_id == survey_id
-    ).order_by(SurveyQuestion.order).all()
+    ).order_by(SurveyQuestion.order_index).all()
     
     return questions
 
@@ -643,7 +768,7 @@ async def update_survey_question(
     if not question:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Question not found"
+            detail="Pregunta no encontrada"
         )
     
     # Update question fields
@@ -677,13 +802,13 @@ async def delete_survey_question(
     if not question:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Question not found"
+            detail="Pregunta no encontrada"
         )
     
     db.delete(question)
     db.commit()
     
-    return MessageResponse(message="Question deleted successfully")
+    return MessageResponse(message="Pregunta eliminada exitosamente")
 
 
 # User Survey endpoints
@@ -708,7 +833,7 @@ async def submit_survey(
     if not survey:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Survey not found or not active"
+            detail="Encuesta no encontrada o no activa"
         )
     
     # Check if user has already submitted this survey
@@ -722,7 +847,7 @@ async def submit_survey(
     if existing_submission:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Survey already submitted"
+            detail="Encuesta ya enviada"
         )
     
     # Get enrollment if this is a course survey
@@ -738,9 +863,17 @@ async def submit_survey(
         
         if not enrollment:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not enrolled in the course associated with this survey"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No inscrito en el curso asociado con esta encuesta"
+        )
+        
+        # Validate learning flow: course must be completed before taking surveys
+        if enrollment.progress < 100:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Debe completar todo el material del curso antes de responder la encuesta"
             )
+        
         enrollment_id = enrollment.id
     
     # Create user survey record
@@ -769,7 +902,7 @@ async def submit_survey(
         if not question:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Question {answer_data.question_id} not found in this survey"
+                detail=f"Pregunta {answer_data.question_id} no encontrada en esta encuesta"
             )
         
         answer = UserSurveyAnswer(
@@ -783,6 +916,11 @@ async def submit_survey(
     
     db.commit()
     db.refresh(user_survey)
+    
+    # Check if course can be completed now that survey is submitted
+    if survey.course_id and survey.required_for_completion:
+        from app.api.courses import check_and_complete_course
+        check_and_complete_course(db, current_user.id, survey.course_id)
     
     return user_survey
 
@@ -956,7 +1094,7 @@ async def get_required_course_surveys(
     if not course:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Course not found"
+            detail="Curso no encontrado"
         )
     
     # Check if user is enrolled in the course
@@ -971,7 +1109,7 @@ async def get_required_course_surveys(
     if not enrollment:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enrolled in this course"
+            detail="No inscrito en este curso"
         )
     
     # Get required surveys for this course that are active
@@ -995,7 +1133,28 @@ async def get_required_course_surveys(
         ).first()
         
         if not user_submission:
-            pending_surveys.append(survey)
+            # Convert course object to dict if it exists
+            course_dict = None
+            if survey.course:
+                course_dict = {"id": survey.course.id, "title": survey.course.title}
+            
+            survey_response = SurveyResponse(
+                id=survey.id,
+                title=survey.title,
+                description=survey.description,
+                status=survey.status,
+                is_anonymous=survey.is_anonymous,
+                course_id=survey.course_id,
+                is_course_survey=survey.is_course_survey,
+                required_for_completion=survey.required_for_completion,
+                course=course_dict,
+                created_by=survey.created_by,
+                created_at=survey.created_at,
+                updated_at=survey.updated_at,
+                published_at=survey.published_at,
+                questions=[]
+            )
+            pending_surveys.append(survey_response)
     
     return pending_surveys
 
