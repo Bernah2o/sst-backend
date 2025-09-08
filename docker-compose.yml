@@ -1,6 +1,37 @@
 version: "3.8"
 
 services:
+  # Traefik Reverse Proxy
+  traefik:
+    image: traefik:v3.5
+    container_name: sst_traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=admin@dh2o.com.co"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+    networks:
+      - sst_network
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.dh2o.com.co`)"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.tls.certresolver=letsencrypt"
+      - "traefik.http.services.traefik.loadbalancer.server.port=8080"
+
   # PostgreSQL Database
   db:
     image: postgres:17-alpine
@@ -68,8 +99,8 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - USE_FIREBASE_STORAGE=${USE_FIREBASE_STORAGE:-true}
       - REACT_APP_API_URL=${REACT_APP_API_URL}
-    ports:
-      - "8001:8000"
+    expose:
+      - "8000"
     volumes:
       - app_uploads:/app/uploads
       - app_logs:/app/logs
@@ -80,6 +111,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      traefik:
+        condition: service_started
     networks:
       - sst_network
     restart: unless-stopped
@@ -97,6 +130,18 @@ services:
         reservations:
           memory: 512M
           cpus: "0.25"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api1.rule=Host(`api.dh2o.com.co`)"
+      - "traefik.http.routers.api1.entrypoints=websecure"
+      - "traefik.http.routers.api1.tls.certresolver=letsencrypt"
+      - "traefik.http.services.api1.loadbalancer.server.port=8000"
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolallowmethods=GET,OPTIONS,PUT,POST,DELETE,PATCH"
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolallowheaders=*"
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolalloworiginlist=*"
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolmaxage=100"
+      - "traefik.http.middlewares.api-cors.headers.addvaryheader=true"
+      - "traefik.http.routers.api1.middlewares=api-cors"
 
   # FastAPI Application - Instance 2
   app2:
@@ -112,8 +157,8 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - USE_FIREBASE_STORAGE=${USE_FIREBASE_STORAGE:-true}
       - REACT_APP_API_URL=${REACT_APP_API_URL}
-    ports:
-      - "8002:8000"
+    expose:
+      - "8000"
     volumes:
       - app_uploads:/app/uploads
       - app_logs:/app/logs
@@ -124,6 +169,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      traefik:
+        condition: service_started
     networks:
       - sst_network
     restart: unless-stopped
@@ -141,6 +188,13 @@ services:
         reservations:
           memory: 512M
           cpus: "0.25"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api2.rule=Host(`api.dh2o.com.co`) && PathPrefix(`/api/v2`)"
+      - "traefik.http.routers.api2.entrypoints=websecure"
+      - "traefik.http.routers.api2.tls.certresolver=letsencrypt"
+      - "traefik.http.services.api2.loadbalancer.server.port=8000"
+      - "traefik.http.routers.api2.middlewares=api-cors"
 
 volumes:
   postgres_data:
@@ -186,6 +240,12 @@ volumes:
       type: none
       o: bind
       device: ./data/attendance_lists
+  traefik_letsencrypt:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/letsencrypt
 
 networks:
   sst_network:
