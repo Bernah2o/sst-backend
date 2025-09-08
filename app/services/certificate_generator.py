@@ -48,11 +48,17 @@ class CertificateGenerator:
         # Subir a Firebase Storage si está habilitado
         if settings.use_firebase_storage:
             firebase_path = f"{settings.firebase_certificates_path}/{filename}"
-            file_url = await self.storage_manager.upload_file(
+            # Usar el método copy_local_to_firebase para subir el archivo local
+            success = await self.storage_manager.copy_local_to_firebase(
                 local_filepath, 
-                firebase_path,
-                storage_type="firebase"
+                firebase_path
             )
+            
+            if success:
+                # Construir URL pública de Firebase
+                file_url = f"https://storage.googleapis.com/{settings.firebase_storage_bucket}/{firebase_path}"
+            else:
+                raise Exception("Error al subir certificado a Firebase Storage")
             
             # Limpiar archivo local después de subir
             try:

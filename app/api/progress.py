@@ -30,7 +30,7 @@ async def start_material(
     if not material:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Material not found"
+            detail="Material no encontrado"
         )
     
     # Get module and course
@@ -48,7 +48,7 @@ async def start_material(
     if not enrollment:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enrolled in this course"
+            detail="No está inscrito en este curso"
         )
     
     # Check if progress already exists
@@ -109,7 +109,7 @@ async def complete_material(
     if not progress:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Material progress not found. Start the material first."
+            detail="Progreso del material no encontrado. Inicie el material primero."
         )
     
     # Complete the material
@@ -175,8 +175,8 @@ async def complete_material(
     enrollment = db.query(Enrollment).filter(Enrollment.id == progress.enrollment_id).first()
     enrollment.update_progress(course_progress_percentage)
     
-    if course_progress_percentage >= 95:  # Complete enrollment when progress reaches 95%
-        enrollment.complete_enrollment()
+    # Note: Enrollment completion is now handled by the course completion logic
+    # that considers materials, surveys, and evaluations together
     
     # Commit all changes including module and course progress updates
     db.commit()
@@ -213,7 +213,7 @@ async def update_material_progress(
     if not progress:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Material progress not found. Start the material first."
+            detail="Progreso del material no encontrado. Inicie el material primero."
         )
     
     # Update progress
@@ -254,7 +254,7 @@ async def get_course_progress(
     if not enrollment and current_user.role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enrolled in this course"
+            detail="No está inscrito en este curso"
         )
     
     # For admins without enrollment, show aggregated progress from all enrolled users
@@ -572,7 +572,7 @@ async def reset_material_progress(
     if not target_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            detail="Usuario no encontrado"
         )
     
     # Verify the material exists
@@ -580,7 +580,7 @@ async def reset_material_progress(
     if not material:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Material not found"
+            detail="Material no encontrado"
         )
     
     # Get existing progress
@@ -594,7 +594,7 @@ async def reset_material_progress(
     if not progress:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Material progress not found for this user"
+            detail="Progreso del material no encontrado para este usuario"
         )
     
     # Reset the progress

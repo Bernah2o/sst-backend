@@ -12,6 +12,12 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     libpq-dev \
     curl \
+    gcc \
+    g++ \
+    make \
+    pkg-config \
+    libffi-dev \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set work directory
@@ -31,10 +37,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/usr/local/bin:$PATH"
 
-# Install runtime dependencies
+# Install runtime dependencies including WeasyPrint system dependencies
 RUN apt-get update && apt-get install -y \
     libpq5 \
     curl \
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    libffi-dev \
+    fontconfig \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 

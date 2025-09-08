@@ -1,12 +1,13 @@
 import os
 import jinja2
-import weasyprint
 import base64
 import tempfile
 import io
 import logging
 from datetime import datetime
 from pathlib import Path
+
+import weasyprint
 
 # Configurar logging para debug
 logging.basicConfig(level=logging.INFO)
@@ -134,7 +135,7 @@ class HTMLToPDFConverter:
     
     def generate_pdf(self, html_content, css_files=None, output_path=None):
         """
-        Genera un archivo PDF a partir del contenido HTML.
+        Genera un archivo PDF a partir del contenido HTML usando WeasyPrint.
         
         Args:
             html_content: Contenido HTML a convertir.
@@ -145,88 +146,95 @@ class HTMLToPDFConverter:
             Bytes del PDF generado o ruta al archivo si output_path es proporcionado.
         """
         try:
-            # Validar HTML
-            html_content = self._validate_html(html_content)
-            
-            # Añadir metadatos básicos si no están presentes
-            if '<meta name="creator"' not in html_content:
-                meta_tags = '''
-    <meta name="creator" content="SST Sistema">
-    <meta name="producer" content="WeasyPrint">
-    <meta name="author" content="SST Sistema">
-    <meta name="title" content="Documento SST">
-    <meta name="subject" content="Reporte SST">
-    <meta name="keywords" content="sst, reporte, documento">
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <meta http-equiv="Content-Language" content="es">'''
-                
-                html_content = html_content.replace('</head>', f'{meta_tags}\n</head>')
-            
-            # Configurar base_url
-            base_url = self._get_file_url(self.template_dir)
-            
-            # Crear objeto HTML
-            html_obj = weasyprint.HTML(
-                string=html_content, 
-                base_url=base_url,
-                encoding='utf-8'
-            )
-            
-            # Preparar estilos CSS
-            stylesheets = []
-            if css_files:
-                for css_file in css_files:
-                    css_path = os.path.join(self.template_dir, 'css', css_file)
-                    if os.path.exists(css_path):
-                        try:
-                            css = weasyprint.CSS(filename=css_path)
-                            stylesheets.append(css)
-                            logger.info(f"CSS cargado: {css_path}")
-                        except Exception as e:
-                            logger.warning(f"Error al cargar CSS {css_file}: {str(e)}")
-            
-            # Metadatos para el PDF
-            pdf_metadata = {
-                'title': 'Documento SST',
-                'author': 'SST Sistema',
-                'subject': 'Reporte del Sistema SST',
-                'keywords': 'reporte, sistema, sst, documento',
-                'creator': 'SST Sistema',
-                'producer': 'WeasyPrint'
-            }
-            
-            # Configuración básica para mayor compatibilidad
-            pdf_options = {
-                'stylesheets': stylesheets,
-                'metadata': pdf_metadata,
-                'pdf_version': (1, 7)  # Versión más compatible
-            }
-            
-            # Generar PDF
-            pdf_content = html_obj.write_pdf(**pdf_options)
-            
-            # Validar que el PDF se generó correctamente
-            if not pdf_content or len(pdf_content) < 1000:
-                raise ValueError("PDF generado está vacío o corrupto")
-            
-            logger.info(f"PDF generado exitosamente ({len(pdf_content)} bytes)")
-            
-            # Guardar archivo si se especifica ruta
-            if output_path:
-                output_dir = os.path.dirname(output_path)
-                if output_dir:
-                    os.makedirs(output_dir, exist_ok=True)
-                
-                with open(output_path, 'wb') as f:
-                    f.write(pdf_content)
-                logger.info(f"PDF guardado en: {output_path}")
-                return output_path
-            
-            return pdf_content
-            
+            return self._generate_pdf_weasyprint(html_content, css_files, output_path)
         except Exception as e:
-            logger.error(f"Error al generar PDF: {str(e)}")
-            return self._generate_emergency_pdf(str(e))
+            logger.error(f"Error en generate_pdf: {str(e)}")
+            return self._generate_emergency_pdf(f"Error al generar PDF: {str(e)}")
+    
+    def _generate_pdf_weasyprint(self, html_content, css_files=None, output_path=None):
+        """
+        Genera PDF usando WeasyPrint.
+        """
+        # Validar HTML
+        html_content = self._validate_html(html_content)
+        
+        # Añadir metadatos básicos si no están presentes
+        if '<meta name="creator"' not in html_content:
+            meta_tags = '''
+<meta name="creator" content="SST Sistema">
+<meta name="producer" content="WeasyPrint">
+<meta name="author" content="SST Sistema">
+<meta name="title" content="Documento SST">
+<meta name="subject" content="Reporte SST">
+<meta name="keywords" content="sst, reporte, documento">
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="Content-Language" content="es">'''
+            
+            html_content = html_content.replace('</head>', f'{meta_tags}\n</head>')
+        
+        # Configurar base_url
+        base_url = self._get_file_url(self.template_dir)
+        
+        # Crear objeto HTML
+        html_obj = weasyprint.HTML(
+            string=html_content, 
+            base_url=base_url,
+            encoding='utf-8'
+        )
+        
+        # Preparar estilos CSS
+        stylesheets = []
+        if css_files:
+            for css_file in css_files:
+                css_path = os.path.join(self.template_dir, 'css', css_file)
+                if os.path.exists(css_path):
+                    try:
+                        css = weasyprint.CSS(filename=css_path)
+                        stylesheets.append(css)
+                        logger.info(f"CSS cargado: {css_path}")
+                    except Exception as e:
+                        logger.warning(f"Error al cargar CSS {css_file}: {str(e)}")
+    
+
+        
+        # Metadatos para el PDF
+        pdf_metadata = {
+            'title': 'Documento SST',
+            'author': 'SST Sistema',
+            'subject': 'Reporte del Sistema SST',
+            'keywords': 'reporte, sistema, sst, documento',
+            'creator': 'SST Sistema',
+            'producer': 'WeasyPrint'
+        }
+        
+        # Configuración básica para mayor compatibilidad
+        pdf_options = {
+            'stylesheets': stylesheets,
+            'metadata': pdf_metadata,
+            'pdf_version': (1, 7)  # Versión más compatible
+        }
+        
+        # Generar PDF
+        pdf_content = html_obj.write_pdf(**pdf_options)
+        
+        # Validar que el PDF se generó correctamente
+        if not pdf_content or len(pdf_content) < 1000:
+            raise ValueError("PDF generado está vacío o corrupto")
+        
+        logger.info(f"PDF generado exitosamente ({len(pdf_content)} bytes)")
+        
+        # Guardar archivo si se especifica ruta
+        if output_path:
+            output_dir = os.path.dirname(output_path)
+            if output_dir:
+                os.makedirs(output_dir, exist_ok=True)
+            
+            with open(output_path, 'wb') as f:
+                f.write(pdf_content)
+            logger.info(f"PDF guardado en: {output_path}")
+            return output_path
+        
+        return pdf_content
     
     def _generate_emergency_pdf(self, error_message):
         """

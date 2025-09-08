@@ -376,6 +376,27 @@ async def get_supplier_doctors(
     return doctors
 
 
+# Endpoint para obtener todos los médicos activos (útil para selects)
+@router.get("/doctors/active", response_model=List[DoctorList])
+async def get_active_doctors(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """Obtener todos los médicos activos de todos los proveedores"""
+    doctors = db.query(Doctor).options(joinedload(Doctor.supplier)).filter(Doctor.is_active == True).all()
+    return doctors
+
+
+@router.get("/doctors/active/all", response_model=List[DoctorList])
+async def get_all_active_doctors(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """Obtener todos los médicos activos de todos los proveedores"""
+    doctors = db.query(Doctor).options(joinedload(Doctor.supplier)).filter(Doctor.is_active == True).all()
+    return doctors
+
+
 @router.get("/doctors/{doctor_id}", response_model=DoctorSchema)
 async def get_doctor(
     doctor_id: int,
@@ -464,24 +485,3 @@ async def delete_doctor(
     db.commit()
     
     return {"message": "Médico eliminado exitosamente"}
-
-
-# Endpoint para obtener todos los médicos activos (útil para selects)
-@router.get("/doctors/active", response_model=List[DoctorList])
-async def get_active_doctors(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-) -> Any:
-    """Obtener todos los médicos activos de todos los proveedores"""
-    doctors = db.query(Doctor).options(joinedload(Doctor.supplier)).filter(Doctor.is_active == True).all()
-    return doctors
-
-
-@router.get("/doctors/active/all", response_model=List[DoctorList])
-async def get_all_active_doctors(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-) -> Any:
-    """Obtener todos los médicos activos de todos los proveedores"""
-    doctors = db.query(Doctor).options(joinedload(Doctor.supplier)).filter(Doctor.is_active == True).all()
-    return doctors
