@@ -204,6 +204,18 @@ Sistema de Gestión SST
             template_content, is_html = self._load_email_template()
             template = Template(template_content)
             
+            # Mapear el tipo de examen a texto legible
+            exam_type_labels = {
+                "examen_ingreso": "Examen de Ingreso",
+                "examen_periodico": "Examen Periódico",
+                "examen_reintegro": "Examen de Reintegro",
+                "examen_retiro": "Examen de Retiro"
+            }
+            
+            # Determinar el tipo de examen (por defecto periódico)
+            exam_type_value = latest_exam.exam_type.value if latest_exam and latest_exam.exam_type else "examen_periodico"
+            exam_type_label = exam_type_labels.get(exam_type_value, "Examen Periódico")
+            
             # Preparar los datos para la plantilla
             template_data = {
                 "worker_name": worker.first_name,
@@ -217,6 +229,7 @@ Sistema de Gestión SST
                 "days_until_exam": days_until_exam,
                 "status": status,
                 "urgency": urgency,
+                "exam_type_label": exam_type_label,
                 "current_date": datetime.now().strftime('%d/%m/%Y'),
                 "current_time": datetime.now().strftime('%H:%M:%S'),
                 "system_url": getattr(settings, 'FRONTEND_URL', None),
