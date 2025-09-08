@@ -811,6 +811,7 @@ async def remove_worker_from_course(
 
 
 @router.get("/")
+@router.get("")  # Add route without trailing slash to avoid 307 redirect
 async def get_enrollments(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
