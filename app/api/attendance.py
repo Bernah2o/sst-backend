@@ -113,7 +113,7 @@ async def get_session(
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Session not found"
+            detail="Sesión no encontrada"
         )
     
     # Get course information for response
@@ -159,7 +159,7 @@ async def create_session(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     # Check if course exists
@@ -167,7 +167,7 @@ async def create_session(
     if not course:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Course not found"
+            detail="Curso no encontrado"
         )
     
     session = SessionModel(**session_data.dict())
@@ -216,7 +216,7 @@ async def update_session(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
@@ -224,7 +224,7 @@ async def update_session(
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Session not found"
+            detail="Sesión no encontrada"
         )
     
     # Update session fields
@@ -278,7 +278,7 @@ async def delete_session(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
@@ -286,13 +286,13 @@ async def delete_session(
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Session not found"
+            detail="Sesión no encontrada"
         )
     
     db.delete(session)
     db.commit()
     
-    return MessageResponse(message="Session deleted successfully")
+    return MessageResponse(message="Sesión eliminada exitosamente")
 
 
 # Attendance endpoints
@@ -319,7 +319,7 @@ async def get_attendance_records(
         if current_user.role.value not in ["admin", "capacitador"] and current_user.id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not enough permissions"
+                detail="Permisos insuficientes"
             )
         query = query.filter(Attendance.user_id == user_id)
     elif current_user.role.value not in ["admin", "capacitador"]:
@@ -414,7 +414,7 @@ async def create_attendance_record(
     if not course:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Course not found"
+            detail="Curso no encontrado"
         )
     
     # Users can only create attendance for themselves unless they are admin or capacitador
@@ -538,7 +538,7 @@ async def get_attendance_record(
     if not attendance:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Attendance record not found"
+            detail="Registro de asistencia no encontrado"
         )
     
     # Users can only see their own attendance unless they are admin or capacitador
@@ -633,7 +633,7 @@ async def delete_attendance_record(
     db.delete(attendance)
     db.commit()
     
-    return MessageResponse(message="Attendance record deleted successfully")
+    return MessageResponse(message="Registro de asistencia eliminado exitosamente")
 
 
 @router.post("/check-in", response_model=AttendanceResponse)
@@ -1016,10 +1016,10 @@ async def bulk_register_attendance(
                     notifications_sent += 1
                     
                 except Exception as e:
-                    errors.append(f"Failed to send notification to {user.email}: {str(e)}")
+                    errors.append(f"Error al enviar notificación a {user.email}: {str(e)}")
             
         except Exception as e:
-            errors.append(f"Error processing user {user_id}: {str(e)}")
+            errors.append(f"Error al procesar usuario {user_id}: {str(e)}")
             failed_registrations += 1
     
     # Commit all changes
@@ -1029,7 +1029,7 @@ async def bulk_register_attendance(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save attendance records: {str(e)}"
+            detail=f"Error al guardar registros de asistencia: {str(e)}"
         )
     
     return BulkAttendanceResponse(
@@ -1096,7 +1096,7 @@ async def generate_attendance_list_pdf(
     if not enrolled_users:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No enrolled users found for this course or all users are marked as absent"
+            detail="No se encontraron usuarios inscritos para este curso o todos los usuarios están marcados como ausentes"
         )
     
     # Create PDF using HTML template
@@ -1196,5 +1196,5 @@ async def generate_attendance_list_pdf(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error generating attendance list PDF: {str(e)}"
+            detail=f"Error al generar PDF de lista de asistencia: {str(e)}"
         )

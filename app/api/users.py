@@ -78,14 +78,14 @@ async def change_password(
     if not auth_service.verify_password(password_change.current_password, current_user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Current password is incorrect"
+            detail="La contraseña actual es incorrecta"
         )
     
     # Update password
     current_user.hashed_password = auth_service.get_password_hash(password_change.new_password)
     db.commit()
     
-    return MessageResponse(message="Password changed successfully")
+    return MessageResponse(message="Contraseña cambiada exitosamente")
 
 
 @router.get("/", response_model=PaginatedResponse[UserResponse])
@@ -103,7 +103,7 @@ async def get_users(
     if current_user.role.value != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     query = db.query(User).options(joinedload(User.custom_role))
@@ -156,7 +156,7 @@ async def create_user(
     if current_user.role.value != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     # Check if worker exists and is already registered
@@ -258,14 +258,14 @@ async def get_user(
     if current_user.role.value != "admin" and current_user.id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     user = db.query(User).options(joinedload(User.custom_role)).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            detail="Usuario no encontrado"
         )
     
     return user
@@ -295,7 +295,7 @@ async def delete_user(
             if not current_user_id_str or not current_user_role:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid token"
+                    detail="Token inválido"
                 )
             
             current_user_id = int(current_user_id_str)
@@ -303,14 +303,14 @@ async def delete_user(
         except (JWTError, ValueError):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Could not validate credentials"
+                detail="No se pudieron validar las credenciales"
             )
         
         # Check if current user is admin
         if current_user_role != "admin":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not enough permissions"
+                detail="Permisos insuficientes"
             )
         
         # Check if target user exists using raw SQL
@@ -320,14 +320,14 @@ async def delete_user(
         if not user_exists:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
+                detail="Usuario no encontrado"
             )
         
         # Prevent deleting the current admin user
         if user_id == current_user_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot delete your own account"
+                detail="No puedes eliminar tu propia cuenta"
             )
         print(f"Starting deletion process for user_id: {user_id}")
         
@@ -406,7 +406,7 @@ async def delete_user(
         db.commit()
         print("User deletion completed successfully")
         
-        return MessageResponse(message="User deleted successfully")
+        return MessageResponse(message="Usuario eliminado exitosamente")
         
     except Exception as e:
         print(f"Error during user deletion: {str(e)}")
@@ -447,7 +447,7 @@ async def update_user(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            detail="Usuario no encontrado"
         )
     
     # Update user fields

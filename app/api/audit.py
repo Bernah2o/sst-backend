@@ -53,7 +53,7 @@ async def get_audit_logs(
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid start_date format. Use YYYY-MM-DD"
+                detail="Formato de fecha de inicio inválido. Use YYYY-MM-DD"
             )
     
     if end_date:
@@ -64,7 +64,7 @@ async def get_audit_logs(
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid end_date format. Use YYYY-MM-DD"
+                detail="Formato de fecha de fin inválido. Use YYYY-MM-DD"
             )
     
     if search:
@@ -147,7 +147,7 @@ async def get_audit_log(
     if not audit_log:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Audit log not found"
+            detail="Registro de auditoría no encontrado"
         )
     
     # Format response with user information

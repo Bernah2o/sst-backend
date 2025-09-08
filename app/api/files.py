@@ -39,7 +39,7 @@ async def upload_file(
         if len(file_content) > max_size:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail="File size must be less than 50MB"
+                detail="El tamaño del archivo debe ser menor a 50MB"
             )
         
         # Reset file position
@@ -126,7 +126,7 @@ async def upload_profile_picture(
     if file.content_type not in allowed_types:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only JPEG, PNG and GIF images are allowed"
+            detail="Solo se permiten imágenes JPEG, PNG y GIF"
         )
     
     # Validate file size (max 5MB)
@@ -135,7 +135,7 @@ async def upload_profile_picture(
     if len(file_content) > max_size:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File size must be less than 5MB"
+            detail="El tamaño del archivo debe ser menor a 5MB"
         )
     
     try:
@@ -243,7 +243,7 @@ async def upload_course_material(
     if not module:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Module not found"
+            detail="Módulo no encontrado"
         )
     
     # Get the course and check if user is the creator or admin
@@ -251,13 +251,13 @@ async def upload_course_material(
     if not course:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Course not found"
+            detail="Curso no encontrado"
         )
     
     if course.created_by != current_user.id and current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions to upload materials to this course"
+            detail="Permisos insuficientes para subir materiales a este curso"
         )
     
     # Determine material type based on file type
@@ -274,7 +274,7 @@ async def upload_course_material(
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF and video files are allowed"
+            detail="Solo se permiten archivos PDF y de video"
         )
     
     # Validate file size
@@ -348,7 +348,7 @@ async def delete_course_material(
     if not material:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Material not found"
+            detail="Material no encontrado"
         )
     
     # Get the module and course to check permissions
@@ -358,7 +358,7 @@ async def delete_course_material(
     if course.created_by != current_user.id and current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions to delete this material"
+            detail="Permisos insuficientes para eliminar este material"
         )
     
     try:
@@ -437,7 +437,7 @@ async def view_course_material(
     if not material:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Material not found"
+            detail="Material no encontrado"
         )
     
     # Check if user has access to this material (enrolled in course)
@@ -454,7 +454,7 @@ async def view_course_material(
     if not enrollment and course.created_by != current_user.id and current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enrolled in this course"
+            detail="No está inscrito en este curso"
         )
     
     # For LINK type materials, return the URL as-is (external links like YouTube)
@@ -490,7 +490,7 @@ async def download_course_material(
     if not material:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Material not found"
+            detail="Material no encontrado"
         )
     
     # Check if user has access to this material (enrolled in course)
@@ -515,7 +515,7 @@ async def download_course_material(
         if file_data is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="File not found"
+                detail="Archivo no encontrado"
             )
         
         # Determinar el nombre del archivo

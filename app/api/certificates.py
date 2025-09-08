@@ -47,7 +47,7 @@ async def get_certificates(
         if current_user.role.value != "admin" and current_user.id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not enough permissions"
+                detail="Permisos insuficientes"
             )
         query = query.filter(Certificate.user_id == user_id)
     elif current_user.role.value != "admin":
@@ -105,7 +105,7 @@ async def create_certificate(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     # Check if course exists
@@ -113,7 +113,7 @@ async def create_certificate(
     if not course:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Course not found"
+            detail="Curso no encontrado"
         )
     
     # Check if user exists
@@ -121,7 +121,7 @@ async def create_certificate(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            detail="Usuario no encontrado"
         )
     
     # Check if certificate already exists for this user and course
@@ -135,7 +135,7 @@ async def create_certificate(
     if existing_certificate:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Certificate already exists for this user and course"
+            detail="Ya existe un certificado para este usuario y curso"
         )
     
     # Generate certificate number
@@ -232,14 +232,14 @@ async def get_certificate(
     if not certificate:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Certificate not found"
+            detail="Certificado no encontrado"
         )
     
     # Users can only see their own certificates unless they are admin
     if current_user.role.value != "admin" and certificate.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     return certificate
@@ -258,7 +258,7 @@ async def update_certificate(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     certificate = db.query(Certificate).filter(Certificate.id == certificate_id).first()
@@ -266,7 +266,7 @@ async def update_certificate(
     if not certificate:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Certificate not found"
+            detail="Certificado no encontrado"
         )
     
     # Update certificate fields
@@ -292,7 +292,7 @@ async def delete_certificate(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     certificate = db.query(Certificate).filter(Certificate.id == certificate_id).first()
@@ -300,13 +300,13 @@ async def delete_certificate(
     if not certificate:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Certificate not found"
+            detail="Certificado no encontrado"
         )
     
     db.delete(certificate)
     db.commit()
     
-    return MessageResponse(message="Certificate deleted successfully")
+    return MessageResponse(message="Certificado eliminado exitosamente")
 
 
 @router.post("/generate", response_model=CertificateResponse)
@@ -321,7 +321,7 @@ async def generate_certificate(
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     # Check if course exists
@@ -329,7 +329,7 @@ async def generate_certificate(
     if not course:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Course not found"
+            detail="Curso no encontrado"
         )
     
     # Check if user exists
@@ -337,7 +337,7 @@ async def generate_certificate(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            detail="Usuario no encontrado"
         )
     
     # Check if certificate already exists
@@ -351,7 +351,7 @@ async def generate_certificate(
     if existing_certificate:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Certificate already exists for this user and course"
+            detail="Ya existe un certificado para este usuario y curso"
         )
     
     # Generate certificate details
@@ -400,7 +400,7 @@ async def verify_certificate(
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Either certificate_number or verification_code must be provided"
+            detail="Se debe proporcionar certificate_number o verification_code"
         )
     
     certificate = query.first()
@@ -408,7 +408,7 @@ async def verify_certificate(
     if not certificate:
         return CertificateVerificationResponse(
             is_valid=False,
-            message="Certificate not found"
+            message="Certificado no encontrado"
         )
     
     # Check if certificate is valid
@@ -423,13 +423,13 @@ async def verify_certificate(
     if certificate.expiry_date and certificate.expiry_date < datetime.now():
         return CertificateVerificationResponse(
             is_valid=False,
-            message="Certificate has expired",
+            message="El certificado ha expirado",
             certificate=certificate
         )
     
     return CertificateVerificationResponse(
         is_valid=True,
-        message="Certificate is valid",
+        message="El certificado es válido",
         certificate=certificate
     )
 
@@ -447,7 +447,7 @@ async def revoke_certificate(
     if current_user.role.value != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     certificate = db.query(Certificate).filter(Certificate.id == certificate_id).first()
@@ -455,13 +455,13 @@ async def revoke_certificate(
     if not certificate:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Certificate not found"
+            detail="Certificado no encontrado"
         )
     
     if certificate.status == CertificateStatus.REVOKED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Certificate is already revoked"
+            detail="El certificado ya está revocado"
         )
     
     # Revoke certificate
@@ -472,7 +472,7 @@ async def revoke_certificate(
     
     db.commit()
     
-    return MessageResponse(message="Certificate revoked successfully")
+    return MessageResponse(message="Certificado revocado exitosamente")
 
 
 @router.get("/user/{user_id}/summary")
@@ -546,11 +546,11 @@ async def generate_certificate_pdf(
             certificate.status = CertificateStatus.ISSUED
             db.commit()
         
-        return MessageResponse(message=f"Certificate PDF generated successfully: {file_path}")
+        return MessageResponse(message=f"PDF del certificado generado exitosamente: {file_path}")
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error generating certificate PDF: {str(e)}"
+            detail=f"Error generando PDF del certificado: {str(e)}"
         )
 
 
@@ -603,13 +603,13 @@ async def get_certificate_pdf(
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error generating certificate PDF: {str(e)}"
+                detail=f"Error generando PDF del certificado: {str(e)}"
             )
     
     if not os.path.exists(file_path):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Certificate file not found"
+            detail="Archivo del certificado no encontrado"
         )
     
     # Prepare response parameters
@@ -656,7 +656,7 @@ async def generate_certificate_from_course(
     if not course:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Course not found"
+            detail="Curso no encontrado"
         )
     
     # Check if user exists
@@ -664,7 +664,7 @@ async def generate_certificate_from_course(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            detail="Usuario no encontrado"
         )
     
     # Check if certificate already exists
@@ -678,7 +678,7 @@ async def generate_certificate_from_course(
     if existing_certificate:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Certificate already exists for this user and course"
+            detail="Ya existe un certificado para este usuario y curso"
         )
     
     # TODO: Verificar que el usuario realmente completó el curso

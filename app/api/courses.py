@@ -10,6 +10,78 @@ import os
 from app.database import get_db
 from app.dependencies import get_current_active_user
 from app.models.user import User
+
+
+def check_and_complete_course(db: Session, user_id: int, course_id: int):
+    """Check if course is truly completed and mark enrollment as completed if so"""
+    enrollment = db.query(Enrollment).filter(
+        and_(
+            Enrollment.user_id == user_id,
+            Enrollment.course_id == course_id,
+            Enrollment.status == EnrollmentStatus.ACTIVE
+        )
+    ).first()
+    
+    if not enrollment or enrollment.progress < 95:
+        return False
+    
+    from app.models.survey import Survey, UserSurvey, SurveyStatus, UserSurveyStatus
+    from app.models.evaluation import Evaluation, UserEvaluation, UserEvaluationStatus
+    from app.schemas.evaluation import EvaluationStatus
+    
+    # Check required surveys
+    required_surveys = db.query(Survey).filter(
+        and_(
+            Survey.course_id == course_id,
+            Survey.required_for_completion == True,
+            Survey.status == SurveyStatus.PUBLISHED
+        )
+    ).all()
+    
+    surveys_completed = True
+    for survey in required_surveys:
+        user_submission = db.query(UserSurvey).filter(
+            and_(
+                UserSurvey.user_id == user_id,
+                UserSurvey.survey_id == survey.id,
+                UserSurvey.status == UserSurveyStatus.COMPLETED
+            )
+        ).first()
+        if not user_submission:
+            surveys_completed = False
+            break
+    
+    # Check evaluation if surveys are completed
+    evaluation_completed = True
+    if surveys_completed:
+        course_evaluations = db.query(Evaluation).filter(
+            and_(
+                Evaluation.course_id == course_id,
+                Evaluation.status == EvaluationStatus.PUBLISHED
+            )
+        ).all()
+        
+        if course_evaluations:  # If there are evaluations, check if completed
+            evaluation_completed = False
+            for evaluation in course_evaluations:
+                completed_evaluation = db.query(UserEvaluation).filter(
+                    and_(
+                        UserEvaluation.user_id == user_id,
+                        UserEvaluation.evaluation_id == evaluation.id,
+                        UserEvaluation.status == UserEvaluationStatus.COMPLETED
+                    )
+                ).first()
+                if completed_evaluation:
+                    evaluation_completed = True
+                    break
+    
+    # Complete enrollment if all requirements are met
+    if surveys_completed and evaluation_completed:
+        enrollment.complete_enrollment()
+        db.commit()
+        return True
+    
+    return False
 from app.models.course import (
     Course,
     CourseModule,
@@ -22,7 +94,6 @@ from app.schemas.report import AttendanceReportResponse
 from app.schemas.common import PaginatedResponse
 from app.models.attendance import Attendance, AttendanceStatus
 from app.models.user_progress import UserMaterialProgress, MaterialProgressStatus
-from app.models.user_progress import MaterialProgressStatus
 from app.schemas.common import MessageResponse, PaginatedResponse
 from app.schemas.course import (
     CourseCreate,
@@ -114,7 +185,7 @@ async def create_course(
     """
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
 
     # Create new course
@@ -124,7 +195,7 @@ async def create_course(
     db.commit()
     db.refresh(course)
 
-    return course
+    return CourseResponse.from_orm(course)
 
 
 @router.get("/user{trailing_slash:path}", response_model=List[UserCourseResponse])
@@ -177,7 +248,7 @@ async def get_user_courses(
     return user_courses
 
 
-@router.get("/{course_id}", response_model=CourseResponse)
+@router.get("/{course_id}", response_model=Union[CourseResponse, UserCourseResponse])
 async def get_course(
     course_id: int,
     current_user: User = Depends(get_current_active_user),
@@ -190,7 +261,7 @@ async def get_course(
 
     if not course:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Course not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Curso no encontrado"
         )
 
     # Check if user can access this course
@@ -198,7 +269,7 @@ async def get_course(
         # For non-admin users, check if course is published AND user is enrolled
         if course.status != CourseStatus.PUBLISHED:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Course not available"
+                status_code=status.HTTP_403_FORBIDDEN, detail="Curso no disponible"
             )
         
         # Check if user is enrolled in the course
@@ -211,10 +282,85 @@ async def get_course(
         
         if not enrollment:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Not enrolled in this course"
+                status_code=status.HTTP_403_FORBIDDEN, detail="No está inscrito en este curso"
             )
-
-    return course
+        
+        # Check if course is truly completed (materials + surveys + evaluation + certificate)
+        course_truly_completed = False
+        if enrollment.progress >= 95:  # Only check if materials are completed
+            from app.models.survey import Survey, UserSurvey, SurveyStatus, UserSurveyStatus
+            from app.models.evaluation import Evaluation, UserEvaluation, UserEvaluationStatus
+            from app.schemas.evaluation import EvaluationStatus
+            
+            # Check required surveys
+            required_surveys = db.query(Survey).filter(
+                and_(
+                    Survey.course_id == course_id,
+                    Survey.required_for_completion == True,
+                    Survey.status == SurveyStatus.PUBLISHED
+                )
+            ).all()
+            
+            surveys_completed = True
+            for survey in required_surveys:
+                user_submission = db.query(UserSurvey).filter(
+                    and_(
+                        UserSurvey.user_id == current_user.id,
+                        UserSurvey.survey_id == survey.id,
+                        UserSurvey.status == UserSurveyStatus.COMPLETED
+                    )
+                ).first()
+                if not user_submission:
+                    surveys_completed = False
+                    break
+            
+            # Check evaluation if surveys are completed
+            evaluation_completed = True
+            if surveys_completed:
+                course_evaluations = db.query(Evaluation).filter(
+                    and_(
+                        Evaluation.course_id == course_id,
+                        Evaluation.status == EvaluationStatus.PUBLISHED
+                    )
+                ).all()
+                
+                if course_evaluations:  # If there are evaluations, check if completed
+                    evaluation_completed = False
+                    for evaluation in course_evaluations:
+                        completed_evaluation = db.query(UserEvaluation).filter(
+                            and_(
+                                UserEvaluation.user_id == current_user.id,
+                                UserEvaluation.evaluation_id == evaluation.id,
+                                UserEvaluation.status == UserEvaluationStatus.COMPLETED
+                            )
+                        ).first()
+                        if completed_evaluation:
+                            evaluation_completed = True
+                            break
+            
+            # Course is truly completed only if materials, surveys, and evaluations are done
+            course_truly_completed = surveys_completed and evaluation_completed
+        
+        # Return UserCourseResponse with progress information for enrolled users
+        return UserCourseResponse(
+            id=course.id,
+            title=course.title,
+            description=course.description,
+            course_type=course.course_type,
+            status=course.status,
+            duration_hours=course.duration_hours,
+            is_mandatory=course.is_mandatory,
+            thumbnail=course.thumbnail,
+            created_at=course.created_at,
+            published_at=course.published_at,
+            modules=course.modules,
+            progress=enrollment.progress,
+            enrolled_at=enrollment.enrolled_at,
+            completed=course_truly_completed,
+        )
+    
+    # For admin/capacitador users, return CourseResponse without progress
+    return CourseResponse.from_orm(course)
 
 
 @router.put("/{course_id}", response_model=CourseResponse)
@@ -229,14 +375,14 @@ async def update_course(
     """
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
 
     course = db.query(Course).filter(Course.id == course_id).first()
 
     if not course:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Course not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Curso no encontrado"
         )
 
     # Update course fields
@@ -247,7 +393,7 @@ async def update_course(
     db.commit()
     db.refresh(course)
 
-    return course
+    return CourseResponse.from_orm(course)
 
 
 @router.delete("/{course_id}", response_model=MessageResponse)
@@ -261,14 +407,14 @@ async def delete_course(
     """
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
 
     course = db.query(Course).filter(Course.id == course_id).first()
 
     if not course:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Course not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Curso no encontrado"
         )
 
     # Check if course has enrolled users
@@ -320,7 +466,7 @@ async def create_course_module(
     """
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
 
     # Check if course exists
@@ -361,7 +507,7 @@ async def get_course_modules(
         # For non-admin users, check if course is published AND user is enrolled
         if course.status != CourseStatus.PUBLISHED:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Course not available"
+                status_code=status.HTTP_403_FORBIDDEN, detail="Curso no disponible"
             )
         
         # Check if user is enrolled in the course
@@ -374,7 +520,7 @@ async def get_course_modules(
         
         if not enrollment:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Not enrolled in this course"
+                status_code=status.HTTP_403_FORBIDDEN, detail="No está inscrito en este curso"
             )
 
     modules = (
@@ -406,7 +552,7 @@ async def update_course_module(
 
     if not module:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Module not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Módulo no encontrado"
         )
 
     # Update module fields
@@ -441,7 +587,7 @@ async def delete_course_module(
 
     if not module:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Module not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Módulo no encontrado"
         )
 
     try:
@@ -695,7 +841,7 @@ async def update_course_material(
 
     if not material:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Material not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Material no encontrado"
         )
 
     # Update material fields
@@ -828,14 +974,14 @@ async def validate_course_requirements(
     if not course:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Course not found"
+            detail="Curso no encontrado"
         )
     
     # Check if user has permission to validate this course
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     # Check for associated surveys
@@ -944,7 +1090,7 @@ async def get_course_attendance_report(
         if format == "pdf":
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="No enrolled users found for this course"
+                detail="No se encontraron usuarios inscritos para este curso"
             )
         return PaginatedResponse(
             items=[],
@@ -1008,7 +1154,7 @@ async def get_course_attendance_report(
                 status="not_registered",
                 check_in_time=None,
                 check_out_time=None,
-                notes="No attendance registered"
+                notes="Sin asistencia registrada"
             ))
     
     # If PDF format is requested, generate PDF
@@ -1090,7 +1236,7 @@ async def get_course_attendance_report(
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error generating PDF: {str(e)}"
+                detail=f"Error generando PDF: {str(e)}"
             )
     
     # Calculate pagination info for API response
@@ -1109,3 +1255,49 @@ async def get_course_attendance_report(
         has_next=has_next,
         has_prev=has_prev
     )
+
+
+@router.post("/{course_id}/complete-enrollment", response_model=MessageResponse)
+async def complete_course_enrollment(
+    course_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Mark course enrollment as completed if all requirements are met
+    """
+    # Check if course exists
+    course = db.query(Course).filter(Course.id == course_id).first()
+    if not course:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Curso no encontrado"
+        )
+    
+    # Check if user is enrolled
+    enrollment = db.query(Enrollment).filter(
+        and_(
+            Enrollment.user_id == current_user.id,
+            Enrollment.course_id == course_id
+        )
+    ).first()
+    
+    if not enrollment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No está inscrito en este curso"
+        )
+    
+    if enrollment.status == EnrollmentStatus.COMPLETED:
+        return MessageResponse(message="El curso ya está marcado como completado")
+    
+    # Check and complete course if requirements are met
+    completed = check_and_complete_course(db, current_user.id, course_id)
+    
+    if completed:
+        return MessageResponse(message="Curso completado exitosamente")
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se han cumplido todos los requisitos para completar el curso"
+        )

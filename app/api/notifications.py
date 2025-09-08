@@ -94,7 +94,7 @@ async def create_notification(
     if current_user.role.value != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     # Check if user exists
@@ -102,7 +102,7 @@ async def create_notification(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            detail="Usuario no encontrado"
         )
     
     # Create new notification
@@ -158,14 +158,14 @@ async def get_notification(
     if not notification:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Notification not found"
+            detail="Notificación no encontrada"
         )
     
     # Users can only see their own notifications unless they are admin
     if current_user.role.value != "admin" and notification.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     return notification
@@ -184,7 +184,7 @@ async def update_notification(
     if current_user.role.value != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     notification = db.query(Notification).filter(Notification.id == notification_id).first()
@@ -192,7 +192,7 @@ async def update_notification(
     if not notification:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Notification not found"
+            detail="Notificación no encontrada"
         )
     
     # Update notification fields
@@ -220,20 +220,20 @@ async def delete_notification(
     if not notification:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Notification not found"
+            detail="Notificación no encontrada"
         )
     
     # Users can only delete their own notifications unless they are admin
     if current_user.role.value != "admin" and notification.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     db.delete(notification)
     db.commit()
     
-    return MessageResponse(message="Notification deleted successfully")
+    return MessageResponse(message="Notificación eliminada exitosamente")
 
 
 @router.post("/{notification_id}/mark-read", response_model=NotificationResponse)
@@ -255,7 +255,7 @@ async def mark_notification_read(
     if current_user.role.value != "admin" and notification.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     # Marcar como leída
@@ -460,7 +460,7 @@ async def mark_all_notifications_read(
 
     db.commit()
 
-    return MessageResponse(message=f"Marked {len(notifications)} notifications as read")
+    return MessageResponse(message=f"Se marcaron {len(notifications)} notificaciones como leídas")
 
 
 @router.post("/{notification_id}/send", response_model=MessageResponse)
@@ -486,7 +486,7 @@ async def send_notification(
     if current_user.role.value != "admin" and notification.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     # Get the user to send the email to
@@ -495,13 +495,13 @@ async def send_notification(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            detail="Usuario no encontrado"
         )
     
     if not user.email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User does not have an email address"
+            detail="El usuario no tiene dirección de correo electrónico"
         )
     
     # Send email in background
@@ -530,7 +530,7 @@ async def send_notification(
     
     db.commit()
     
-    return MessageResponse(message=f"Notification sent to {user.email}")
+    return MessageResponse(message=f"Notificación enviada a {user.email}")
 
 
 @router.get("/unread/count")
@@ -570,7 +570,7 @@ async def create_bulk_notifications(
     if current_user.role.value != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     # Determine target users based on input
@@ -583,7 +583,7 @@ async def create_bulk_notifications(
             missing_ids = set(bulk_data.user_ids) - set(existing_user_ids)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Users not found: {list(missing_ids)}"
+                detail=f"Usuarios no encontrados: {list(missing_ids)}"
             )
         
         target_user_ids = bulk_data.user_ids
@@ -598,7 +598,7 @@ async def create_bulk_notifications(
         if invalid_roles:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid roles: {invalid_roles}. Valid roles are: {valid_roles}"
+                detail=f"Roles inválidos: {invalid_roles}. Los roles válidos son: {valid_roles}"
             )
         
         # Get users with specified roles
@@ -608,7 +608,7 @@ async def create_bulk_notifications(
         if not target_user_ids:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No users found with roles: {bulk_data.user_roles}"
+                detail=f"No se encontraron usuarios con los roles: {bulk_data.user_roles}"
             )
     else:
         # Send to all users
@@ -671,9 +671,9 @@ async def create_bulk_notifications(
         
         db.commit()
         
-        return MessageResponse(message=f"Created {len(notifications)} notifications, {len(users_with_emails)} emails sent")
+        return MessageResponse(message=f"Se crearon {len(notifications)} notificaciones, {len(users_with_emails)} correos enviados")
     
-    return MessageResponse(message=f"Created {len(notifications)} notifications")
+    return MessageResponse(message=f"Se crearon {len(notifications)} notificaciones")
 
 
 @router.post("/send-by-role", response_model=MessageResponse)
@@ -694,7 +694,7 @@ async def send_notifications_by_role(
     if current_user.role.value != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     from app.models.user import UserRole
@@ -706,7 +706,7 @@ async def send_notifications_by_role(
     if invalid_roles:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid roles: {invalid_roles}. Valid roles are: {valid_roles}"
+            detail=f"Roles inválidos: {invalid_roles}. Los roles válidos son: {valid_roles}"
         )
     
     # Get users with specified roles
@@ -715,7 +715,7 @@ async def send_notifications_by_role(
     if not users_by_role:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No active users found with roles: {roles}"
+            detail=f"No se encontraron usuarios activos con los roles: {roles}"
         )
     
     # Create notifications for all target users
@@ -734,7 +734,7 @@ async def send_notifications_by_role(
     db.commit()
     
     return MessageResponse(
-        message=f"Sent {len(notifications)} notifications to users with roles: {', '.join(roles)}"
+        message=f"Se enviaron {len(notifications)} notificaciones a usuarios con roles: {', '.join(roles)}"
     )
 
 
@@ -753,7 +753,7 @@ async def send_notifications_to_all(
     if current_user.role.value != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail="Permisos insuficientes"
         )
     
     # Get all active users
@@ -762,7 +762,7 @@ async def send_notifications_to_all(
     if not all_users:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No active users found"
+            detail="No se encontraron usuarios activos"
         )
     
     # Create notifications for all users
@@ -781,7 +781,7 @@ async def send_notifications_to_all(
     db.commit()
     
     return MessageResponse(
-        message=f"Sent {len(notifications)} notifications to all active users"
+        message=f"Se enviaron {len(notifications)} notificaciones a todos los usuarios activos"
     )
 
 
@@ -854,7 +854,7 @@ async def create_notification_template(
     if existing_template:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Template with this name already exists"
+            detail="Ya existe una plantilla con este nombre"
         )
     
     # Create new template
@@ -889,7 +889,7 @@ async def get_notification_template(
     if not template:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Template not found"
+            detail="Plantilla no encontrada"
         )
     
     return template
@@ -916,7 +916,7 @@ async def update_notification_template(
     if not template:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Template not found"
+            detail="Plantilla no encontrada"
         )
     
     # Update template fields
@@ -956,7 +956,7 @@ async def delete_notification_template(
     db.delete(template)
     db.commit()
     
-    return MessageResponse(message="Template deleted successfully")
+    return MessageResponse(message="Plantilla eliminada exitosamente")
 
 
 @router.post("/templates/{template_id}/send", response_model=MessageResponse)
@@ -992,7 +992,7 @@ async def send_notification_from_template(
         missing_ids = set(user_ids) - set(existing_user_ids)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Users not found: {list(missing_ids)}"
+            detail=f"Usuarios no encontrados: {list(missing_ids)}"
         )
     
     # Process template variables
@@ -1019,7 +1019,7 @@ async def send_notification_from_template(
     db.add_all(notifications)
     db.commit()
     
-    return MessageResponse(message=f"Sent {len(notifications)} notifications using template")
+    return MessageResponse(message=f"Se enviaron {len(notifications)} notificaciones usando la plantilla")
 
 
 # User preferences
@@ -1105,7 +1105,7 @@ async def send_test_email(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al enviar email: {str(e)}"
+            detail=f"Error al enviar correo electrónico: {str(e)}"
         )
     
     # For now, just return the provided preferences
