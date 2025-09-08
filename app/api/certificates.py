@@ -5,6 +5,9 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func
 import os
+import tempfile
+import requests
+from contextlib import contextmanager
 
 from app.dependencies import get_current_active_user
 from app.database import get_db
@@ -21,6 +24,25 @@ from app.schemas.common import MessageResponse, PaginatedResponse
 from app.services.certificate_generator import CertificateGenerator
 
 router = APIRouter()
+
+
+class TempFileResponse(FileResponse):
+    """FileResponse que limpia automáticamente archivos temporales después del envío"""
+    
+    def __init__(self, path: str, cleanup_temp: bool = False, **kwargs):
+        super().__init__(path, **kwargs)
+        self.cleanup_temp = cleanup_temp
+        self.temp_path = path if cleanup_temp else None
+    
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            if self.cleanup_temp and self.temp_path and os.path.exists(self.temp_path):
+                try:
+                    os.unlink(self.temp_path)
+                except OSError:
+                    pass  # Ignore cleanup errors
 
 
 @router.get("/", response_model=PaginatedResponse[CertificateListResponse])
@@ -592,7 +614,8 @@ async def get_certificate_pdf(
     # Get file path from certificate or generate if needed
     file_path = certificate.file_path
     
-    if not file_path or not os.path.exists(file_path):
+    # Check if we need to generate the certificate
+    if not file_path:
         try:
             # Importante: usar await ya que generate_certificate_pdf es una función asíncrona
             generator = CertificateGenerator(db)
@@ -606,15 +629,39 @@ async def get_certificate_pdf(
                 detail=f"Error generando PDF del certificado: {str(e)}"
             )
     
-    if not os.path.exists(file_path):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Archivo del certificado no encontrado"
-        )
+    # Handle Firebase Storage URLs vs local files
+    is_temp_file = False
+    if file_path.startswith('https://storage.googleapis.com/'):
+        # Firebase Storage URL - need to download temporarily for FileResponse
+        try:
+            # Download file from Firebase Storage
+            response = requests.get(file_path, timeout=30)
+            response.raise_for_status()
+            
+            # Create temporary file
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+            temp_file.write(response.content)
+            temp_file.close()
+            
+            local_file_path = temp_file.name
+            is_temp_file = True
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Error descargando archivo del certificado: {str(e)}"
+            )
+    else:
+        # Local file path
+        local_file_path = file_path
+        if not os.path.exists(local_file_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Archivo del certificado no encontrado"
+            )
     
     # Prepare response parameters
     response_params = {
-        "path": file_path,
+        "path": local_file_path,
         "media_type": "application/pdf"
     }
     
@@ -633,7 +680,10 @@ async def get_certificate_pdf(
         response_params["filename"] = f"Certificado_{clean_course_name}_{certificate.certificate_number}.pdf"
     
     # Return file response with appropriate parameters
-    return FileResponse(**response_params)
+    if is_temp_file:
+        return TempFileResponse(cleanup_temp=True, **response_params)
+    else:
+        return FileResponse(**response_params)
 
 
 @router.post("/generate-from-course", response_model=CertificateResponse)
