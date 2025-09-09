@@ -558,13 +558,29 @@ async def delete_enrollment(
     
     # Get user and course info for logging
     user = db.query(User).filter(User.id == enrollment.user_id).first()
+    worker = db.query(Worker).filter(Worker.user_id == enrollment.user_id).first() if enrollment.user_id else None
     course = db.query(Course).filter(Course.id == enrollment.course_id).first()
     
     # Delete all related data in the correct order to avoid foreign key constraints
     try:
-        # 1. Delete attendance records
+        # 1. Delete attendance records (both with enrollment_id and orphaned records)
+        # First, count and delete records with enrollment_id
         attendance_count = db.query(Attendance).filter(Attendance.enrollment_id == enrollment_id).count()
         db.query(Attendance).filter(Attendance.enrollment_id == enrollment_id).delete()
+        
+        # Also delete orphaned attendance records that match user_id and course_id but have no enrollment_id
+        orphaned_attendance_count = db.query(Attendance).filter(
+            Attendance.user_id == enrollment.user_id,
+            Attendance.course_id == enrollment.course_id,
+            Attendance.enrollment_id.is_(None)
+        ).count()
+        db.query(Attendance).filter(
+            Attendance.user_id == enrollment.user_id,
+            Attendance.course_id == enrollment.course_id,
+            Attendance.enrollment_id.is_(None)
+        ).delete()
+        
+        total_attendance_count = attendance_count + orphaned_attendance_count
         
         # 2. Delete user material progress
         material_progress_count = db.query(UserMaterialProgress).filter(
@@ -583,18 +599,81 @@ async def delete_enrollment(
             UserModuleProgress.enrollment_id == enrollment_id
         ).delete()
         
-        # 4. Delete user evaluations
-        evaluations_count = db.query(UserEvaluation).filter(
+        # 4. Delete user evaluations and their answers
+        from app.models.evaluation import UserAnswer
+        
+        # First get all user evaluations for this enrollment
+        user_evaluations = db.query(UserEvaluation).filter(
             UserEvaluation.enrollment_id == enrollment_id
-        ).count()
+        ).all()
+        
+        # Also get orphaned evaluations for the same user and course
+        # First get all evaluations for this course
+        from app.models.evaluation import Evaluation
+        course_evaluations = db.query(Evaluation).filter(
+            Evaluation.course_id == enrollment.course_id
+        ).all()
+        course_evaluation_ids = [eval.id for eval in course_evaluations]
+        
+        # Then get orphaned user evaluations for these course evaluations
+        orphaned_evaluations = db.query(UserEvaluation).filter(
+            UserEvaluation.user_id == enrollment.user_id,
+            UserEvaluation.evaluation_id.in_(course_evaluation_ids),
+            UserEvaluation.enrollment_id.is_(None)
+        ).all()
+        
+        all_evaluations = user_evaluations + orphaned_evaluations
+        evaluations_count = len(user_evaluations)
+        orphaned_evaluations_count = len(orphaned_evaluations)
+        total_evaluations_count = len(all_evaluations)
+        user_answers_count = 0
+        
+        # Delete user answers for each evaluation (both regular and orphaned)
+        for user_eval in all_evaluations:
+            answers_count = db.query(UserAnswer).filter(
+                UserAnswer.user_evaluation_id == user_eval.id
+            ).count()
+            user_answers_count += answers_count
+            
+            db.query(UserAnswer).filter(
+                UserAnswer.user_evaluation_id == user_eval.id
+            ).delete()
+        
+        # Delete the user evaluations with enrollment_id
         db.query(UserEvaluation).filter(
             UserEvaluation.enrollment_id == enrollment_id
         ).delete()
         
-        # 5. Delete user surveys related to this enrollment
-        surveys_count = db.query(UserSurvey).filter(
+        # Delete orphaned evaluations for the same user and course
+        db.query(UserEvaluation).filter(
+            UserEvaluation.user_id == enrollment.user_id,
+            UserEvaluation.evaluation_id.in_(course_evaluation_ids),
+            UserEvaluation.enrollment_id.is_(None)
+        ).delete()
+        
+        # 5. Delete user surveys and their answers related to this enrollment
+        from app.models.survey import UserSurveyAnswer
+        
+        # First get all user surveys for this enrollment
+        user_surveys = db.query(UserSurvey).filter(
             UserSurvey.enrollment_id == enrollment_id
-        ).count()
+        ).all()
+        
+        surveys_count = len(user_surveys)
+        survey_answers_count = 0
+        
+        # Delete user survey answers for each survey
+        for user_survey in user_surveys:
+            answers_count = db.query(UserSurveyAnswer).filter(
+                UserSurveyAnswer.user_survey_id == user_survey.id
+            ).count()
+            survey_answers_count += answers_count
+            
+            db.query(UserSurveyAnswer).filter(
+                UserSurveyAnswer.user_survey_id == user_survey.id
+            ).delete()
+        
+        # Now delete the user surveys
         db.query(UserSurvey).filter(
             UserSurvey.enrollment_id == enrollment_id
         ).delete()
@@ -620,9 +699,12 @@ async def delete_enrollment(
         db.commit()
         
         return MessageResponse(
-            message=f"Inscripción eliminada permanentemente. Removidos: {attendance_count} registros de asistencia, "
+            message=f"Inscripción eliminada permanentemente. Removidos: {total_attendance_count} registros de asistencia "
+                   f"({attendance_count} con enrollment_id + {orphaned_attendance_count} huérfanos), "
                    f"{material_progress_count} registros de progreso de material, {module_progress_count} registros de progreso de módulo, "
-                   f"{evaluations_count} evaluaciones, {surveys_count} encuestas, {certificates_count} certificados, "
+                   f"{total_evaluations_count} evaluaciones ({evaluations_count} con enrollment_id + {orphaned_evaluations_count} huérfanas), "
+                   f"{user_answers_count} respuestas de evaluación, "
+                   f"{surveys_count} encuestas, {survey_answers_count} respuestas de encuesta, {certificates_count} certificados, "
                    f"y la inscripción para el usuario {user.email if user else 'N/A'} en el curso {course.title if course else 'N/A'}"
         )
         

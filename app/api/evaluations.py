@@ -54,6 +54,14 @@ async def get_evaluations(
         if current_user.role.value not in ["admin", "capacitador"]:
             query = query.filter(Evaluation.status == EvaluationStatus.PUBLISHED)
     
+    # For employees, only show evaluations from courses they are enrolled in
+    if current_user.role.value == "employee":
+        from app.models.enrollment import Enrollment
+        enrolled_course_ids = db.query(Enrollment.course_id).filter(
+            Enrollment.user_id == current_user.id
+        ).subquery()
+        query = query.filter(Evaluation.course_id.in_(enrolled_course_ids))
+    
     # Get total count
     total = query.count()
     
@@ -84,10 +92,21 @@ async def get_available_evaluations(
 ) -> Any:
     """
     Get available evaluations for the current user (active evaluations not yet completed)
+    Only shows evaluations from courses the user is enrolled in.
     """
-    # Get active evaluations
+    from app.models.enrollment import Enrollment
+    
+    # Get courses the user is enrolled in
+    enrolled_course_ids = db.query(Enrollment.course_id).filter(
+        Enrollment.user_id == current_user.id
+    ).subquery()
+    
+    # Get active evaluations only from enrolled courses
     evaluations_query = db.query(Evaluation).filter(
-        Evaluation.status == EvaluationStatus.PUBLISHED
+        and_(
+            Evaluation.status == EvaluationStatus.PUBLISHED,
+            Evaluation.course_id.in_(enrolled_course_ids)
+        )
     )
     
     # Get evaluations already completed by the user
@@ -780,6 +799,9 @@ async def get_my_evaluation_results(
     
     try:
         # Build query with joins to get evaluation and course information
+        # Only show evaluations from courses the user is enrolled in
+        from app.models.enrollment import Enrollment
+        
         query = db.query(
             UserEvaluation,
             Evaluation.title.label('evaluation_title'),
@@ -788,6 +810,11 @@ async def get_my_evaluation_results(
             Evaluation, UserEvaluation.evaluation_id == Evaluation.id
         ).join(
             Course, Evaluation.course_id == Course.id
+        ).join(
+            Enrollment, and_(
+                Enrollment.course_id == Course.id,
+                Enrollment.user_id == current_user.id
+            )
         ).filter(
             UserEvaluation.user_id == current_user.id
         )
