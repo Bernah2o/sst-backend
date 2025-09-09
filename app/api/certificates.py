@@ -456,10 +456,10 @@ async def verify_certificate(
     )
 
 
-@router.post("/{certificate_id}/revoke", response_model=MessageResponse)
+@router.put("/{certificate_id}/revoke", response_model=MessageResponse)
 async def revoke_certificate(
     certificate_id: int,
-    reason: str,
+    reason: str = "Revocado por administrador",
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:
@@ -495,6 +495,56 @@ async def revoke_certificate(
     db.commit()
     
     return MessageResponse(message="Certificado revocado exitosamente")
+
+
+@router.post("/{certificate_id}/regenerate", response_model=MessageResponse)
+async def regenerate_certificate(
+    certificate_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Regenerate certificate PDF (admin only)
+    """
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permisos insuficientes"
+        )
+    
+    certificate = db.query(Certificate).filter(Certificate.id == certificate_id).first()
+    
+    if not certificate:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Certificado no encontrado"
+        )
+    
+    if certificate.status not in [CertificateStatus.ISSUED, CertificateStatus.REVOKED]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Solo se pueden regenerar certificados emitidos o revocados"
+        )
+    
+    try:
+        # Generate new certificate PDF
+        generator = CertificateGenerator(db)
+        file_path = await generator.generate_certificate_pdf(certificate_id)
+        
+        # Update certificate status to issued if it was revoked
+        if certificate.status == CertificateStatus.REVOKED:
+            certificate.status = CertificateStatus.ISSUED
+            db.commit()
+        
+        # Update certificate with new file path
+        db.refresh(certificate)
+        
+        return MessageResponse(message="Certificado regenerado exitosamente")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error regenerando certificado: {str(e)}"
+        )
 
 
 @router.get("/user/{user_id}/summary")
