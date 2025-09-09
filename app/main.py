@@ -397,6 +397,10 @@ async def get_direct_evaluation_results(request: Request):
         current_user = auth_service.get_current_user(db, token)
         
         # Build query with joins to get evaluation and course information
+        # Only show evaluations from courses the user is enrolled in
+        from app.models.enrollment import Enrollment
+        from sqlalchemy import and_
+        
         query = db.query(
             UserEvaluation,
             Evaluation.title.label('evaluation_title'),
@@ -405,6 +409,11 @@ async def get_direct_evaluation_results(request: Request):
             Evaluation, UserEvaluation.evaluation_id == Evaluation.id
         ).outerjoin(
             Course, Evaluation.course_id == Course.id
+        ).join(
+            Enrollment, and_(
+                Enrollment.course_id == Course.id,
+                Enrollment.user_id == current_user.id
+            )
         ).filter(
             UserEvaluation.user_id == current_user.id
         )
