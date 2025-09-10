@@ -218,7 +218,8 @@ class PermissionChecker:
                 "evaluations": ["view", "read", "submit"],
                 "surveys": ["view", "read", "submit"],
                 "certificates": ["view", "read", "download"],
-                "notifications": ["view", "read"]
+                "notifications": ["view", "read"],
+                "workers": ["view", "read"]
             },
         }
         

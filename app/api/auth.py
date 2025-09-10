@@ -341,4 +341,50 @@ async def validate_token(
     return MessageResponse(message="Token is valid")
 
 
+@router.get("/me")
+async def get_current_user(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get current user information
+    """
+    # Get worker information if exists
+    worker = db.query(Worker).filter(Worker.user_id == current_user.id).first()
+    
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "first_name": current_user.first_name,
+        "last_name": current_user.last_name,
+        "full_name": current_user.full_name,
+        "role": current_user.role.value,
+        "is_active": current_user.is_active,
+        "is_verified": current_user.is_verified,
+        "custom_role_id": current_user.custom_role_id,
+        "worker_id": worker.id if worker else None,
+        "worker": {
+            "id": worker.id,
+            "full_name": worker.full_name,
+            "email": worker.email,
+            "document_number": worker.document_number
+        } if worker else None
+    }
+
+
+@router.get("/me/permissions")
+async def get_current_user_permissions(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get current user's permissions
+    """
+    from app.api.permissions import get_my_pages
+    
+    # Reutilizar la lógica existente del endpoint de permisos
+    result = await get_my_pages(current_user, db)
+    return result
+
+
 # Additional endpoints can be added here as needed
