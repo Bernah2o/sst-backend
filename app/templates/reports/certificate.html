@@ -13,69 +13,76 @@
 </head>
 <body>
     <div class="certificate">
-        <div class="celebration-elements"></div>
-        <div class="border-outer"></div>
-        <div class="border-inner"></div>
+        <!-- Elementos decorativos de fondo -->
+        <div class="bg-decoration top-left"></div>
+        <div class="bg-decoration top-right"></div>
+        <div class="bg-decoration bottom-left"></div>
+        <div class="bg-decoration bottom-right"></div>
         
-        <div class="corner top-left"></div>
-        <div class="corner top-right"></div>
-        <div class="corner bottom-left"></div>
-        <div class="corner bottom-right"></div>
-        
+        <!-- Contenido principal -->
         <div class="content">
-            <div class="header">
-                <div class="logo-container">
-                    {% if logo_base64 %}
-                    <img class="logo" src="data:image/png;base64,{{ logo_base64 }}" alt="Logo">
-                    {% else %}
-                    <div class="logo-placeholder">Logo no disponible</div>
-                    {% endif %}
+            <!-- Lado izquierdo con texto -->
+            <div class="left-section">
+                <div class="stars">
+                    <span class="star">★</span>
+                    <span class="star">★</span>
+                    <span class="star">★</span>
+                    <span class="star">★</span>
+                    <span class="star">★</span>
                 </div>
                 
-                <h1 class="title">🏆 CERTIFICADO DE EXCELENCIA 🏆</h1>
-                <p class="subtitle">¡Felicitaciones! Se certifica con gran orgullo que</p>
+                <h1 class="certificate-title">CERTIFICATE</h1>
+                <p class="certificate-subtitle">of Achievement</p>
                 
-                <h2 class="name">{{ user.full_name }}</h2>
-                <p class="document">Cédula de Ciudadanía: {{ user.document_number }}</p>
+                <h2 class="recipient-name">{{ user.full_name }}</h2>
                 
-                <p class="description">ha completado exitosamente y con dedicación el curso</p>
+                <div class="achievement-text">
+                    <p class="for-text">For completing the</p>
+                    <p class="course-name">"{{ course.title }}"</p>
+                </div>
                 
-                <h3 class="course-title">{{ course.title }}</h3>
+                <div class="description">
+                    <p>In recognition of your exceptional talent, dedication, and outstanding performance, you have emerged as the winner of this prestigious course.</p>
+                </div>
                 
-                {% if certificate.score_achieved %}
-                <p class="score">🌟 ¡Excelente desempeño con {{ certificate.score_achieved }}%! 🌟</p>
-                {% endif %}
-                
-                <p class="completion-date">📅 Fecha de finalización: {{ completion_date }}</p>
+
             </div>
             
-            <div class="certificate-info">
-                <table>
-                    <tr>
-                        <td class="label">Número de Certificado:</td>
-                        <td class="value">{{ certificate.certificate_number }}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Fecha de Emisión:</td>
-                        <td class="value">{{ issue_date }}</td>
-                    </tr>
-                    <tr>
-                        <td class="label">Código de Verificación:</td>
-                        <td class="value">{{ certificate.verification_code }}</td>
-                    </tr>
-                    {% if certificate.expiry_date %}
-                    <tr>
-                        <td class="label">Fecha de Expiración:</td>
-                        <td class="value">{{ expiry_date }}</td>
-                    </tr>
+            <!-- Lado derecho con trofeo -->
+            <div class="right-section">
+                <div class="trophy-container">
+                    <div class="trophy">
+                        <div class="trophy-top">
+                            <div class="star-trophy">★</div>
+                        </div>
+                        <div class="trophy-cup"></div>
+                        <div class="trophy-base"></div>
+                    </div>
+                    <div class="laurel-left"></div>
+                    <div class="laurel-right"></div>
+                </div>
+                
+                <!-- Información del certificado -->
+                <div class="certificate-details">
+                    <div class="detail-item">
+                        <span class="detail-label">Certificate Number:</span>
+                        <span class="detail-value">{{ certificate.certificate_number }}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Issue Date:</span>
+                        <span class="detail-value">{{ issue_date }}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Verification Code:</span>
+                        <span class="detail-value">{{ certificate.verification_code }}</span>
+                    </div>
+                    {% if certificate.score_achieved %}
+                    <div class="detail-item">
+                        <span class="detail-label">Score:</span>
+                        <span class="detail-value">{{ certificate.score_achieved }}%</span>
+                    </div>
                     {% endif %}
-                </table>
-            </div>
-            
-            <div class="signature">
-                <div class="signature-line"></div>
-                <p class="signature-name">Bernardino de Aguas - Profesional en SST</p>
-                <p class="signature-title">Firma Autorizada</p>
+                </div>
             </div>
         </div>
     </div>
