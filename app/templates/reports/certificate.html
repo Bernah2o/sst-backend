@@ -13,6 +13,7 @@
 </head>
 <body>
     <div class="certificate">
+        <div class="celebration-elements"></div>
         <div class="border-outer"></div>
         <div class="border-inner"></div>
         
@@ -31,21 +32,21 @@
                     {% endif %}
                 </div>
                 
-                <h1 class="title">CERTIFICADO DE FINALIZACIÓN</h1>
-                <p class="subtitle">Se certifica que</p>
+                <h1 class="title">🏆 CERTIFICADO DE EXCELENCIA 🏆</h1>
+                <p class="subtitle">¡Felicitaciones! Se certifica con gran orgullo que</p>
                 
                 <h2 class="name">{{ user.full_name }}</h2>
                 <p class="document">Cédula de Ciudadanía: {{ user.document_number }}</p>
                 
-                <p class="description">ha completado satisfactoriamente el curso</p>
+                <p class="description">ha completado exitosamente y con dedicación el curso</p>
                 
                 <h3 class="course-title">{{ course.title }}</h3>
                 
                 {% if certificate.score_achieved %}
-                <p class="score">Con una calificación de: {{ certificate.score_achieved }}%</p>
+                <p class="score">🌟 ¡Excelente desempeño con {{ certificate.score_achieved }}%! 🌟</p>
                 {% endif %}
                 
-                <p class="completion-date">Fecha de finalización: {{ completion_date }}</p>
+                <p class="completion-date">📅 Fecha de finalización: {{ completion_date }}</p>
             </div>
             
             <div class="certificate-info">
