@@ -1,95 +1,161 @@
 @page {
-    size: A4 portrait;
+    size: A4 landscape;
     margin: 0;
 }
 
 body {
-    font-family: Arial, Helvetica, sans-serif;
-    line-height: 1.5;
+    font-family: 'Georgia', 'Times New Roman', serif;
+    line-height: 1.6;
     color: #2C3E50;
     margin: 0;
     padding: 0;
-    background-color: #fff;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
 }
 
 .certificate {
     position: relative;
-    width: 21cm;
-    height: 29.7cm;
+    width: 29.7cm;
+    height: 21cm;
     margin: 0 auto;
-    padding: 2cm;
+    padding: 1.5cm;
     box-sizing: border-box;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 15px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
 }
 
 /* Bordes decorativos */
 .border-outer {
     position: absolute;
-    top: 30px;
-    left: 30px;
-    right: 30px;
-    bottom: 30px;
-    border: 4px solid #2E4FAB;
+    top: 20px;
+    left: 20px;
+    right: 20px;
+    bottom: 20px;
+    border: 6px solid #FFD700;
+    border-radius: 10px;
     z-index: 1;
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: inset 0 0 30px rgba(255, 215, 0, 0.3);
 }
 
 .border-inner {
     position: absolute;
-    top: 45px;
-    left: 45px;
-    right: 45px;
-    bottom: 45px;
-    border: 2px solid #FFD700;
+    top: 35px;
+    left: 35px;
+    right: 35px;
+    bottom: 35px;
+    border: 3px solid #2E4FAB;
+    border-radius: 8px;
+    z-index: 1;
+    background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+}
+
+/* Elementos celebrativos */
+.celebration-elements {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
     z-index: 1;
 }
 
-/* Esquinas decorativas */
+.celebration-elements::before {
+    content: "🎉 🎊 ✨ 🌟 🏆 🎯 💫 ⭐ 🎉 🎊 ✨ 🌟";
+    position: absolute;
+    top: 10px;
+    left: 0;
+    width: 100%;
+    text-align: center;
+    font-size: 16px;
+    animation: sparkle 3s ease-in-out infinite;
+}
+
+.celebration-elements::after {
+    content: "🎊 ✨ 🌟 🏆 🎯 💫 ⭐ 🎉 🎊 ✨ 🌟 🎉";
+    position: absolute;
+    bottom: 10px;
+    left: 0;
+    width: 100%;
+    text-align: center;
+    font-size: 16px;
+    animation: sparkle 3s ease-in-out infinite 1.5s;
+}
+
+@keyframes sparkle {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.1); }
+}
+
+/* Elementos decorativos en las esquinas */
 .corner {
     position: absolute;
-    width: 60px;
-    height: 60px;
+    width: 80px;
+    height: 80px;
+    font-size: 32px;
+    color: #FFD700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     z-index: 2;
 }
 
+.corner::before {
+    content: "🏆";
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    animation: bounce 2s ease-in-out infinite;
+}
+
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
 .top-left {
-    top: 60px;
-    left: 60px;
-    border-top: 1px solid #2E4FAB;
-    border-left: 1px solid #2E4FAB;
+    top: 15px;
+    left: 15px;
 }
 
 .top-right {
-    top: 60px;
-    right: 60px;
-    border-top: 1px solid #2E4FAB;
-    border-right: 1px solid #2E4FAB;
+    top: 15px;
+    right: 15px;
 }
 
 .bottom-left {
-    bottom: 60px;
-    left: 60px;
-    border-bottom: 1px solid #2E4FAB;
-    border-left: 1px solid #2E4FAB;
+    bottom: 15px;
+    left: 15px;
 }
 
 .bottom-right {
-    bottom: 60px;
-    right: 60px;
-    border-bottom: 1px solid #2E4FAB;
-    border-right: 1px solid #2E4FAB;
+    bottom: 15px;
+    right: 15px;
 }
+
+.top-left::before { content: "🎉"; }
+.top-right::before { content: "🎊"; }
+.bottom-left::before { content: "⭐"; }
+.bottom-right::before { content: "🌟"; }
 
 /* Contenido del certificado */
 .content {
     position: relative;
     z-index: 3;
     height: 100%;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 1fr 2fr 1fr;
+    grid-template-rows: auto 1fr auto;
+    gap: 20px;
+    padding: 20px;
 }
 
 .header {
+    grid-column: 1 / -1;
     text-align: center;
+    background: linear-gradient(45deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.7) 100%);
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.1);
 }
 
 .logo-container {
@@ -109,103 +175,141 @@ body {
 }
 
 .title {
-    font-size: 36px;
-    color: #2E4FAB;
-    margin: 20px 0 30px;
+    font-size: 42px;
+    background: linear-gradient(45deg, #2E4FAB, #667eea);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 10px 0 20px;
     font-weight: bold;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+    letter-spacing: 2px;
 }
 
 .subtitle {
-    font-size: 16px;
+    font-size: 18px;
     color: #2C3E50;
-    margin-bottom: 25px;
+    margin-bottom: 15px;
+    font-style: italic;
 }
 
 .name {
-    font-size: 32px;
-    color: #2E4FAB;
-    margin: 15px 0 25px;
+    font-size: 36px;
+    background: linear-gradient(45deg, #FFD700, #FFA500);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 10px 0 15px;
     font-weight: bold;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+    letter-spacing: 1px;
 }
 
 .document {
-    font-size: 14px;
-    margin-bottom: 12px;
+    font-size: 16px;
+    margin-bottom: 10px;
+    color: #555;
 }
 
 .description {
-    font-size: 14px;
-    margin-bottom: 6px;
+    font-size: 16px;
+    margin-bottom: 8px;
+    color: #2C3E50;
 }
 
 .course-title {
-    font-size: 24px;
+    font-size: 28px;
     color: #2E4FAB;
-    margin: 15px 0 30px;
+    margin: 10px 0 20px;
     font-weight: bold;
+    text-decoration: underline;
+    text-decoration-color: #FFD700;
+    text-underline-offset: 8px;
 }
 
 .score {
-    font-size: 14px;
-    margin-bottom: 15px;
+    font-size: 16px;
+    margin-bottom: 10px;
+    color: #27AE60;
+    font-weight: bold;
 }
 
 .completion-date {
-    font-size: 14px;
-    margin-bottom: 20px;
+    font-size: 16px;
+    margin-bottom: 15px;
+    color: #2C3E50;
 }
 
 /* Tabla de información del certificado */
 .certificate-info {
-    margin: 20px 0;
+    grid-column: 1 / -1;
+    background: linear-gradient(45deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.7) 100%);
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.1);
 }
 
 table {
-    width: 80%;
+    width: 100%;
     margin: 0 auto;
     border-collapse: collapse;
+    background: rgba(255,255,255,0.5);
+    border-radius: 10px;
+    overflow: hidden;
 }
 
 td {
-    padding: 6px 10px;
-    font-size: 10px;
+    padding: 12px 20px;
+    font-size: 14px;
     vertical-align: middle;
+    border-bottom: 1px solid rgba(46, 79, 171, 0.1);
 }
 
 .label {
     font-weight: bold;
-    color: #2C3E50;
+    color: #2E4FAB;
     width: 40%;
+    background: rgba(46, 79, 171, 0.05);
 }
 
 .value {
-    color: #000;
+    color: #2C3E50;
+    font-weight: 500;
 }
 
 /* Firma */
 .signature {
+    grid-column: 1 / -1;
     text-align: center;
-    margin-top: 30px;
+    background: linear-gradient(45deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.7) 100%);
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.1);
 }
 
 .signature-line {
-    width: 200px;
-    height: 1px;
-    background-color: #000;
-    margin: 0 auto 5px;
+    width: 250px;
+    height: 2px;
+    background: linear-gradient(45deg, #2E4FAB, #667eea);
+    margin: 0 auto 10px;
+    border-radius: 1px;
 }
 
 .signature-name {
-    font-size: 12px;
+    font-size: 16px;
     font-weight: bold;
-    margin: 5px 0 0;
+    margin: 10px 0 5px;
+    color: #2E4FAB;
 }
 
 .signature-title {
-    font-size: 12px;
+    font-size: 14px;
     font-style: italic;
     margin: 0;
+    color: #666;
 }
+
+
 
 @media print {
     body {

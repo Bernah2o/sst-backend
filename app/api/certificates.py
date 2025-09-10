@@ -22,6 +22,7 @@ from app.schemas.certificate import (
 )
 from app.schemas.common import MessageResponse, PaginatedResponse
 from app.services.certificate_generator import CertificateGenerator
+from app.utils.storage import StorageManager
 
 router = APIRouter()
 
@@ -324,6 +325,30 @@ async def delete_certificate(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Certificado no encontrado"
         )
+    
+    # Eliminar archivos asociados antes de eliminar el registro de la base de datos
+    try:
+        storage_manager = StorageManager()
+        
+        # Si el certificado tiene una ruta de archivo
+        if certificate.file_path:
+            # Detectar si es Firebase Storage o almacenamiento local
+            if certificate.file_path.startswith('https://storage.googleapis.com/'):
+                # Firebase Storage - extraer la ruta del archivo
+                firebase_path = certificate.file_path.split('/')[-1]  # Obtener solo el nombre del archivo
+                await storage_manager.delete_file(f"certificates/{firebase_path}")
+            else:
+                # Almacenamiento local
+                if os.path.exists(certificate.file_path):
+                    os.remove(certificate.file_path)
+        
+        # También intentar eliminar usando el generador de certificados
+        generator = CertificateGenerator(db)
+        generator.delete_certificate_file(certificate_id)
+        
+    except Exception as e:
+        # Continuar con la eliminación del registro aunque falle la eliminación de archivos
+        pass
     
     db.delete(certificate)
     db.commit()
