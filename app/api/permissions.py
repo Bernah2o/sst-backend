@@ -157,6 +157,28 @@ PERMISSIONS_DATA = [
     {"id": 92, "resource_type": "occupational_exam", "action": "delete", "description": "Eliminar exámenes ocupacionales", "is_active": True},
     {"id": 93, "resource_type": "progress", "action": "read", "description": "Ver progreso de usuarios", "is_active": True},
     {"id": 94, "resource_type": "progress", "action": "update", "description": "Actualizar progreso de usuarios", "is_active": True},
+    
+    # Gestión de Proveedores
+    {"id": 95, "resource_type": "suppliers", "action": "view", "description": "Acceder a la página de proveedores", "is_active": True},
+    {"id": 96, "resource_type": "suppliers", "action": "create", "description": "Crear proveedores", "is_active": True},
+    {"id": 97, "resource_type": "suppliers", "action": "read", "description": "Ver detalles de proveedores", "is_active": True},
+    {"id": 98, "resource_type": "suppliers", "action": "update", "description": "Editar proveedores", "is_active": True},
+    {"id": 99, "resource_type": "suppliers", "action": "delete", "description": "Eliminar proveedores", "is_active": True},
+    
+    # Gestión de Ausentismo
+    {"id": 100, "resource_type": "absenteeism", "action": "view", "description": "Acceder a la página de ausentismo", "is_active": True},
+    {"id": 101, "resource_type": "absenteeism", "action": "create", "description": "Crear registros de ausentismo", "is_active": True},
+    {"id": 102, "resource_type": "absenteeism", "action": "read", "description": "Ver detalles de ausentismo", "is_active": True},
+    {"id": 103, "resource_type": "absenteeism", "action": "update", "description": "Editar registros de ausentismo", "is_active": True},
+    {"id": 104, "resource_type": "absenteeism", "action": "delete", "description": "Eliminar registros de ausentismo", "is_active": True},
+    
+    # Seguimiento (adicional para compatibilidad)
+    {"id": 105, "resource_type": "seguimiento", "action": "view", "description": "Acceder a seguimientos de salud ocupacional", "is_active": True},
+    {"id": 106, "resource_type": "seguimiento", "action": "create", "description": "Crear seguimientos de salud ocupacional", "is_active": True},
+    {"id": 107, "resource_type": "seguimiento", "action": "read", "description": "Ver seguimientos de salud ocupacional", "is_active": True},
+    
+    # Exámenes ocupacionales (adicional para vista)
+    {"id": 108, "resource_type": "occupational_exam", "action": "view", "description": "Acceder a exámenes ocupacionales", "is_active": True},
 ]
 
 @router.get("/", response_model=List[Permission])

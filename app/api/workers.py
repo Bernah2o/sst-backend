@@ -9,11 +9,12 @@ from openpyxl.styles import Font, Alignment, PatternFill
 from datetime import datetime
 
 from app.database import get_db
-from app.dependencies import get_current_user, require_admin, require_supervisor_or_admin
+from app.dependencies import get_current_user, get_current_active_user, require_admin, require_supervisor_or_admin
 from app.models.user import User
 from app.models.worker import Worker, WorkerContract
 from app.models.occupational_exam import OccupationalExam
 from app.models.seguimiento import Seguimiento, EstadoSeguimiento
+from app.models.reinduction import ReinductionRecord
 from app.schemas.worker import (
     Worker as WorkerSchema,
     WorkerCreate,
@@ -985,7 +986,7 @@ async def export_workers_to_excel(
 async def get_worker_reinduction_history(
     worker_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user)
 ) -> Any:
     """
     Obtener historial de reinducciones de un trabajador específico
@@ -1000,8 +1001,9 @@ async def get_worker_reinduction_history(
     
     # Verificar permisos: el trabajador solo puede ver su propio historial
     # Los supervisores y admins pueden ver cualquier historial
+    user_worker = db.query(Worker).filter(Worker.user_id == current_user.id).first()
     if (current_user.role.value not in ["admin", "supervisor"] and 
-        current_user.worker and current_user.worker.id != worker_id):
+        (not user_worker or user_worker.id != worker_id)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permisos para ver este historial"
@@ -1020,7 +1022,7 @@ async def get_worker_reinduction_history(
             "year": record.year,
             "status": record.status.value,
             "due_date": record.due_date.isoformat() if record.due_date else None,
-            "completion_date": record.completion_date.isoformat() if record.completion_date else None,
+            "completed_date": record.completed_date.isoformat() if record.completed_date else None,
             "created_at": record.created_at.isoformat() if record.created_at else None,
             "updated_at": record.updated_at.isoformat() if record.updated_at else None
         })
