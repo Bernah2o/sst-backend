@@ -2,6 +2,8 @@ from .user import User, UserRole
 from .custom_role import CustomRole
 from .permission import Permission
 from .worker import Worker, WorkerContract, Gender, DocumentType, ContractType, RiskLevel, BloodType, EPS, AFP, ARL
+from .worker_document import WorkerDocument
+from .worker_novedad import WorkerNovedad, NovedadType, NovedadStatus
 from .cargo import Cargo
 from .seguridad_social import SeguridadSocial
 from .absenteeism import Absenteeism, EventMonth, EventType
@@ -77,4 +79,7 @@ __all__ = [
     "EventType",
     "NotificationAcknowledgment",
     "Permission",
+    "WorkerNovedad",
+    "NovedadType",
+    "NovedadStatus",
 ]

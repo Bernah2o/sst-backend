@@ -166,6 +166,7 @@ class Worker(Base):
     reinduction_records = relationship("ReinductionRecord", back_populates="worker", cascade="all, delete-orphan")
     seguimientos = relationship("Seguimiento", back_populates="worker", cascade="all, delete-orphan")
     absenteeism_records = relationship("Absenteeism", back_populates="worker", cascade="all, delete-orphan")
+    documents = relationship("WorkerDocument", back_populates="worker", cascade="all, delete-orphan")
     user = relationship("User", foreign_keys=[user_id])
     
     @hybrid_property

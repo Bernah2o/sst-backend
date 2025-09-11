@@ -1,17 +1,23 @@
 from typing import Any, List, Dict
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
+from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from io import BytesIO
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 from datetime import datetime
+import os
+import uuid
 
 from app.database import get_db
 from app.dependencies import get_current_user, get_current_active_user, require_admin, require_supervisor_or_admin
 from app.models.user import User
 from app.models.worker import Worker, WorkerContract
+from app.models.worker_document import WorkerDocument, DocumentCategory
+from app.models.worker_novedad import WorkerNovedad, NovedadType, NovedadStatus
+from app.services.firebase_storage_service import FirebaseStorageService
+from app.config import settings
 from app.models.occupational_exam import OccupationalExam
 from app.models.seguimiento import Seguimiento, EstadoSeguimiento
 from app.models.reinduction import ReinductionRecord
@@ -22,7 +28,17 @@ from app.schemas.worker import (
     WorkerList,
     WorkerContract as WorkerContractSchema,
     WorkerContractCreate,
-    WorkerContractUpdate
+    WorkerContractUpdate,
+    WorkerDocumentResponse,
+    WorkerDocumentUpdate
+)
+from app.schemas.worker_novedad import (
+    WorkerNovedadCreate,
+    WorkerNovedadUpdate,
+    WorkerNovedadResponse,
+    WorkerNovedadList,
+    WorkerNovedadApproval,
+    WorkerNovedadStats
 )
 from app.schemas.occupational_exam import (
     OccupationalExamCreate,
@@ -982,6 +998,358 @@ async def export_workers_to_excel(
     )
 
 
+# Endpoints para documentos de trabajadores
+@router.post("/{worker_id}/documents", response_model=WorkerDocumentResponse)
+async def upload_worker_document(
+    worker_id: int,
+    title: str = Form(...),
+    category: str = Form(...),
+    description: str = Form(None),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Subir un documento para un trabajador específico"""
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Mapear categorías del frontend a los valores del enum
+    category_mapping = {
+        "Identificación": DocumentCategory.IDENTIFICATION,
+        "identificacion": DocumentCategory.IDENTIFICATION,
+        "Contrato": DocumentCategory.CONTRACT,
+        "contrato": DocumentCategory.CONTRACT,
+        "Médico": DocumentCategory.MEDICAL,
+        "medico": DocumentCategory.MEDICAL,
+        "Capacitación": DocumentCategory.TRAINING,
+        "capacitacion": DocumentCategory.TRAINING,
+        "Certificación": DocumentCategory.CERTIFICATION,
+        "certificacion": DocumentCategory.CERTIFICATION,
+        "Personal": DocumentCategory.PERSONAL,
+        "personal": DocumentCategory.PERSONAL,
+        "Otro": DocumentCategory.OTHER,
+        "otro": DocumentCategory.OTHER
+    }
+    
+    # Validar y convertir la categoría
+    if category not in category_mapping:
+        valid_categories = list(category_mapping.keys())
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Categoría no válida. Las categorías válidas son: {', '.join(valid_categories)}"
+        )
+    
+    document_category = category_mapping[category]
+    
+    # Validar tipo de archivo
+    allowed_types = [
+        "application/pdf",
+        "image/jpeg", "image/jpg", "image/png", "image/gif",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    ]
+    
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400, 
+            detail="Tipo de archivo no permitido. Solo se permiten PDF, imágenes, Word y Excel."
+        )
+    
+    # Generar nombre único para el archivo
+    file_extension = os.path.splitext(file.filename)[1]
+    unique_filename = f"{uuid.uuid4()}{file_extension}"
+    
+    try:
+        # Leer el contenido del archivo
+        file_content = await file.read()
+        
+        # Convertir bytes a BytesIO para Firebase Storage
+        file_stream = BytesIO(file_content)
+        
+        # Subir a Firebase Storage
+        storage_service = FirebaseStorageService()
+        file_path = f"worker_documents/{worker_id}/{unique_filename}"
+        file_url = storage_service.upload_file(file_stream, file_path, file.content_type)
+        
+        # Crear registro en la base de datos
+        db_document = WorkerDocument(
+            worker_id=worker_id,
+            title=title,
+            description=description,
+            category=document_category,
+            file_name=file.filename,
+            file_url=file_url,
+            file_size=len(file_content),
+            file_type=file.content_type,
+            uploaded_by=current_user.id
+        )
+        
+        db.add(db_document)
+        db.commit()
+        db.refresh(db_document)
+        
+        # Obtener información del usuario que subió el archivo
+        uploader = db.query(User).filter(User.id == current_user.id).first()
+        
+        # Crear respuesta
+        response_data = WorkerDocumentResponse(
+            id=db_document.id,
+            title=db_document.title,
+            description=db_document.description,
+            category=db_document.category,
+            file_name=db_document.file_name,
+            file_url=db_document.file_url,
+            file_size=db_document.file_size,
+            file_type=db_document.file_type,
+            uploaded_by=db_document.uploaded_by,
+            uploader_name=f"{uploader.first_name} {uploader.last_name}" if uploader else None,
+            is_active=db_document.is_active,
+            created_at=db_document.created_at,
+            updated_at=db_document.updated_at
+        )
+        
+        return response_data
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al subir el documento: {str(e)}")
+
+
+@router.get("/{worker_id}/documents", response_model=List[WorkerDocumentResponse])
+def get_worker_documents(
+    worker_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Obtener todos los documentos de un trabajador"""
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Obtener documentos activos
+    documents = db.query(WorkerDocument).filter(
+        WorkerDocument.worker_id == worker_id,
+        WorkerDocument.is_active == True
+    ).order_by(WorkerDocument.created_at.desc()).all()
+    
+    # Crear respuesta con información del usuario que subió cada documento
+    response_documents = []
+    for doc in documents:
+        uploader = db.query(User).filter(User.id == doc.uploaded_by).first()
+        response_data = WorkerDocumentResponse(
+            id=doc.id,
+            title=doc.title,
+            description=doc.description,
+            category=doc.category,
+            file_name=doc.file_name,
+            file_url=doc.file_url,
+            file_size=doc.file_size,
+            file_type=doc.file_type,
+            uploaded_by=doc.uploaded_by,
+            uploader_name=f"{uploader.first_name} {uploader.last_name}" if uploader else None,
+            is_active=doc.is_active,
+            created_at=doc.created_at,
+            updated_at=doc.updated_at
+        )
+        response_documents.append(response_data)
+    
+    return response_documents
+
+
+@router.get("/{worker_id}/documents/{document_id}", response_model=WorkerDocumentResponse)
+def get_worker_document(
+    worker_id: int,
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Obtener un documento específico de un trabajador"""
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Obtener el documento
+    document = db.query(WorkerDocument).filter(
+        WorkerDocument.id == document_id,
+        WorkerDocument.worker_id == worker_id,
+        WorkerDocument.is_active == True
+    ).first()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    
+    # Obtener información del usuario que subió el documento
+    uploader = db.query(User).filter(User.id == document.uploaded_by).first()
+    
+    response_data = WorkerDocumentResponse(
+        id=document.id,
+        title=document.title,
+        description=document.description,
+        category=document.category,
+        file_name=document.file_name,
+        file_url=document.file_url,
+        file_size=document.file_size,
+        file_type=document.file_type,
+        uploaded_by=document.uploaded_by,
+        uploader_name=f"{uploader.first_name} {uploader.last_name}" if uploader else None,
+        is_active=document.is_active,
+        created_at=document.created_at,
+        updated_at=document.updated_at
+    )
+    
+    return response_data
+
+
+@router.put("/{worker_id}/documents/{document_id}", response_model=WorkerDocumentResponse)
+def update_worker_document(
+    worker_id: int,
+    document_id: int,
+    document_update: WorkerDocumentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Actualizar información de un documento"""
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Obtener el documento
+    document = db.query(WorkerDocument).filter(
+        WorkerDocument.id == document_id,
+        WorkerDocument.worker_id == worker_id
+    ).first()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    
+    # Actualizar campos
+    update_data = document_update.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(document, field, value)
+    
+    document.updated_at = datetime.utcnow()
+    
+    try:
+        db.commit()
+        db.refresh(document)
+        
+        # Obtener información del usuario que subió el documento
+        uploader = db.query(User).filter(User.id == document.uploaded_by).first()
+        
+        response_data = WorkerDocumentResponse(
+            id=document.id,
+            title=document.title,
+            description=document.description,
+            category=document.category,
+            file_name=document.file_name,
+            file_url=document.file_url,
+            file_size=document.file_size,
+            file_type=document.file_type,
+            uploaded_by=document.uploaded_by,
+            uploader_name=f"{uploader.first_name} {uploader.last_name}" if uploader else None,
+            is_active=document.is_active,
+            created_at=document.created_at,
+            updated_at=document.updated_at
+        )
+        
+        return response_data
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al actualizar el documento: {str(e)}")
+
+
+@router.delete("/{worker_id}/documents/{document_id}")
+def delete_worker_document(
+    worker_id: int,
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Eliminar un documento (soft delete)"""
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Obtener el documento
+    document = db.query(WorkerDocument).filter(
+        WorkerDocument.id == document_id,
+        WorkerDocument.worker_id == worker_id
+    ).first()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    
+    # Eliminar archivo del storage de Firebase
+    if document.file_path:
+        try:
+            firebase_storage_service = FirebaseStorageService()
+            firebase_storage_service.delete_file(document.file_path)
+        except Exception as e:
+            # Log el error pero continúa con la eliminación del registro
+            print(f"Error al eliminar archivo del storage: {str(e)}")
+    
+    # Soft delete
+    document.is_active = False
+    document.updated_at = datetime.utcnow()
+    
+    try:
+        db.commit()
+        return {"message": "Documento eliminado exitosamente"}
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al eliminar el documento: {str(e)}")
+
+
+@router.get("/{worker_id}/documents/{document_id}/download")
+async def download_worker_document(
+    worker_id: int,
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Descargar un documento"""
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Obtener el documento
+    document = db.query(WorkerDocument).filter(
+        WorkerDocument.id == document_id,
+        WorkerDocument.worker_id == worker_id,
+        WorkerDocument.is_active == True
+    ).first()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    
+    try:
+        # Descargar desde Firebase Storage
+        storage_service = FirebaseStorageService()
+        file_content = storage_service.download_file(document.file_url)
+        
+        return Response(
+            content=file_content,
+            media_type=document.file_type or "application/octet-stream",
+            headers={
+                "Content-Disposition": f"attachment; filename={document.file_name}"
+            }
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al descargar el documento: {str(e)}")
+
+
 @router.get("/{worker_id}/reinduction-history")
 async def get_worker_reinduction_history(
     worker_id: int,
@@ -1033,3 +1401,457 @@ async def get_worker_reinduction_history(
         "total_records": len(history),
         "reinduction_history": history
     }
+
+
+# ==================== ENDPOINTS DE NOVEDADES ====================
+
+@router.post("/{worker_id}/novedades", response_model=WorkerNovedadResponse)
+async def create_worker_novedad(
+    worker_id: int,
+    novedad_data: WorkerNovedadCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> Any:
+    """Crear una nueva novedad para un trabajador"""
+    
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Validar que worker_id coincida
+    if novedad_data.worker_id != worker_id:
+        raise HTTPException(status_code=400, detail="El worker_id no coincide")
+    
+    # Crear la novedad
+    novedad = WorkerNovedad(
+        worker_id=worker_id,
+        tipo=novedad_data.tipo,
+        titulo=novedad_data.titulo,
+        descripcion=novedad_data.descripcion,
+        fecha_inicio=novedad_data.fecha_inicio,
+        fecha_fin=novedad_data.fecha_fin,
+        salario_anterior=novedad_data.salario_anterior,
+        monto_aumento=novedad_data.monto_aumento,
+        cantidad_horas=novedad_data.cantidad_horas,
+        valor_hora=novedad_data.valor_hora,
+        observaciones=novedad_data.observaciones,
+        documento_soporte=novedad_data.documento_soporte,
+        registrado_por=current_user.id
+    )
+    
+    # Calcular campos automáticos
+    novedad.calcular_dias()
+    novedad.calcular_nuevo_salario()
+    novedad.calcular_valor_total_horas()
+    
+    db.add(novedad)
+    db.commit()
+    db.refresh(novedad)
+    
+    # Preparar respuesta con información adicional
+    response_data = WorkerNovedadResponse.from_orm(novedad)
+    response_data.worker_name = worker.full_name
+    response_data.worker_document = worker.document_number
+    response_data.registrado_por_name = current_user.full_name if hasattr(current_user, 'full_name') else f"{current_user.first_name} {current_user.last_name}"
+    
+    return response_data
+
+
+@router.get("/{worker_id}/novedades", response_model=List[WorkerNovedadList])
+async def get_worker_novedades(
+    worker_id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    tipo: NovedadType = Query(None, description="Filtrar por tipo de novedad"),
+    status: NovedadStatus = Query(None, description="Filtrar por estado"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """Obtener todas las novedades de un trabajador"""
+    
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Construir query
+    query = db.query(WorkerNovedad).filter(
+        WorkerNovedad.worker_id == worker_id,
+        WorkerNovedad.is_active == True
+    )
+    
+    # Aplicar filtros
+    if tipo:
+        query = query.filter(WorkerNovedad.tipo == tipo)
+    if status:
+        query = query.filter(WorkerNovedad.status == status)
+    
+    # Ordenar por fecha de creación descendente
+    query = query.order_by(WorkerNovedad.created_at.desc())
+    
+    # Aplicar paginación
+    novedades = query.offset(skip).limit(limit).all()
+    
+    # Preparar respuesta con información adicional
+    result = []
+    for novedad in novedades:
+        registrado_por_user = db.query(User).filter(User.id == novedad.registrado_por).first()
+        registrado_por_name = "Usuario desconocido"
+        if registrado_por_user:
+            registrado_por_name = getattr(registrado_por_user, 'full_name', f"{registrado_por_user.first_name} {registrado_por_user.last_name}")
+        
+        # Obtener información del aprobador si existe
+        aprobado_por_name = None
+        if novedad.aprobado_por:
+            aprobado_por_user = db.query(User).filter(User.id == novedad.aprobado_por).first()
+            if aprobado_por_user:
+                aprobado_por_name = getattr(aprobado_por_user, 'full_name', f"{aprobado_por_user.first_name} {aprobado_por_user.last_name}")
+        
+        novedad_data = WorkerNovedadList(
+            id=novedad.id,
+            worker_id=novedad.worker_id,
+            worker_name=worker.full_name,
+            worker_document=worker.document_number,
+            tipo=novedad.tipo,
+            titulo=novedad.titulo,
+            status=novedad.status,
+            fecha_inicio=novedad.fecha_inicio,
+            fecha_fin=novedad.fecha_fin,
+            dias_calculados=novedad.dias_calculados,
+            monto_aumento=novedad.monto_aumento,
+            valor_total=novedad.valor_total,
+            registrado_por_name=registrado_por_name,
+            aprobado_por_name=aprobado_por_name,
+            fecha_aprobacion=novedad.fecha_aprobacion,
+            created_at=novedad.created_at
+        )
+        result.append(novedad_data)
+    
+    return result
+
+
+@router.get("/novedades", response_model=List[WorkerNovedadList])
+async def get_all_novedades(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    tipo: NovedadType = Query(None, description="Filtrar por tipo de novedad"),
+    status: NovedadStatus = Query(None, description="Filtrar por estado"),
+    search: str = Query(None, description="Buscar por nombre o documento del trabajador"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> Any:
+    """Obtener todas las novedades del sistema"""
+    
+    # Construir query con join a workers
+    query = db.query(WorkerNovedad).join(Worker).filter(
+        WorkerNovedad.is_active == True
+    )
+    
+    # Aplicar filtros
+    if tipo:
+        query = query.filter(WorkerNovedad.tipo == tipo)
+    if status:
+        query = query.filter(WorkerNovedad.status == status)
+    if search:
+        query = query.filter(
+            or_(
+                Worker.first_name.ilike(f"%{search}%"),
+                Worker.last_name.ilike(f"%{search}%"),
+                Worker.document_number.ilike(f"%{search}%")
+            )
+        )
+    
+    # Ordenar por fecha de creación descendente
+    query = query.order_by(WorkerNovedad.created_at.desc())
+    
+    # Aplicar paginación
+    novedades = query.offset(skip).limit(limit).all()
+    
+    # Preparar respuesta
+    result = []
+    for novedad in novedades:
+        worker = novedad.worker
+        registrado_por_user = db.query(User).filter(User.id == novedad.registrado_por).first()
+        registrado_por_name = "Usuario desconocido"
+        if registrado_por_user:
+            registrado_por_name = getattr(registrado_por_user, 'full_name', f"{registrado_por_user.first_name} {registrado_por_user.last_name}")
+        
+        # Obtener información del aprobador si existe
+        aprobado_por_name = None
+        if novedad.aprobado_por:
+            aprobado_por_user = db.query(User).filter(User.id == novedad.aprobado_por).first()
+            if aprobado_por_user:
+                aprobado_por_name = getattr(aprobado_por_user, 'full_name', f"{aprobado_por_user.first_name} {aprobado_por_user.last_name}")
+        
+        novedad_data = WorkerNovedadList(
+            id=novedad.id,
+            worker_id=novedad.worker_id,
+            worker_name=worker.full_name,
+            worker_document=worker.document_number,
+            tipo=novedad.tipo,
+            titulo=novedad.titulo,
+            status=novedad.status,
+            fecha_inicio=novedad.fecha_inicio,
+            fecha_fin=novedad.fecha_fin,
+            dias_calculados=novedad.dias_calculados,
+            monto_aumento=novedad.monto_aumento,
+            valor_total=novedad.valor_total,
+            registrado_por_name=registrado_por_name,
+            aprobado_por_name=aprobado_por_name,
+            fecha_aprobacion=novedad.fecha_aprobacion,
+            created_at=novedad.created_at
+        )
+        result.append(novedad_data)
+    
+    return result
+
+
+@router.get("/novedades/{novedad_id}", response_model=WorkerNovedadResponse)
+async def get_novedad(
+    novedad_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """Obtener una novedad específica"""
+    
+    novedad = db.query(WorkerNovedad).filter(
+        WorkerNovedad.id == novedad_id,
+        WorkerNovedad.is_active == True
+    ).first()
+    
+    if not novedad:
+        raise HTTPException(status_code=404, detail="Novedad no encontrada")
+    
+    # Preparar respuesta con información adicional
+    worker = novedad.worker
+    registrado_por_user = db.query(User).filter(User.id == novedad.registrado_por).first()
+    aprobado_por_user = None
+    if novedad.aprobado_por:
+        aprobado_por_user = db.query(User).filter(User.id == novedad.aprobado_por).first()
+    
+    response_data = WorkerNovedadResponse.from_orm(novedad)
+    response_data.worker_name = worker.full_name
+    response_data.worker_document = worker.document_number
+    
+    if registrado_por_user:
+        response_data.registrado_por_name = getattr(registrado_por_user, 'full_name', f"{registrado_por_user.first_name} {registrado_por_user.last_name}")
+    
+    if aprobado_por_user:
+        response_data.aprobado_por_name = getattr(aprobado_por_user, 'full_name', f"{aprobado_por_user.first_name} {aprobado_por_user.last_name}")
+    
+    return response_data
+
+
+@router.put("/novedades/{novedad_id}", response_model=WorkerNovedadResponse)
+async def update_novedad(
+    novedad_id: int,
+    novedad_data: WorkerNovedadUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> Any:
+    """Actualizar una novedad"""
+    
+    novedad = db.query(WorkerNovedad).filter(
+        WorkerNovedad.id == novedad_id,
+        WorkerNovedad.is_active == True
+    ).first()
+    
+    if not novedad:
+        raise HTTPException(status_code=404, detail="Novedad no encontrada")
+    
+    # Verificar que la novedad esté en estado pendiente para poder editarla
+    if novedad.status != NovedadStatus.PENDIENTE:
+        raise HTTPException(status_code=400, detail="Solo se pueden editar novedades en estado pendiente")
+    
+    # Actualizar campos
+    update_data = novedad_data.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(novedad, field, value)
+    
+    # Recalcular campos automáticos
+    novedad.calcular_dias()
+    novedad.calcular_nuevo_salario()
+    novedad.calcular_valor_total_horas()
+    
+    db.commit()
+    db.refresh(novedad)
+    
+    # Preparar respuesta
+    worker = novedad.worker
+    response_data = WorkerNovedadResponse.from_orm(novedad)
+    response_data.worker_name = worker.full_name
+    response_data.worker_document = worker.document_number
+    
+    return response_data
+
+
+@router.post("/novedades/{novedad_id}/approve", response_model=WorkerNovedadResponse)
+async def approve_reject_novedad(
+    novedad_id: int,
+    approval_data: WorkerNovedadApproval,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> Any:
+    """Aprobar o rechazar una novedad"""
+    
+    novedad = db.query(WorkerNovedad).filter(
+        WorkerNovedad.id == novedad_id,
+        WorkerNovedad.is_active == True
+    ).first()
+    
+    if not novedad:
+        raise HTTPException(status_code=404, detail="Novedad no encontrada")
+    
+    # Verificar que la novedad esté pendiente
+    if novedad.status != NovedadStatus.PENDIENTE:
+        raise HTTPException(status_code=400, detail="Solo se pueden aprobar/rechazar novedades pendientes")
+    
+    # Actualizar estado
+    novedad.status = approval_data.status
+    novedad.aprobado_por = current_user.id
+    novedad.fecha_aprobacion = datetime.utcnow()
+    
+    if approval_data.observaciones:
+        novedad.observaciones = approval_data.observaciones
+    
+    # Si es un aumento de salario aprobado, actualizar el salario del trabajador
+    if (approval_data.status == NovedadStatus.APROBADA and 
+        novedad.tipo == NovedadType.AUMENTO_SALARIO and 
+        novedad.salario_nuevo):
+        
+        worker = novedad.worker
+        worker.salary_ibc = float(novedad.salario_nuevo)
+        novedad.status = NovedadStatus.PROCESADA  # Marcar como procesada
+    
+    db.commit()
+    db.refresh(novedad)
+    
+    # Preparar respuesta
+    worker = novedad.worker
+    response_data = WorkerNovedadResponse.from_orm(novedad)
+    response_data.worker_name = worker.full_name
+    response_data.worker_document = worker.document_number
+    response_data.aprobado_por_name = getattr(current_user, 'full_name', f"{current_user.first_name} {current_user.last_name}")
+    
+    return response_data
+
+
+@router.delete("/novedades/{novedad_id}", response_model=MessageResponse)
+async def delete_novedad(
+    novedad_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+) -> Any:
+    """Eliminar una novedad (soft delete)"""
+    
+    novedad = db.query(WorkerNovedad).filter(
+        WorkerNovedad.id == novedad_id,
+        WorkerNovedad.is_active == True
+    ).first()
+    
+    if not novedad:
+        raise HTTPException(status_code=404, detail="Novedad no encontrada")
+    
+    # Soft delete
+    novedad.is_active = False
+    
+    db.commit()
+    
+    return {"message": "Novedad eliminada exitosamente"}
+
+
+@router.get("/{worker_id}/novedades/stats", response_model=WorkerNovedadStats)
+async def get_worker_novedades_stats(
+    worker_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """Obtener estadísticas de novedades de un trabajador específico"""
+    
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Verificar permisos: el trabajador solo puede ver sus propias estadísticas
+    # Los supervisores y admins pueden ver cualquier estadística
+    user_worker = db.query(Worker).filter(Worker.user_id == current_user.id).first()
+    if (current_user.role.value not in ["admin", "supervisor"] and 
+        (not user_worker or user_worker.id != worker_id)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tiene permisos para ver estas estadísticas"
+        )
+    
+    # Contar por estado para este trabajador específico
+    base_query = db.query(WorkerNovedad).filter(
+        WorkerNovedad.worker_id == worker_id,
+        WorkerNovedad.is_active == True
+    )
+    
+    total_novedades = base_query.count()
+    pendientes = base_query.filter(WorkerNovedad.status == NovedadStatus.PENDIENTE).count()
+    aprobadas = base_query.filter(WorkerNovedad.status == NovedadStatus.APROBADA).count()
+    rechazadas = base_query.filter(WorkerNovedad.status == NovedadStatus.RECHAZADA).count()
+    procesadas = base_query.filter(WorkerNovedad.status == NovedadStatus.PROCESADA).count()
+    
+    # Contar por tipo para este trabajador específico
+    por_tipo = {}
+    for tipo in NovedadType:
+        count = base_query.filter(WorkerNovedad.tipo == tipo).count()
+        por_tipo[tipo.value] = count
+    
+    return WorkerNovedadStats(
+        total_novedades=total_novedades,
+        pendientes=pendientes,
+        aprobadas=aprobadas,
+        rechazadas=rechazadas,
+        procesadas=procesadas,
+        por_tipo=por_tipo
+    )
+
+
+@router.get("/novedades/stats/summary", response_model=WorkerNovedadStats)
+async def get_novedades_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> Any:
+    """Obtener estadísticas de novedades"""
+    
+    # Contar por estado
+    total_novedades = db.query(WorkerNovedad).filter(WorkerNovedad.is_active == True).count()
+    pendientes = db.query(WorkerNovedad).filter(
+        WorkerNovedad.is_active == True,
+        WorkerNovedad.status == NovedadStatus.PENDIENTE
+    ).count()
+    aprobadas = db.query(WorkerNovedad).filter(
+        WorkerNovedad.is_active == True,
+        WorkerNovedad.status == NovedadStatus.APROBADA
+    ).count()
+    rechazadas = db.query(WorkerNovedad).filter(
+        WorkerNovedad.is_active == True,
+        WorkerNovedad.status == NovedadStatus.RECHAZADA
+    ).count()
+    procesadas = db.query(WorkerNovedad).filter(
+        WorkerNovedad.is_active == True,
+        WorkerNovedad.status == NovedadStatus.PROCESADA
+    ).count()
+    
+    # Contar por tipo
+    por_tipo = {}
+    for tipo in NovedadType:
+        count = db.query(WorkerNovedad).filter(
+            WorkerNovedad.is_active == True,
+            WorkerNovedad.tipo == tipo
+        ).count()
+        por_tipo[tipo.value] = count
+    
+    return WorkerNovedadStats(
+        total_novedades=total_novedades,
+        pendientes=pendientes,
+        aprobadas=aprobadas,
+        rechazadas=rechazadas,
+        procesadas=procesadas,
+        por_tipo=por_tipo
+    )
