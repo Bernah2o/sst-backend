@@ -3,6 +3,7 @@ from typing import Optional, List
 from pydantic import BaseModel, EmailStr, validator
 
 from app.models.worker import Gender, DocumentType, ContractType, RiskLevel, BloodType, WorkModality
+from app.models.worker_document import DocumentCategory
 from app.models.user import UserRole
 
 
@@ -25,6 +26,59 @@ class WorkerContractUpdate(BaseModel):
 class WorkerContract(WorkerContractBase):
     id: int
     worker_id: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+# Esquemas para documentos de trabajadores
+class WorkerDocumentBase(BaseModel):
+    title: str
+    description: Optional[str] = None
+    category: DocumentCategory
+
+
+class WorkerDocumentCreate(WorkerDocumentBase):
+    pass
+
+
+class WorkerDocumentUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[DocumentCategory] = None
+    is_active: Optional[bool] = None
+
+
+class WorkerDocument(WorkerDocumentBase):
+    id: int
+    worker_id: int
+    file_name: str
+    file_url: str
+    file_size: Optional[int] = None
+    file_type: Optional[str] = None
+    uploaded_by: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class WorkerDocumentResponse(BaseModel):
+    id: int
+    title: str
+    description: Optional[str] = None
+    category: DocumentCategory
+    file_name: str
+    file_url: str
+    file_size: Optional[int] = None
+    file_type: Optional[str] = None
+    uploaded_by: int
+    uploader_name: Optional[str] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
