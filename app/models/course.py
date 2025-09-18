@@ -60,19 +60,29 @@ class Course(Base):
     order_index = Column(Integer, default=0)  # For ordering courses
 
     # Relationships
-    creator = relationship("User", foreign_keys=[created_by], overlaps="created_courses")
-    modules = relationship("CourseModule", back_populates="course", cascade="all, delete-orphan")
+    creator = relationship(
+        "User", foreign_keys=[created_by], overlaps="created_courses"
+    )
+    modules = relationship(
+        "CourseModule", back_populates="course", cascade="all, delete-orphan"
+    )
     enrollments = relationship("Enrollment", back_populates="course")
-    # Note: Other relationships (evaluations, surveys, certificates, attendances) 
+    # Note: Other relationships (evaluations, surveys, certificates, attendances)
     # are commented out because the corresponding tables don't have course_id columns
-    evaluations = relationship("Evaluation", back_populates="course", cascade="all, delete-orphan")
+    evaluations = relationship(
+        "Evaluation", back_populates="course", cascade="all, delete-orphan"
+    )
     surveys = relationship("Survey", back_populates="course")
-    certificates = relationship("Certificate", back_populates="course", cascade="all, delete-orphan")
-    attendances = relationship("Attendance", back_populates="course", cascade="all, delete-orphan")
+    certificates = relationship(
+        "Certificate", back_populates="course", cascade="all, delete-orphan"
+    )
+    # attendances = relationship("Attendance", back_populates="course", cascade="all, delete-orphan")
     sessions = relationship("Session", back_populates="course")
 
     def __repr__(self):
-        return f"<Course(id={self.id}, title='{self.title}', type='{self.course_type}')>"
+        return (
+            f"<Course(id={self.id}, title='{self.title}', type='{self.course_type}')>"
+        )
 
 
 class CourseModule(Base):
@@ -90,7 +100,9 @@ class CourseModule(Base):
 
     # Relationships
     course = relationship("Course", back_populates="modules")
-    materials = relationship("CourseMaterial", back_populates="module", cascade="all, delete-orphan")
+    materials = relationship(
+        "CourseMaterial", back_populates="module", cascade="all, delete-orphan"
+    )
     module_progress = relationship("UserModuleProgress", back_populates="module")
 
     def __repr__(self):
