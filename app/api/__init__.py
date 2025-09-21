@@ -18,6 +18,7 @@ from .admin_config import router as admin_config_router
 from .admin_attendance import router as admin_attendance_router
 from .reinduction import router as reinduction_router
 from .seguimientos import router as seguimientos_router
+from .seguimiento_actividades import router as seguimiento_actividades_router
 from .permissions import router as permissions_router
 from .absenteeism import router as absenteeism_router
 from .audit import router as audit_router
@@ -50,6 +51,7 @@ api_router.include_router(admin_config_router, prefix="/admin/config", tags=["ad
 api_router.include_router(admin_attendance_router, prefix="/admin/attendance", tags=["admin", "attendance"])
 api_router.include_router(reinduction_router, prefix="/reinduction", tags=["reinduction"])
 api_router.include_router(seguimientos_router, prefix="/seguimientos", tags=["seguimientos"])
+api_router.include_router(seguimiento_actividades_router, prefix="/seguimiento-actividades", tags=["seguimiento-actividades"])
 api_router.include_router(permissions_router, prefix="/permissions", tags=["permissions"])
 api_router.include_router(absenteeism_router, prefix="/absenteeism", tags=["absenteeism"])
 api_router.include_router(audit_router, prefix="/audit", tags=["audit"])

@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, field_validator, ValidationInfo
 
 from app.models.worker import Gender, DocumentType, ContractType, RiskLevel, BloodType, WorkModality
 from app.models.worker_document import DocumentCategory
@@ -118,13 +118,15 @@ class WorkerBase(BaseModel):
     is_active: bool = True
     assigned_role: UserRole = UserRole.EMPLOYEE
     
-    @validator('birth_date')
+    @field_validator('birth_date')
+    @classmethod
     def validate_birth_date(cls, v):
         if v > date.today():
             raise ValueError('La fecha de nacimiento no puede ser futura')
         return v
     
-    @validator('salary_ibc')
+    @field_validator('salary_ibc')
+    @classmethod
     def validate_salary(cls, v):
         if v is not None and v < 0:
             raise ValueError('El salario/IBC no puede ser negativo')
@@ -166,13 +168,15 @@ class WorkerUpdate(BaseModel):
     is_active: Optional[bool] = None
     assigned_role: Optional[UserRole] = None
     
-    @validator('birth_date')
+    @field_validator('birth_date')
+    @classmethod
     def validate_birth_date(cls, v):
         if v is not None and v > date.today():
             raise ValueError('La fecha de nacimiento no puede ser futura')
         return v
     
-    @validator('salary_ibc')
+    @field_validator('salary_ibc')
+    @classmethod
     def validate_salary(cls, v):
         if v is not None and v < 0:
             raise ValueError('El salario/IBC no puede ser negativo')

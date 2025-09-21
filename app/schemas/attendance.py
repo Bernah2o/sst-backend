@@ -20,9 +20,11 @@ class AttendanceType(str, Enum):
 
 
 # Attendance Schemas
+
+
 class AttendanceBase(BaseModel):
     user_id: int
-    course_id: int
+    course_name: Optional[str] = None
     session_date: datetime
     status: AttendanceStatus
     attendance_type: AttendanceType = AttendanceType.IN_PERSON
@@ -74,14 +76,16 @@ class UserInfo(BaseModel):
     name: str
     email: str
 
+
 class CourseInfo(BaseModel):
     id: int
     title: str
 
+
 class AttendanceListResponse(BaseModel):
     id: int
     user_id: int
-    course_id: int
+    course_name: Optional[str] = None
     enrollment_id: Optional[int] = None
     session_id: Optional[int] = None
     session_date: datetime
@@ -110,7 +114,7 @@ class AttendanceListResponse(BaseModel):
 # Attendance Summary Schemas
 class AttendanceSummary(BaseModel):
     user_id: int
-    course_id: int
+    course_name: Optional[str] = None
     total_sessions: int
     attended_sessions: int
     attendance_rate: float
@@ -120,7 +124,7 @@ class AttendanceSummary(BaseModel):
 
 
 class CourseAttendanceSummary(BaseModel):
-    course_id: int
+    course_name: Optional[str] = None
     course_title: str
     total_enrolled: int
     total_sessions: int

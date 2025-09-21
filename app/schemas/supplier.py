@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, field_validator, ValidationInfo
 
 from app.models.supplier import SupplierType, SupplierStatus
 
@@ -18,7 +18,8 @@ class DoctorBase(BaseModel):
     observations: Optional[str] = None
     is_active: bool = True
 
-    @validator('years_experience')
+    @field_validator('years_experience')
+    @classmethod
     def validate_years_experience(cls, v):
         if v is not None and v < 0:
             raise ValueError('Los años de experiencia no pueden ser negativos')
@@ -42,7 +43,8 @@ class DoctorUpdate(BaseModel):
     observations: Optional[str] = None
     is_active: Optional[bool] = None
 
-    @validator('years_experience')
+    @field_validator('years_experience')
+    @classmethod
     def validate_years_experience(cls, v):
         if v is not None and v < 0:
             raise ValueError('Los años de experiencia no pueden ser negativos')
@@ -105,14 +107,16 @@ class SupplierBase(BaseModel):
     accreditation: Optional[str] = None
     is_active: bool = True
 
-    @validator('supplier_type')
+    @field_validator('supplier_type')
+    @classmethod
     def validate_supplier_type(cls, v):
         valid_types = ["medical_center", "laboratory", "clinic", "hospital", "other"]
         if v not in valid_types:
             raise ValueError(f'Tipo de proveedor debe ser uno de: {", ".join(valid_types)}')
         return v
 
-    @validator('status')
+    @field_validator('status')
+    @classmethod
     def validate_status(cls, v):
         valid_statuses = ["active", "inactive", "suspended"]
         if v not in valid_statuses:
@@ -142,7 +146,8 @@ class SupplierUpdate(BaseModel):
     accreditation: Optional[str] = None
     is_active: Optional[bool] = None
 
-    @validator('supplier_type')
+    @field_validator('supplier_type')
+    @classmethod
     def validate_supplier_type(cls, v):
         if v is not None:
             valid_types = ["medical_center", "laboratory", "clinic", "hospital", "other"]
@@ -150,7 +155,8 @@ class SupplierUpdate(BaseModel):
                 raise ValueError(f'Tipo de proveedor debe ser uno de: {", ".join(valid_types)}')
         return v
 
-    @validator('status')
+    @field_validator('status')
+    @classmethod
     def validate_status(cls, v):
         if v is not None:
             valid_statuses = ["active", "inactive", "suspended"]

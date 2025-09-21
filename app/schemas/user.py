@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 import re
 
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, field_validator, ValidationInfo
 
 from app.models.user import UserRole
 from app.schemas.custom_role import CustomRoleResponse
@@ -28,7 +28,8 @@ class UserCreate(UserBase):
     password: str
     hire_date: Optional[datetime] = None
     
-    @validator('password')
+    @field_validator('password')
+    @classmethod
     def validate_password(cls, v):
         if len(v) < 8:
             raise ValueError('La contraseña debe tener al menos 8 caracteres')
@@ -47,7 +48,8 @@ class UserCreate(UserBase):
         
         return v
     
-    @validator('document_number')
+    @field_validator('document_number')
+    @classmethod
     def validate_document_number(cls, v):
         if not v.isdigit():
             raise ValueError('El número de documento debe contener solo números')
@@ -58,7 +60,8 @@ class UserCreateByAdmin(UserBase):
     password: Optional[str] = None
     hire_date: Optional[datetime] = None
     
-    @validator('password', pre=True, always=True)
+    @field_validator('password', mode='before')
+    @classmethod
     def validate_password(cls, v):
         if v is None:
             return v
@@ -79,7 +82,8 @@ class UserCreateByAdmin(UserBase):
         
         return v
     
-    @validator('document_number')
+    @field_validator('document_number')
+    @classmethod
     def validate_document_number(cls, v):
         if not v.isdigit():
             raise ValueError('Document number must contain only digits')
@@ -136,7 +140,8 @@ class UserRegister(BaseModel):
     department: Optional[str] = None
     position: Optional[str] = None
     
-    @validator('password')
+    @field_validator('password')
+    @classmethod
     def validate_password(cls, v):
         if len(v) < 8:
             raise ValueError('La contraseña debe tener al menos 8 caracteres')
@@ -155,7 +160,8 @@ class UserRegister(BaseModel):
         
         return v
     
-    @validator('document_number')
+    @field_validator('document_number')
+    @classmethod
     def validate_document_number(cls, v):
         if not v.isdigit():
             raise ValueError('El número de documento debe contener solo dígitos')
@@ -183,7 +189,8 @@ class PasswordResetConfirm(BaseModel):
     token: str
     new_password: str
     
-    @validator('new_password')
+    @field_validator('new_password')
+    @classmethod
     def validate_password(cls, v):
         if len(v) < 8:
             raise ValueError('La contraseña debe tener al menos 8 caracteres')
@@ -207,7 +214,8 @@ class PasswordChange(BaseModel):
     current_password: str
     new_password: str
     
-    @validator('new_password')
+    @field_validator('new_password')
+    @classmethod
     def validate_password(cls, v):
         if len(v) < 8:
             raise ValueError('La contraseña debe tener al menos 8 caracteres')

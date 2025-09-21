@@ -10,6 +10,7 @@ from .absenteeism import Absenteeism, EventMonth, EventType
 from .occupational_exam import OccupationalExam, ExamType, MedicalAptitude
 from .supplier import Supplier, Doctor, SupplierType, SupplierStatus
 from .seguimiento import Seguimiento, EstadoSeguimiento, ValoracionRiesgo
+from .seguimiento_actividad import SeguimientoActividad
 from .reinduction import ReinductionRecord, ReinductionStatus
 from .course import Course, CourseModule, CourseMaterial
 from .evaluation import Evaluation, Question, Answer, UserEvaluation, UserAnswer
@@ -70,6 +71,7 @@ __all__ = [
     "Seguimiento",
     "EstadoSeguimiento",
     "ValoracionRiesgo",
+    "SeguimientoActividad",
     "ReinductionRecord",
     "ReinductionStatus",
     "Cargo",

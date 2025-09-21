@@ -20,7 +20,14 @@ from app.schemas.survey import (
     SurveySubmission, SurveyStatistics, SurveyPresentation,
     SurveyDetailedResults, EmployeeResponse, AnswerDetail
 )
+from pydantic import BaseModel
 from app.schemas.common import MessageResponse, PaginatedResponse
+from typing import List
+
+# Schema for assigning general surveys
+class SurveyAssignment(BaseModel):
+    survey_id: int
+    user_ids: List[int]
 
 router = APIRouter()
 
@@ -287,6 +294,144 @@ async def get_available_surveys(
         pages=pages,
         has_next=has_next,
         has_prev=has_prev
+    )
+
+
+@router.get("/general", response_model=PaginatedResponse[SurveyListResponse])
+async def get_general_surveys(
+    skip: int = 0,
+    limit: int = 100,
+    search: str = None,
+    status: SurveyStatus = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get general surveys (not associated with any course) - for admin/capacitador management
+    """
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permisos insuficientes"
+        )
+    
+    # Query for surveys without course association
+    query = db.query(Survey).filter(Survey.course_id.is_(None))
+    
+    # Apply filters
+    if search:
+        query = query.filter(
+            or_(
+                Survey.title.ilike(f"%{search}%"),
+                Survey.description.ilike(f"%{search}%")
+            )
+        )
+    
+    if status:
+        query = query.filter(Survey.status == status)
+    
+    # Get total count
+    total = query.count()
+    
+    # Apply pagination
+    surveys = query.offset(skip).limit(limit).all()
+    
+    # Transform surveys to list response format
+    survey_items = []
+    for survey in surveys:
+        survey_dict = {
+            "id": survey.id,
+            "title": survey.title,
+            "description": survey.description,
+            "status": survey.status,
+            "is_anonymous": survey.is_anonymous,
+            "course_id": None,  # Always None for general surveys
+            "is_course_survey": False,  # Always False for general surveys
+            "required_for_completion": False,  # Always False for general surveys
+            "course": None,  # Always None for general surveys
+            "created_at": survey.created_at,
+            "published_at": survey.published_at,
+            "closes_at": survey.closes_at
+        }
+        survey_items.append(survey_dict)
+    
+    # Calculate pagination info
+    page = (skip // limit) + 1
+    pages = (total + limit - 1) // limit  # Ceiling division
+    has_next = skip + limit < total
+    has_prev = skip > 0
+    
+    return PaginatedResponse(
+        items=survey_items,
+        total=total,
+        page=page,
+        size=limit,
+        pages=pages,
+        has_next=has_next,
+        has_prev=has_prev
+    )
+
+
+@router.post("/assign", response_model=MessageResponse)
+async def assign_general_survey(
+    assignment: SurveyAssignment,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Asignar una encuesta general a usuarios específicos.
+    Solo administradores y capacitadores pueden asignar encuestas.
+    """
+    # Verificar permisos
+    if current_user.role not in [UserRole.ADMIN, UserRole.TRAINER]:
+        raise HTTPException(
+            status_code=403,
+            detail="No tienes permisos para asignar encuestas"
+        )
+    
+    # Verificar que la encuesta existe y es una encuesta general
+    survey = db.query(Survey).filter(
+        Survey.id == assignment.survey_id,
+        Survey.course_id.is_(None)  # Solo encuestas generales
+    ).first()
+    
+    if not survey:
+        raise HTTPException(
+            status_code=404,
+            detail="Encuesta general no encontrada"
+        )
+    
+    # Verificar que los usuarios existen
+    users = db.query(User).filter(User.id.in_(assignment.user_ids)).all()
+    if len(users) != len(assignment.user_ids):
+        raise HTTPException(
+            status_code=400,
+            detail="Algunos usuarios no existen"
+        )
+    
+    # Crear asignaciones de encuesta para cada usuario
+    assignments_created = 0
+    for user_id in assignment.user_ids:
+        # Verificar si ya existe una asignación
+        existing = db.query(UserSurvey).filter(
+            UserSurvey.user_id == user_id,
+            UserSurvey.survey_id == assignment.survey_id
+        ).first()
+        
+        if not existing:
+            user_survey = UserSurvey(
+                user_id=user_id,
+                survey_id=assignment.survey_id,
+                enrollment_id=None,  # No hay enrollment para encuestas generales
+                status=SurveyStatus.PENDING
+            )
+            db.add(user_survey)
+            assignments_created += 1
+    
+    db.commit()
+    
+    return MessageResponse(
+        message=f"Encuesta asignada exitosamente a {assignments_created} usuarios"
     )
 
 

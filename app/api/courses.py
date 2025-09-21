@@ -14,74 +14,96 @@ from app.models.user import User
 
 def check_and_complete_course(db: Session, user_id: int, course_id: int):
     """Check if course is truly completed and mark enrollment as completed if so"""
-    enrollment = db.query(Enrollment).filter(
-        and_(
-            Enrollment.user_id == user_id,
-            Enrollment.course_id == course_id,
-            Enrollment.status == EnrollmentStatus.ACTIVE
+    enrollment = (
+        db.query(Enrollment)
+        .filter(
+            and_(
+                Enrollment.user_id == user_id,
+                Enrollment.course_id == course_id,
+                Enrollment.status == EnrollmentStatus.ACTIVE,
+            )
         )
-    ).first()
-    
+        .first()
+    )
+
     if not enrollment or enrollment.progress < 95:
         return False
-    
+
     from app.models.survey import Survey, UserSurvey, SurveyStatus, UserSurveyStatus
     from app.models.evaluation import Evaluation, UserEvaluation, UserEvaluationStatus
     from app.schemas.evaluation import EvaluationStatus
-    
+
     # Check required surveys
-    required_surveys = db.query(Survey).filter(
-        and_(
-            Survey.course_id == course_id,
-            Survey.required_for_completion == True,
-            Survey.status == SurveyStatus.PUBLISHED
+    required_surveys = (
+        db.query(Survey)
+        .filter(
+            and_(
+                Survey.course_id == course_id,
+                Survey.required_for_completion == True,
+                Survey.status == SurveyStatus.PUBLISHED,
+            )
         )
-    ).all()
-    
+        .all()
+    )
+
     surveys_completed = True
     for survey in required_surveys:
-        user_submission = db.query(UserSurvey).filter(
-            and_(
-                UserSurvey.user_id == user_id,
-                UserSurvey.survey_id == survey.id,
-                UserSurvey.status == UserSurveyStatus.COMPLETED
+        user_submission = (
+            db.query(UserSurvey)
+            .filter(
+                and_(
+                    UserSurvey.user_id == user_id,
+                    UserSurvey.survey_id == survey.id,
+                    UserSurvey.status == UserSurveyStatus.COMPLETED,
+                )
             )
-        ).first()
+            .first()
+        )
         if not user_submission:
             surveys_completed = False
             break
-    
+
     # Check evaluation if surveys are completed
     evaluation_completed = True
     if surveys_completed:
-        course_evaluations = db.query(Evaluation).filter(
-            and_(
-                Evaluation.course_id == course_id,
-                Evaluation.status == EvaluationStatus.PUBLISHED
+        course_evaluations = (
+            db.query(Evaluation)
+            .filter(
+                and_(
+                    Evaluation.course_id == course_id,
+                    Evaluation.status == EvaluationStatus.PUBLISHED,
+                )
             )
-        ).all()
-        
+            .all()
+        )
+
         if course_evaluations:  # If there are evaluations, check if completed
             evaluation_completed = False
             for evaluation in course_evaluations:
-                completed_evaluation = db.query(UserEvaluation).filter(
-                    and_(
-                        UserEvaluation.user_id == user_id,
-                        UserEvaluation.evaluation_id == evaluation.id,
-                        UserEvaluation.status == UserEvaluationStatus.COMPLETED
+                completed_evaluation = (
+                    db.query(UserEvaluation)
+                    .filter(
+                        and_(
+                            UserEvaluation.user_id == user_id,
+                            UserEvaluation.evaluation_id == evaluation.id,
+                            UserEvaluation.status == UserEvaluationStatus.COMPLETED,
+                        )
                     )
-                ).first()
+                    .first()
+                )
                 if completed_evaluation:
                     evaluation_completed = True
                     break
-    
+
     # Complete enrollment if all requirements are met
     if surveys_completed and evaluation_completed:
         enrollment.complete_enrollment()
         db.commit()
         return True
-    
+
     return False
+
+
 from app.models.course import (
     Course,
     CourseModule,
@@ -182,7 +204,7 @@ async def get_courses(
 async def create_course(
     course_data: CourseCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user),
 ) -> Any:
     """
     Create new course (admin and capacitador roles only)
@@ -206,7 +228,7 @@ async def create_course(
 async def get_user_courses(
     trailing_slash: str = "",
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> Any:
     """
     Get courses for current user (only published courses)
@@ -275,76 +297,107 @@ async def get_course(
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="Curso no disponible"
             )
-        
+
         # Check if user is enrolled in the course
-        enrollment = db.query(Enrollment).filter(
-            and_(
-                Enrollment.user_id == current_user.id,
-                Enrollment.course_id == course_id
+        enrollment = (
+            db.query(Enrollment)
+            .filter(
+                and_(
+                    Enrollment.user_id == current_user.id,
+                    Enrollment.course_id == course_id,
+                )
             )
-        ).first()
-        
+            .first()
+        )
+
         if not enrollment:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="No está inscrito en este curso"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No está inscrito en este curso",
             )
-        
+
         # Check if course is truly completed (materials + surveys + evaluation + certificate)
         course_truly_completed = False
         if enrollment.progress >= 95:  # Only check if materials are completed
-            from app.models.survey import Survey, UserSurvey, SurveyStatus, UserSurveyStatus
-            from app.models.evaluation import Evaluation, UserEvaluation, UserEvaluationStatus
+            from app.models.survey import (
+                Survey,
+                UserSurvey,
+                SurveyStatus,
+                UserSurveyStatus,
+            )
+            from app.models.evaluation import (
+                Evaluation,
+                UserEvaluation,
+                UserEvaluationStatus,
+            )
             from app.schemas.evaluation import EvaluationStatus
-            
+
             # Check required surveys
-            required_surveys = db.query(Survey).filter(
-                and_(
-                    Survey.course_id == course_id,
-                    Survey.required_for_completion == True,
-                    Survey.status == SurveyStatus.PUBLISHED
+            required_surveys = (
+                db.query(Survey)
+                .filter(
+                    and_(
+                        Survey.course_id == course_id,
+                        Survey.required_for_completion == True,
+                        Survey.status == SurveyStatus.PUBLISHED,
+                    )
                 )
-            ).all()
-            
+                .all()
+            )
+
             surveys_completed = True
             for survey in required_surveys:
-                user_submission = db.query(UserSurvey).filter(
-                    and_(
-                        UserSurvey.user_id == current_user.id,
-                        UserSurvey.survey_id == survey.id,
-                        UserSurvey.status == UserSurveyStatus.COMPLETED
+                user_submission = (
+                    db.query(UserSurvey)
+                    .filter(
+                        and_(
+                            UserSurvey.user_id == current_user.id,
+                            UserSurvey.survey_id == survey.id,
+                            UserSurvey.status == UserSurveyStatus.COMPLETED,
+                        )
                     )
-                ).first()
+                    .first()
+                )
                 if not user_submission:
                     surveys_completed = False
                     break
-            
+
             # Check evaluation if surveys are completed
             evaluation_completed = True
             if surveys_completed:
-                course_evaluations = db.query(Evaluation).filter(
-                    and_(
-                        Evaluation.course_id == course_id,
-                        Evaluation.status == EvaluationStatus.PUBLISHED
+                course_evaluations = (
+                    db.query(Evaluation)
+                    .filter(
+                        and_(
+                            Evaluation.course_id == course_id,
+                            Evaluation.status == EvaluationStatus.PUBLISHED,
+                        )
                     )
-                ).all()
-                
+                    .all()
+                )
+
                 if course_evaluations:  # If there are evaluations, check if completed
                     evaluation_completed = False
                     for evaluation in course_evaluations:
-                        completed_evaluation = db.query(UserEvaluation).filter(
-                            and_(
-                                UserEvaluation.user_id == current_user.id,
-                                UserEvaluation.evaluation_id == evaluation.id,
-                                UserEvaluation.status == UserEvaluationStatus.COMPLETED
+                        completed_evaluation = (
+                            db.query(UserEvaluation)
+                            .filter(
+                                and_(
+                                    UserEvaluation.user_id == current_user.id,
+                                    UserEvaluation.evaluation_id == evaluation.id,
+                                    UserEvaluation.status
+                                    == UserEvaluationStatus.COMPLETED,
+                                )
                             )
-                        ).first()
+                            .first()
+                        )
                         if completed_evaluation:
                             evaluation_completed = True
                             break
-            
+
             # Course is truly completed only if materials, surveys, and evaluations are done
             course_truly_completed = surveys_completed and evaluation_completed
-        
+
         # Return UserCourseResponse with progress information for enrolled users
         return UserCourseResponse(
             id=course.id,
@@ -362,7 +415,7 @@ async def get_course(
             enrolled_at=enrollment.enrolled_at,
             completed=course_truly_completed,
         )
-    
+
     # For admin/capacitador users, return CourseResponse without progress
     return CourseResponse.from_orm(course)
 
@@ -513,18 +566,23 @@ async def get_course_modules(
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="Curso no disponible"
             )
-        
+
         # Check if user is enrolled in the course
-        enrollment = db.query(Enrollment).filter(
-            and_(
-                Enrollment.user_id == current_user.id,
-                Enrollment.course_id == course_id
+        enrollment = (
+            db.query(Enrollment)
+            .filter(
+                and_(
+                    Enrollment.user_id == current_user.id,
+                    Enrollment.course_id == course_id,
+                )
             )
-        ).first()
-        
+            .first()
+        )
+
         if not enrollment:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="No está inscrito en este curso"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No está inscrito en este curso",
             )
 
     modules = (
@@ -680,7 +738,7 @@ async def delete_course_module(
 
 @router.get(
     "/modules/{module_id}/materials",
-    response_model=List[CourseMaterialWithProgressResponse]
+    response_model=List[CourseMaterialWithProgressResponse],
 )
 async def get_module_materials(
     module_id: int,
@@ -705,18 +763,23 @@ async def get_module_materials(
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="Course not available"
             )
-        
+
         # Check if user is enrolled in the course
-        enrollment = db.query(Enrollment).filter(
-            and_(
-                Enrollment.user_id == current_user.id,
-                Enrollment.course_id == module.course_id
+        enrollment = (
+            db.query(Enrollment)
+            .filter(
+                and_(
+                    Enrollment.user_id == current_user.id,
+                    Enrollment.course_id == module.course_id,
+                )
             )
-        ).first()
-        
+            .first()
+        )
+
         if not enrollment:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Not enrolled in this course"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not enrolled in this course",
             )
 
     materials = (
@@ -725,19 +788,23 @@ async def get_module_materials(
         .order_by(CourseMaterial.order_index)
         .all()
     )
-    
+
     # Para usuarios no administradores, añadir información de progreso
     if current_user.role.value not in ["admin", "capacitador"]:
         result = []
         for material in materials:
             # Buscar progreso del material
-            material_progress = db.query(UserMaterialProgress).filter(
-                and_(
-                    UserMaterialProgress.user_id == current_user.id,
-                    UserMaterialProgress.material_id == material.id
+            material_progress = (
+                db.query(UserMaterialProgress)
+                .filter(
+                    and_(
+                        UserMaterialProgress.user_id == current_user.id,
+                        UserMaterialProgress.material_id == material.id,
+                    )
                 )
-            ).first()
-            
+                .first()
+            )
+
             # Crear objeto de respuesta manualmente
             material_response = CourseMaterialWithProgressResponse(
                 id=material.id,
@@ -751,13 +818,16 @@ async def get_module_materials(
                 is_required=material.is_required,
                 created_at=material.created_at,
                 updated_at=material.updated_at,
-                completed=material_progress is not None and material_progress.status == MaterialProgressStatus.COMPLETED,
-                progress=material_progress.progress_percentage if material_progress else 0
+                completed=material_progress is not None
+                and material_progress.status == MaterialProgressStatus.COMPLETED,
+                progress=(
+                    material_progress.progress_percentage if material_progress else 0
+                ),
             )
-            
+
             result.append(material_response)
         return result
-    
+
     # Para administradores, convertir a CourseMaterialResponse
     result = []
     for material in materials:
@@ -772,10 +842,10 @@ async def get_module_materials(
             is_downloadable=material.is_downloadable,
             is_required=material.is_required,
             created_at=material.created_at,
-            updated_at=material.updated_at
+            updated_at=material.updated_at,
         )
         result.append(material_response)
-    
+
     return result
 
 
@@ -822,7 +892,7 @@ async def create_course_material(
         is_required=material.is_required,
         module_id=material.module_id,
         created_at=material.created_at,
-        updated_at=material.updated_at
+        updated_at=material.updated_at,
     )
 
 
@@ -868,7 +938,7 @@ async def update_course_material(
         is_required=material.is_required,
         module_id=material.module_id,
         created_at=material.created_at,
-        updated_at=material.updated_at
+        updated_at=material.updated_at,
     )
 
 
@@ -918,20 +988,23 @@ async def delete_course_material(
                 if material.file_url.startswith("http"):
                     # Firebase Storage - extract path from URL
                     parsed_url = urlparse(material.file_url)
-                    if "firebase" in parsed_url.netloc or "googleapis.com" in parsed_url.netloc:
+                    if (
+                        "firebase" in parsed_url.netloc
+                        or "googleapis.com" in parsed_url.netloc
+                    ):
                         # Extract Firebase path from URL
                         # URL format: https://storage.googleapis.com/bucket-name/path/to/file
                         # or https://firebasestorage.googleapis.com/v0/b/bucket-name/o/path%2Fto%2Ffile
                         if "googleapis.com" in parsed_url.netloc:
                             # Extract path after bucket name
-                            path_parts = parsed_url.path.strip('/').split('/', 1)
+                            path_parts = parsed_url.path.strip("/").split("/", 1)
                             if len(path_parts) > 1:
                                 firebase_path = path_parts[1]
                             else:
-                                firebase_path = parsed_url.path.strip('/')
+                                firebase_path = parsed_url.path.strip("/")
                         else:
-                            firebase_path = parsed_url.path.strip('/')
-                        
+                            firebase_path = parsed_url.path.strip("/")
+
                         # Delete from Firebase Storage
                         await storage_manager.delete_file(firebase_path, "firebase")
                 else:
@@ -939,18 +1012,22 @@ async def delete_course_material(
                     if material.file_url.startswith("/uploads/"):
                         # Remove leading slash and construct full path
                         relative_path = material.file_url.lstrip("/")
-                        local_file_path = os.path.join(settings.upload_dir, relative_path.replace("uploads/", ""))
+                        local_file_path = os.path.join(
+                            settings.upload_dir, relative_path.replace("uploads/", "")
+                        )
                     elif material.file_url.startswith("/static/"):
                         # Static file
                         relative_path = material.file_url.lstrip("/")
-                        local_file_path = os.path.join("static", relative_path.replace("static/", ""))
+                        local_file_path = os.path.join(
+                            "static", relative_path.replace("static/", "")
+                        )
                     else:
                         # Direct file path
                         local_file_path = material.file_url
-                    
+
                     # Delete from local storage
                     await storage_manager.delete_file(local_file_path, "local")
-                    
+
             except Exception as e:
                 # Continue with database deletion even if file deletion fails
                 pass
@@ -1012,7 +1089,7 @@ async def delete_course_material(
 async def validate_course_requirements(
     course_id: int,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> Any:
     """
     Validate if course has required surveys and evaluations for publication
@@ -1021,45 +1098,50 @@ async def validate_course_requirements(
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Curso no encontrado"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Curso no encontrado"
         )
-    
+
     # Check if user has permission to validate this course
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Permisos insuficientes"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
-    
+
     # Check for associated surveys
     from app.models.survey import Survey, SurveyStatus
-    surveys = db.query(Survey).filter(
-        and_(
-            Survey.course_id == course_id,
-            Survey.status == SurveyStatus.PUBLISHED
+
+    surveys = (
+        db.query(Survey)
+        .filter(
+            and_(Survey.course_id == course_id, Survey.status == SurveyStatus.PUBLISHED)
         )
-    ).all()
-    
+        .all()
+    )
+
     # Check for associated evaluations
     from app.models.evaluation import Evaluation
     from app.schemas.evaluation import EvaluationStatus
-    evaluations = db.query(Evaluation).filter(
-        and_(
-            Evaluation.course_id == course_id,
-            Evaluation.status == EvaluationStatus.PUBLISHED
+
+    evaluations = (
+        db.query(Evaluation)
+        .filter(
+            and_(
+                Evaluation.course_id == course_id,
+                Evaluation.status == EvaluationStatus.PUBLISHED,
+            )
         )
-    ).all()
-    
+        .all()
+    )
+
     # Determine if course requires full process
     requires_full_process = (
-        course.course_type in [CourseType.INDUCTION, CourseType.REINDUCTION] or 
-        course.is_mandatory
+        course.course_type in [CourseType.INDUCTION, CourseType.REINDUCTION]
+        or course.is_mandatory
     )
-    
+
     has_surveys = len(surveys) > 0
     has_evaluations = len(evaluations) > 0
-    
+
     return {
         "course_id": course_id,
         "course_title": course.title,
@@ -1071,30 +1153,36 @@ async def validate_course_requirements(
         "can_publish": not requires_full_process or (has_surveys and has_evaluations),
         "missing_requirements": [
             "surveys" if requires_full_process and not has_surveys else None,
-            "evaluations" if requires_full_process and not has_evaluations else None
+            "evaluations" if requires_full_process and not has_evaluations else None,
         ],
-        "surveys": [{
-            "id": survey.id,
-            "title": survey.title,
-            "status": survey.status.value
-        } for survey in surveys],
-        "evaluations": [{
-            "id": evaluation.id,
-            "title": evaluation.title,
-            "status": evaluation.status.value
-        } for evaluation in evaluations]
+        "surveys": [
+            {"id": survey.id, "title": survey.title, "status": survey.status.value}
+            for survey in surveys
+        ],
+        "evaluations": [
+            {
+                "id": evaluation.id,
+                "title": evaluation.title,
+                "status": evaluation.status.value,
+            }
+            for evaluation in evaluations
+        ],
     }
 
 
-@router.get("/{course_id}/attendance-report", response_model=Union[PaginatedResponse, None])
+@router.get(
+    "/{course_id}/attendance-report", response_model=Union[PaginatedResponse, None]
+)
 async def get_course_attendance_report(
     course_id: int,
     skip: int = 0,
     limit: int = 100,
     format: str = "json",
-    download: bool = Query(False, description="Set to true to download the file with a custom filename"),
+    download: bool = Query(
+        False, description="Set to true to download the file with a custom filename"
+    ),
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> Any:
     """
     Get attendance report for a specific course
@@ -1103,42 +1191,42 @@ async def get_course_attendance_report(
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Course not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Course not found"
         )
-    
+
     # Check permissions
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
-    
+
     # Get all enrolled users for this course
-    enrolled_users_query = db.query(
-        User.id,
-        User.email,
-        User.first_name,
-        User.last_name,
-        User.document_number,
-        User.position,
-        User.department.label("area"),
-        Enrollment.id.label("enrollment_id")
-    ).join(
-        Enrollment, User.id == Enrollment.user_id
-    ).filter(
-        Enrollment.course_id == course_id,
-        Enrollment.status == EnrollmentStatus.ACTIVE
+    enrolled_users_query = (
+        db.query(
+            User.id,
+            User.email,
+            User.first_name,
+            User.last_name,
+            User.document_number,
+            User.position,
+            User.department.label("area"),
+            Enrollment.id.label("enrollment_id"),
+        )
+        .join(Enrollment, User.id == Enrollment.user_id)
+        .filter(
+            Enrollment.course_id == course_id,
+            Enrollment.status == EnrollmentStatus.ACTIVE,
+        )
     )
-    
+
     # Get total count of enrolled users
     total_enrolled = enrolled_users_query.count()
-    
+
     if total_enrolled == 0:
         if format == "pdf":
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="No se encontraron usuarios inscritos para este curso"
+                detail="No se encontraron usuarios inscritos para este curso",
             )
         return PaginatedResponse(
             items=[],
@@ -1147,153 +1235,173 @@ async def get_course_attendance_report(
             size=limit,
             pages=0,
             has_next=False,
-            has_prev=False
+            has_prev=False,
         )
-    
+
     # Get all enrolled users for PDF generation or paginated users for API response
     if format == "pdf":
         enrolled_users = enrolled_users_query.all()
     else:
         enrolled_users = enrolled_users_query.offset(skip).limit(limit).all()
-    
+
     # Get attendance records for these users
     user_ids = [user.id for user in enrolled_users]
-    attendance_records = db.query(Attendance).filter(
-        Attendance.user_id.in_(user_ids),
-        Attendance.course_id == course_id
-    ).all()
-    
+    attendance_records = (
+        db.query(Attendance)
+        .filter(
+            Attendance.user_id.in_(user_ids),
+            # Attendance.course_id == course_id  # Eliminado: ya no existe course_id
+        )
+        .all()
+    )
+
     # Create a mapping of user_id to attendance records
     attendance_by_user = {}
     for record in attendance_records:
         if record.user_id not in attendance_by_user:
             attendance_by_user[record.user_id] = []
         attendance_by_user[record.user_id].append(record)
-    
+
     # Build the response
     attendance_reports = []
     for user in enrolled_users:
         user_attendance = attendance_by_user.get(user.id, [])
-        
+
         if user_attendance:
             # If user has attendance records, include them
             for record in user_attendance:
-                attendance_reports.append(AttendanceReportResponse(
-                    attendance_id=record.id,
+                attendance_reports.append(
+                    AttendanceReportResponse(
+                        attendance_id=record.id,
+                        user_id=user.id,
+                        username=user.email,
+                        full_name=f"{user.first_name} {user.last_name}",
+                        course_title=course.title,
+                        date=(
+                            record.session_date.date() if record.session_date else None
+                        ),
+                        status=record.status.value,
+                        check_in_time=record.check_in_time,
+                        check_out_time=record.check_out_time,
+                        notes=record.notes,
+                    )
+                )
+        else:
+            # If user has no attendance records, show as not registered
+            attendance_reports.append(
+                AttendanceReportResponse(
+                    attendance_id=0,  # No attendance record
                     user_id=user.id,
                     username=user.email,
                     full_name=f"{user.first_name} {user.last_name}",
                     course_title=course.title,
-                    date=record.session_date.date() if record.session_date else None,
-                    status=record.status.value,
-                    check_in_time=record.check_in_time,
-                    check_out_time=record.check_out_time,
-                    notes=record.notes
-                ))
-        else:
-            # If user has no attendance records, show as not registered
-            attendance_reports.append(AttendanceReportResponse(
-                attendance_id=0,  # No attendance record
-                user_id=user.id,
-                username=user.email,
-                full_name=f"{user.first_name} {user.last_name}",
-                course_title=course.title,
-                date=None,
-                status="not_registered",
-                check_in_time=None,
-                check_out_time=None,
-                notes="Sin asistencia registrada"
-            ))
-    
+                    date=None,
+                    status="not_registered",
+                    check_in_time=None,
+                    check_out_time=None,
+                    notes="Sin asistencia registrada",
+                )
+            )
+
     # If PDF format is requested, generate PDF
     if format == "pdf":
         try:
             # Import HTML to PDF converter
             from app.services.html_to_pdf import HTMLToPDFConverter
-            
+
             # Create attendance_lists directory if it doesn't exist
             attendance_dir = "attendance_lists"
             if not os.path.exists(attendance_dir):
                 os.makedirs(attendance_dir)
-            
+
             # Generate filename with simple naming to avoid encoding issues
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"reporte_asistencia_curso_{course_id}_{timestamp}.pdf"
             local_filepath = os.path.join(attendance_dir, filename)
-            
+
             # Initialize HTML to PDF converter
             converter = HTMLToPDFConverter()
-            
+
             # Prepare attendees data for the template
             attendees_data = []
             for user in enrolled_users:
-                attendees_data.append({
-                    "name": f"{user.first_name} {user.last_name}",
-                    "document": user.document_number or "N/A",
-                    "position": user.position or "N/A",
-                    "area": user.department or "N/A"  # Usar department en lugar de area
-                })
-            
+                attendees_data.append(
+                    {
+                        "name": f"{user.first_name} {user.last_name}",
+                        "document": user.document_number or "N/A",
+                        "position": user.position or "N/A",
+                        "area": user.department
+                        or "N/A",  # Usar department en lugar de area
+                    }
+                )
+
             # Calculate attendance percentage
-            present_count = sum(1 for report in attendance_reports if report.status == "present")
-            attendance_percentage = (present_count / len(attendance_reports)) * 100 if attendance_reports else 0
-            
+            present_count = sum(
+                1 for report in attendance_reports if report.status == "present"
+            )
+            attendance_percentage = (
+                (present_count / len(attendance_reports)) * 100
+                if attendance_reports
+                else 0
+            )
+
             # Prepare data for the template
             session_data = {
                 "title": "Reporte de Asistencia del Curso",
                 "course_title": course.title,
                 "session_date": datetime.now().strftime("%d/%m/%Y"),
-                "instructor_name": current_user.first_name + " " + current_user.last_name,
+                "instructor_name": current_user.first_name
+                + " "
+                + current_user.last_name,
                 "location": course.location or "No especificado",
-                "duration": str(course.duration_hours) if course.duration_hours else "N/A",
-                "attendance_percentage": round(attendance_percentage, 2)
+                "duration": (
+                    str(course.duration_hours) if course.duration_hours else "N/A"
+                ),
+                "attendance_percentage": round(attendance_percentage, 2),
             }
-            
+
             # Prepare template data with the correct structure
-            template_data = {
-                "session": session_data,
-                "attendees": attendees_data
-            }
-            
+            template_data = {"session": session_data, "attendees": attendees_data}
+
             # Generate PDF from HTML template
             pdf_content = converter.generate_attendance_list_pdf(template_data)
-            
+
             # Write PDF content to file
-            with open(local_filepath, 'wb') as pdf_file:
+            with open(local_filepath, "wb") as pdf_file:
                 pdf_file.write(pdf_content)
-            
+
             # Preparar parámetros de respuesta
-            response_params = {
-                "path": local_filepath,
-                "media_type": "application/pdf"
-            }
-            
+            response_params = {"path": local_filepath, "media_type": "application/pdf"}
+
             # Si se solicita descarga, agregar un nombre de archivo personalizado
             if download:
                 # Limpiar nombre del curso para el nombre de archivo
                 import re
-                clean_course_name = re.sub(r'[^\w\s-]', '', course.title).strip()
-                clean_course_name = re.sub(r'[-\s]+', '_', clean_course_name)
-                
+
+                clean_course_name = re.sub(r"[^\w\s-]", "", course.title).strip()
+                clean_course_name = re.sub(r"[-\s]+", "_", clean_course_name)
+
                 # Agregar nombre de archivo a los parámetros de respuesta
-                response_params["filename"] = f"Reporte_Asistencia_{clean_course_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
-            
+                response_params["filename"] = (
+                    f"Reporte_Asistencia_{clean_course_name}_{datetime.now().strftime('%Y%m%d')}.pdf"
+                )
+
             # Devolver respuesta de archivo con los parámetros apropiados
             return FileResponse(**response_params)
-            
+
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error generando PDF: {str(e)}"
+                detail=f"Error generando PDF: {str(e)}",
             )
-    
+
     # Calculate pagination info for API response
     page = (skip // limit) + 1 if limit > 0 else 1
     size = limit
     pages = (total_enrolled + limit - 1) // limit if limit > 0 else 1
     has_next = skip + limit < total_enrolled
     has_prev = skip > 0
-    
+
     return PaginatedResponse(
         items=attendance_reports,
         total=total_enrolled,
@@ -1301,7 +1409,7 @@ async def get_course_attendance_report(
         size=size,
         pages=pages,
         has_next=has_next,
-        has_prev=has_prev
+        has_prev=has_prev,
     )
 
 
@@ -1309,7 +1417,7 @@ async def get_course_attendance_report(
 async def complete_course_enrollment(
     course_id: int,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> Any:
     """
     Mark course enrollment as completed if all requirements are met
@@ -1318,34 +1426,36 @@ async def complete_course_enrollment(
     course = db.query(Course).filter(Course.id == course_id).first()
     if not course:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Curso no encontrado"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Curso no encontrado"
         )
-    
+
     # Check if user is enrolled
-    enrollment = db.query(Enrollment).filter(
-        and_(
-            Enrollment.user_id == current_user.id,
-            Enrollment.course_id == course_id
+    enrollment = (
+        db.query(Enrollment)
+        .filter(
+            and_(
+                Enrollment.user_id == current_user.id, Enrollment.course_id == course_id
+            )
         )
-    ).first()
-    
+        .first()
+    )
+
     if not enrollment:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No está inscrito en este curso"
+            detail="No está inscrito en este curso",
         )
-    
+
     if enrollment.status == EnrollmentStatus.COMPLETED:
         return MessageResponse(message="El curso ya está marcado como completado")
-    
+
     # Check and complete course if requirements are met
     completed = check_and_complete_course(db, current_user.id, course_id)
-    
+
     if completed:
         return MessageResponse(message="Curso completado exitosamente")
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No se han cumplido todos los requisitos para completar el curso"
+            detail="No se han cumplido todos los requisitos para completar el curso",
         )

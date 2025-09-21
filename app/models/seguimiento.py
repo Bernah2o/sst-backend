@@ -50,3 +50,4 @@ class Seguimiento(Base):
     
     # Relaciones
     worker = relationship("Worker", back_populates="seguimientos")
+    actividades = relationship("SeguimientoActividad", back_populates="seguimiento", cascade="all, delete-orphan")

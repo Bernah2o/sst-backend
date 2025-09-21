@@ -38,7 +38,7 @@ class Attendance(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    course_name = Column(String(255), nullable=True)  # Solo texto, no FK
     enrollment_id = Column(Integer, ForeignKey("enrollments.id"), nullable=True)
     session_id = Column(Integer, ForeignKey("sessions.id"), nullable=True)
     session_date = Column(DateTime, nullable=False)
@@ -60,7 +60,6 @@ class Attendance(Base):
 
     # Relationships
     user = relationship("User", foreign_keys=[user_id], back_populates="attendances")
-    course = relationship("Course", back_populates="attendances")
     enrollment = relationship("Enrollment", back_populates="attendance_records")
     session = relationship("Session", back_populates="attendances")
     verifier = relationship("User", foreign_keys=[verified_by])
@@ -73,13 +72,17 @@ class Attendance(Base):
         """Calculate attendance percentage based on duration"""
         if not self.duration_minutes or not self.scheduled_duration_minutes:
             return 0.0
-        
+
         percentage = (self.duration_minutes / self.scheduled_duration_minutes) * 100
         return min(percentage, 100.0)  # Cap at 100%
 
     def is_present(self) -> bool:
         """Check if user was present (including late and partial)"""
-        return self.status in [AttendanceStatus.PRESENT, AttendanceStatus.LATE, AttendanceStatus.PARTIAL]
+        return self.status in [
+            AttendanceStatus.PRESENT,
+            AttendanceStatus.LATE,
+            AttendanceStatus.PARTIAL,
+        ]
 
     def meets_minimum_attendance(self, minimum_percentage: float = 80.0) -> bool:
         """Check if attendance meets minimum requirement"""
