@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from typing import Optional
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator, ValidationInfo
 from decimal import Decimal
 
 from app.models.worker_novedad import NovedadType, NovedadStatus
@@ -19,29 +19,33 @@ class WorkerNovedadBase(BaseModel):
     observaciones: Optional[str] = None
     documento_soporte: Optional[str] = None
 
-    @validator('fecha_fin')
-    def validate_fecha_fin(cls, v, values):
+    @field_validator('fecha_fin')
+    @classmethod
+    def validate_fecha_fin(cls, v, info: ValidationInfo):
         """Valida que fecha_fin sea posterior a fecha_inicio"""
-        if v and 'fecha_inicio' in values and values['fecha_inicio']:
-            if v < values['fecha_inicio']:
+        if v and info.data and 'fecha_inicio' in info.data and info.data['fecha_inicio']:
+            if v < info.data['fecha_inicio']:
                 raise ValueError('La fecha de fin debe ser posterior a la fecha de inicio')
         return v
 
-    @validator('monto_aumento')
-    def validate_monto_aumento(cls, v, values):
+    @field_validator('monto_aumento')
+    @classmethod
+    def validate_monto_aumento(cls, v, info: ValidationInfo):
         """Valida que el monto de aumento sea positivo"""
         if v is not None and v <= 0:
             raise ValueError('El monto de aumento debe ser positivo')
         return v
 
-    @validator('cantidad_horas')
+    @field_validator('cantidad_horas')
+    @classmethod
     def validate_cantidad_horas(cls, v):
         """Valida que la cantidad de horas sea positiva"""
         if v is not None and v <= 0:
             raise ValueError('La cantidad de horas debe ser positiva')
         return v
 
-    @validator('valor_hora')
+    @field_validator('valor_hora')
+    @classmethod
     def validate_valor_hora(cls, v):
         """Valida que el valor por hora sea positivo"""
         if v is not None and v <= 0:
@@ -52,11 +56,12 @@ class WorkerNovedadBase(BaseModel):
 class WorkerNovedadCreate(WorkerNovedadBase):
     worker_id: int
 
-    @validator('fecha_inicio')
-    def validate_campos_requeridos_por_tipo(cls, v, values):
+    @field_validator('fecha_inicio')
+    @classmethod
+    def validate_campos_requeridos_por_tipo(cls, v, info: ValidationInfo):
         """Valida campos requeridos según el tipo de novedad"""
-        if 'tipo' in values:
-            tipo = values['tipo']
+        if 'tipo' in info.data:
+            tipo = info.data['tipo']
             
             # Tipos que requieren fechas
             tipos_con_fechas = [
@@ -75,20 +80,22 @@ class WorkerNovedadCreate(WorkerNovedadBase):
         
         return v
 
-    @validator('salario_anterior')
-    def validate_salario_para_aumento(cls, v, values):
+    @field_validator('salario_anterior')
+    @classmethod
+    def validate_salario_para_aumento(cls, v, info: ValidationInfo):
         """Valida que se proporcione salario anterior para aumentos"""
-        if 'tipo' in values and values['tipo'] == NovedadType.AUMENTO_SALARIO:
+        if 'tipo' in info.data and info.data['tipo'] == NovedadType.AUMENTO_SALARIO:
             if not v:
                 raise ValueError('El salario anterior es requerido para aumentos de salario')
         return v
 
-    @validator('cantidad_horas')
-    def validate_horas_para_extras_recargos(cls, v, values):
+    @field_validator('cantidad_horas')
+    @classmethod
+    def validate_horas_para_extras_recargos(cls, v, info: ValidationInfo):
         """Valida que se proporcionen horas para extras y recargos"""
-        if 'tipo' in values and values['tipo'] in [NovedadType.HORAS_EXTRAS, NovedadType.RECARGOS]:
+        if 'tipo' in info.data and info.data['tipo'] in [NovedadType.HORAS_EXTRAS, NovedadType.RECARGOS]:
             if not v:
-                raise ValueError(f'La cantidad de horas es requerida para {values["tipo"].value}')
+                raise ValueError(f'La cantidad de horas es requerida para {info.data["tipo"].value}')
         return v
 
 
@@ -105,11 +112,12 @@ class WorkerNovedadUpdate(BaseModel):
     documento_soporte: Optional[str] = None
     status: Optional[NovedadStatus] = None
 
-    @validator('fecha_fin')
-    def validate_fecha_fin(cls, v, values):
+    @field_validator('fecha_fin')
+    @classmethod
+    def validate_fecha_fin(cls, v, info: ValidationInfo):
         """Valida que fecha_fin sea posterior a fecha_inicio"""
-        if v and 'fecha_inicio' in values and values['fecha_inicio']:
-            if v < values['fecha_inicio']:
+        if v and 'fecha_inicio' in info.data and info.data['fecha_inicio']:
+            if v < info.data['fecha_inicio']:
                 raise ValueError('La fecha de fin debe ser posterior a la fecha de inicio')
         return v
 
@@ -165,7 +173,8 @@ class WorkerNovedadApproval(BaseModel):
     status: NovedadStatus
     observaciones: Optional[str] = None
 
-    @validator('status')
+    @field_validator('status')
+    @classmethod
     def validate_status(cls, v):
         """Valida que el status sea válido para aprobación"""
         if v not in [NovedadStatus.APROBADA, NovedadStatus.RECHAZADA]:

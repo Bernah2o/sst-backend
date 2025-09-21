@@ -4,8 +4,12 @@ import base64
 import tempfile
 import io
 import logging
+import gc
+import threading
 from datetime import datetime
 from pathlib import Path
+from functools import lru_cache
+from typing import Optional, Dict, Any, List
 
 import weasyprint
 
@@ -88,6 +92,32 @@ class HTMLToPDFConverter:
             loader=jinja2.FileSystemLoader(self.template_dir),
             autoescape=jinja2.select_autoescape(["html", "xml"]),
         )
+        
+        # Cache para recursos reutilizables
+        self._logo_cache = None
+        self._css_cache = {}
+        self._template_cache = {}
+        
+        # Lock para operaciones thread-safe
+        self._cache_lock = threading.Lock()
+        
+        # Configuración de optimización
+        self.optimization_config = {
+            'enable_caching': True,
+            'max_memory_usage': 100 * 1024 * 1024,  # 100MB
+            'batch_size': 50,  # Para procesamiento masivo
+            'gc_frequency': 10  # Ejecutar garbage collection cada N PDFs
+        }
+        
+        # Configuración específica de WeasyPrint para optimizar fuentes
+        self.weasyprint_config = {
+            'font_config': None,  # Usar configuración del sistema
+            'optimize_images': True,
+            'compress': True,
+            'pdf_version': (1, 7),
+            'font_size': 12,  # Tamaño base de fuente
+            'dpi': 96,  # DPI optimizado para web
+        }
 
     def _get_file_url(self, path):
         """
@@ -204,7 +234,7 @@ class HTMLToPDFConverter:
 
     def _generate_pdf_weasyprint(self, html_content, css_files=None, output_path=None):
         """
-        Genera PDF usando WeasyPrint.
+        Genera PDF usando WeasyPrint con optimizaciones de rendimiento.
         """
         # Validar HTML
         html_content = self._validate_html(html_content)
@@ -231,16 +261,18 @@ class HTMLToPDFConverter:
             string=html_content, base_url=base_url, encoding="utf-8"
         )
 
-        # Preparar estilos CSS
+        # Preparar estilos CSS con cache
         stylesheets = []
         if css_files:
             for css_file in css_files:
                 css_path = os.path.join(self.template_dir, "css", css_file)
                 if os.path.exists(css_path):
                     try:
-                        css = weasyprint.CSS(filename=css_path)
-                        stylesheets.append(css)
-                        logger.info(f"CSS cargado: {css_path}")
+                        # Usar cache para CSS
+                        css = self._load_css_cached(css_path)
+                        if css:
+                            stylesheets.append(css)
+                            logger.info(f"CSS cargado: {css_path}")
                     except Exception as e:
                         logger.warning(f"Error al cargar CSS {css_file}: {str(e)}")
 
@@ -254,15 +286,28 @@ class HTMLToPDFConverter:
             "producer": "WeasyPrint",
         }
 
-        # Configuración básica para mayor compatibilidad
+        # Configuración optimizada para rendimiento usando configuración predefinida
         pdf_options = {
             "stylesheets": stylesheets,
             "metadata": pdf_metadata,
-            "pdf_version": (1, 7),  # Versión más compatible
+            "pdf_version": self.weasyprint_config['pdf_version'],
+            "optimize_images": self.weasyprint_config['optimize_images'],
+            "compress": self.weasyprint_config['compress'],
+            "font_config": self.weasyprint_config['font_config'],
+            "dpi": self.weasyprint_config['dpi'],
         }
 
-        # Generar PDF
-        pdf_content = html_obj.write_pdf(**pdf_options)
+        # Generar PDF con timeout implícito
+        try:
+            pdf_content = html_obj.write_pdf(**pdf_options)
+        except Exception as e:
+            logger.error(f"Error en write_pdf: {str(e)}")
+            # Intentar con configuración más simple
+            simple_options = {
+                "stylesheets": stylesheets,
+                "metadata": pdf_metadata,
+            }
+            pdf_content = html_obj.write_pdf(**simple_options)
 
         # Validar que el PDF se generó correctamente
         if not pdf_content or len(pdf_content) < 1000:
@@ -315,9 +360,10 @@ class HTMLToPDFConverter:
             logger.critical(f"Error crítico en PDF de emergencia: {str(e)}")
             return f"Error crítico al generar PDF: {str(e)}".encode("utf-8")
 
+    @lru_cache(maxsize=1)
     def _load_logo_base64(self, logo_filename="logo_3.png"):
         """
-        Carga el logo y lo convierte a base64.
+        Carga el logo y lo convierte a base64 con cache.
 
         Args:
             logo_filename: Nombre del archivo de logo
@@ -325,6 +371,9 @@ class HTMLToPDFConverter:
         Returns:
             String base64 del logo o cadena vacía si hay error
         """
+        if self.optimization_config['enable_caching'] and self._logo_cache is not None:
+            return self._logo_cache
+            
         logo_path = os.path.join(self.template_dir, logo_filename)
 
         if not os.path.exists(logo_path):
@@ -335,21 +384,56 @@ class HTMLToPDFConverter:
             with open(logo_path, "rb") as image_file:
                 logo_data = image_file.read()
                 logo_base64 = base64.b64encode(logo_data).decode("utf-8")
+            
+            if self.optimization_config['enable_caching']:
+                with self._cache_lock:
+                    self._logo_cache = logo_base64
+                    
             logger.info(f"Logo cargado correctamente: {logo_path}")
             return logo_base64
         except Exception as e:
             logger.error(f"Error al cargar logo: {str(e)}")
             return ""
+    
+    def _load_css_cached(self, css_path: str) -> Optional[weasyprint.CSS]:
+        """Cargar CSS con cache para mejorar rendimiento."""
+        if not self.optimization_config['enable_caching']:
+            try:
+                return weasyprint.CSS(filename=css_path)
+            except Exception as e:
+                logger.warning(f"Error al cargar CSS {css_path}: {str(e)}")
+                return None
+        
+        with self._cache_lock:
+            if css_path in self._css_cache:
+                return self._css_cache[css_path]
+            
+            try:
+                css_obj = weasyprint.CSS(filename=css_path)
+                self._css_cache[css_path] = css_obj
+                return css_obj
+            except Exception as e:
+                logger.warning(f"Error al cargar CSS {css_path}: {str(e)}")
+                return None
+    
+    def _clear_memory_cache(self):
+        """Limpiar cache de memoria para liberar recursos."""
+        with self._cache_lock:
+            self._css_cache.clear()
+            self._template_cache.clear()
+        gc.collect()
+        logger.info("Cache de memoria limpiado")
 
     def generate_attendance_list_pdf(self, template_data, output_path=None):
         """
-        Genera un PDF de lista de asistencia a partir de los datos proporcionados.
-        Valida y transforma los datos usando prepare_attendance_context.
+        Generar PDF de lista de asistencia optimizado.
+        
         Args:
-            template_data: Diccionario o modelo con los datos para la plantilla
-            output_path: Ruta donde guardar el PDF generado.
+            template_data: Datos para la plantilla
+            output_path: Ruta donde guardar el PDF (opcional)
+            
         Returns:
-            Bytes del PDF generado o ruta al archivo si output_path es proporcionado.
+            bytes: Contenido del PDF o ruta del archivo si se especifica output_path
         """
         try:
             now = datetime.now()
@@ -392,14 +476,12 @@ class HTMLToPDFConverter:
             html_obj = weasyprint.HTML(
                 string=html_content, base_url=base_url, encoding="utf-8"
             )
-            # Cargar CSS
+            # Cargar CSS con cache
             stylesheets = []
             if os.path.exists(css_path):
-                try:
-                    css = weasyprint.CSS(filename=css_path)
-                    stylesheets.append(css)
-                except Exception as e:
-                    logger.warning(f"Error al cargar CSS: {str(e)}")
+                css_obj = self._load_css_cached(css_path)
+                if css_obj:
+                    stylesheets.append(css_obj)
             # Metadatos específicos
             pdf_metadata = {
                 "title": "Lista de Asistencia",
@@ -409,9 +491,13 @@ class HTMLToPDFConverter:
                 "creator": "SST Sistema",
                 "producer": "WeasyPrint",
             }
-            # Generar PDF con configuración básica para mayor compatibilidad
+            # Generar PDF con configuración optimizada
             pdf_content = html_obj.write_pdf(
-                stylesheets=stylesheets, metadata=pdf_metadata, pdf_version=(1, 7)
+                stylesheets=stylesheets, 
+                metadata=pdf_metadata, 
+                pdf_version=(1, 7),
+                optimize_images=True,  # Optimizar imágenes
+                compress=True  # Comprimir contenido
             )
             # Validar PDF generado
             if not pdf_content or len(pdf_content) < 1000:
@@ -484,3 +570,256 @@ class HTMLToPDFConverter:
             return self._generate_emergency_pdf(
                 f"Error en reporte ocupacional: {str(e)}"
             )
+
+    def generate_attendance_certificate_pdf(self, attendance_data, participant_data, output_path=None):
+        """
+        Genera un PDF de certificado de asistencia individual en formato horizontal.
+        
+        Args:
+            attendance_data: Diccionario con datos de asistencia
+            participant_data: Diccionario con datos del participante
+            output_path: Ruta donde guardar el PDF generado.
+            
+        Returns:
+            Bytes del PDF generado o ruta al archivo si output_path es proporcionado.
+        """
+        try:
+            now = datetime.now()
+            logo_base64 = self._load_logo_base64()
+            
+            # Validar y procesar datos de asistencia
+            if not isinstance(attendance_data, dict):
+                if hasattr(attendance_data, "__dict__"):
+                    attendance_data = attendance_data.__dict__
+                else:
+                    attendance_data = {}
+            
+            # Validar y procesar datos del participante
+            if not isinstance(participant_data, dict):
+                if hasattr(participant_data, "__dict__"):
+                    participant_data = participant_data.__dict__
+                else:
+                    participant_data = {}
+            
+            # Formatear fecha de sesión
+            session_date = attendance_data.get("session_date", "")
+            if session_date:
+                try:
+                    if isinstance(session_date, str):
+                        # Intentar parsear diferentes formatos de fecha
+                        if "T" in session_date:
+                            date_obj = datetime.fromisoformat(session_date.replace("Z", "+00:00"))
+                        else:
+                            date_obj = datetime.strptime(session_date, "%Y-%m-%d")
+                    else:
+                        date_obj = session_date
+                    
+                    session_date_formatted = date_obj.strftime("%d/%m/%Y")
+                    session_time = date_obj.strftime("%H:%M")
+                except:
+                    session_date_formatted = session_date
+                    session_time = "No especificada"
+            else:
+                session_date_formatted = "No especificada"
+                session_time = "No especificada"
+            
+            # Formatear duración
+            duration_minutes = attendance_data.get("duration_minutes", 0)
+            if duration_minutes:
+                hours = duration_minutes // 60
+                minutes = duration_minutes % 60
+                if hours > 0:
+                    duration_formatted = f"{hours}h {minutes}m"
+                else:
+                    duration_formatted = f"{minutes}m"
+            else:
+                duration_formatted = "No especificada"
+            
+            # Mapear estado de asistencia
+            status_map = {
+                "present": "PRESENTE",
+                "absent": "AUSENTE", 
+                "late": "TARDÍO",
+                "excused": "EXCUSADO",
+                "partial": "PARCIAL"
+            }
+            
+            status = attendance_data.get("status", "present").lower()
+            status_display = status_map.get(status, "PRESENTE")
+            
+            # Crear contexto para la plantilla
+            context = {
+                "logo_base64": logo_base64,
+                "attendance": {
+                    "course_name": attendance_data.get("course_name", "Curso no especificado"),
+                    "session_date_formatted": session_date_formatted,
+                    "session_time": session_time,
+                    "duration_formatted": duration_formatted,
+                    "status": status,
+                    "status_display": status_display,
+                    "completion_percentage": attendance_data.get("completion_percentage", 0),
+                    "notes": attendance_data.get("notes", ""),
+                    "instructor_name": attendance_data.get("instructor_name", "")
+                },
+                "participant": {
+                    "first_name": participant_data.get("first_name", participant_data.get("nombre", "")),
+                    "last_name": participant_data.get("last_name", participant_data.get("apellido", "")),
+                    "document": participant_data.get("document", participant_data.get("documento", "")),
+                    "phone": participant_data.get("phone", participant_data.get("telefono", "")),
+                    "position": participant_data.get("position", participant_data.get("cargo", "")),
+                    "area": participant_data.get("area", participant_data.get("area", ""))
+                },
+                "generation_date": now.strftime("%d/%m/%Y"),
+                "generation_time": now.strftime("%H:%M:%S")
+            }
+            
+            # Renderizar plantilla
+            html_content = self.render_template("attendance_certificate.html", context)
+            
+            # Procesar CSS
+            css_path = os.path.join(self.template_dir, "css", "attendance_certificate.css")
+            if os.path.exists(css_path):
+                css_url = self._get_file_url(css_path)
+                html_content = html_content.replace(
+                    'href="css/attendance_certificate.css"', f'href="{css_url}"'
+                )
+            
+            # Añadir metadatos específicos
+            specific_meta = """
+    <meta name="title" content="Certificado de Asistencia">
+    <meta name="subject" content="Certificado de Asistencia Individual">
+    <meta name="keywords" content="certificado, asistencia, capacitación">"""
+            html_content = html_content.replace("</head>", f"{specific_meta}\n</head>")
+            
+            # Generar PDF con configuración específica para formato horizontal
+            base_url = self._get_file_url(self.template_dir)
+            html_obj = weasyprint.HTML(
+                string=html_content, base_url=base_url, encoding="utf-8"
+            )
+            
+            # Cargar CSS con cache
+            stylesheets = []
+            if os.path.exists(css_path):
+                css_obj = self._load_css_cached(css_path)
+                if css_obj:
+                    stylesheets.append(css_obj)
+            
+            # Metadatos específicos
+            pdf_metadata = {
+                "title": "Certificado de Asistencia",
+                "author": "SST Sistema",
+                "subject": "Certificado de Asistencia Individual",
+                "keywords": "certificado, asistencia, capacitación",
+                "creator": "SST Sistema",
+                "producer": "WeasyPrint",
+            }
+            
+            # Generar PDF con configuración optimizada
+            pdf_content = html_obj.write_pdf(
+                stylesheets=stylesheets, 
+                metadata=pdf_metadata, 
+                pdf_version=(1, 7),
+                optimize_images=True,  # Optimizar imágenes
+                compress=True  # Comprimir contenido
+            )
+            
+            # Validar PDF generado
+            if not pdf_content or len(pdf_content) < 1000:
+                raise ValueError("PDF de certificado de asistencia está vacío")
+            
+            logger.info(f"Certificado de asistencia PDF generado ({len(pdf_content)} bytes)")
+            
+            # Guardar si se especifica ruta
+            if output_path:
+                output_dir = os.path.dirname(output_path)
+                if output_dir:
+                    os.makedirs(output_dir, exist_ok=True)
+                
+                with open(output_path, "wb") as f:
+                    f.write(pdf_content)
+                return output_path
+            
+            return pdf_content
+            
+        except Exception as e:
+            logger.error(f"Error en generate_attendance_certificate_pdf: {str(e)}")
+            return self._generate_emergency_pdf(
+                f"Error en certificado de asistencia: {str(e)}"
+            )
+    
+    def generate_bulk_attendance_certificates(self, attendance_list: List[Dict[str, Any]], 
+                                            output_dir: Optional[str] = None) -> List[bytes]:
+        """
+        Generar múltiples certificados de asistencia de forma optimizada.
+        
+        Args:
+            attendance_list: Lista de datos de asistencia
+            output_dir: Directorio donde guardar los PDFs (opcional)
+            
+        Returns:
+            List[bytes]: Lista de contenidos PDF generados
+        """
+        results = []
+        batch_size = self.optimization_config['batch_size']
+        gc_frequency = self.optimization_config['gc_frequency']
+        
+        try:
+            logger.info(f"Iniciando generación masiva de {len(attendance_list)} certificados")
+            
+            # Procesar en lotes para optimizar memoria
+            for i in range(0, len(attendance_list), batch_size):
+                batch = attendance_list[i:i + batch_size]
+                batch_results = []
+                
+                logger.info(f"Procesando lote {i//batch_size + 1}/{(len(attendance_list) + batch_size - 1)//batch_size}")
+                
+                for j, attendance_data in enumerate(batch):
+                    try:
+                        # Extraer datos del participante y asistencia
+                        participant_data = attendance_data.get('participant', {})
+                        attendance_info = attendance_data.get('attendance', attendance_data)
+                        
+                        # Generar PDF individual
+                        pdf_content = self.generate_attendance_certificate_pdf(
+                            attendance_info, participant_data
+                        )
+                        
+                        # Guardar si se especifica directorio
+                        if output_dir and isinstance(pdf_content, bytes):
+                            filename = f"certificado_{participant_data.get('document', f'item_{i+j}')}.pdf"
+                            filepath = os.path.join(output_dir, filename)
+                            os.makedirs(output_dir, exist_ok=True)
+                            
+                            with open(filepath, 'wb') as f:
+                                f.write(pdf_content)
+                        
+                        batch_results.append(pdf_content)
+                        
+                        # Ejecutar garbage collection periódicamente
+                        if (i + j + 1) % gc_frequency == 0:
+                            gc.collect()
+                            
+                    except Exception as e:
+                        logger.error(f"Error generando certificado {i+j}: {str(e)}")
+                        batch_results.append(self._generate_emergency_pdf(
+                            f"Error en certificado: {str(e)}"
+                        ))
+                
+                results.extend(batch_results)
+                
+                # Limpiar cache entre lotes para liberar memoria
+                if i + batch_size < len(attendance_list):
+                    self._clear_memory_cache()
+            
+            logger.info(f"Generación masiva completada: {len(results)} certificados")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error en generación masiva: {str(e)}")
+            # Retornar PDFs de emergencia para los elementos restantes
+            emergency_results = []
+            for _ in range(len(attendance_list) - len(results)):
+                emergency_results.append(self._generate_emergency_pdf(
+                    f"Error en generación masiva: {str(e)}"
+                ))
+            return results + emergency_results

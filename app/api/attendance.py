@@ -1,9 +1,14 @@
 from typing import Any
 from datetime import datetime, date
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Query
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 import os
+import tempfile
+import io
+import pandas as pd
+from starlette.background import BackgroundTask
 
 from app.dependencies import get_current_active_user
 from app.database import get_db
@@ -11,6 +16,7 @@ from app.models.user import User
 from app.models.attendance import Attendance, AttendanceStatus, AttendanceType
 from app.models.course import Course
 from app.models.session import Session as SessionModel
+from app.services.html_to_pdf import HTMLToPDFConverter
 from app.schemas.attendance import (
     AttendanceUpdate,
     AttendanceResponse,
@@ -305,6 +311,82 @@ async def delete_session(
     return MessageResponse(message="Sesión eliminada exitosamente")
 
 
+# Export endpoint (must be before generic /{attendance_id} routes)
+@router.get("/export")
+async def export_attendance_data(
+    session_date: date = None,
+    user_id: int = None,
+    course_name: str = None,
+    status: AttendanceStatus = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """
+    Export attendance data to Excel format
+    """
+    
+    # Check permissions
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Permisos insuficientes para exportar datos"
+        )
+    
+    # Build query with explicit join conditions to avoid ambiguous foreign keys
+    query = db.query(Attendance).join(User, Attendance.user_id == User.id)
+    
+    # Apply filters
+    if user_id:
+        query = query.filter(Attendance.user_id == user_id)
+    if course_name:
+        query = query.filter(Attendance.course_name.ilike(f"%{course_name}%"))
+    if session_date:
+        query = query.filter(func.date(Attendance.session_date) == session_date)
+    if status:
+        query = query.filter(Attendance.status == status)
+    
+    # Get attendance records
+    attendance_records = query.all()
+    
+    # Prepare data for export
+    export_data = []
+    for record in attendance_records:
+        export_data.append({
+            'ID': record.id,
+            'Usuario': f"{record.user.first_name} {record.user.last_name}",
+            'Email': record.user.email,
+            'Curso': record.course_name or 'N/A',
+            'Fecha de Sesión': record.session_date.strftime('%Y-%m-%d'),
+            'Estado': record.status.value,
+            'Tipo de Asistencia': record.attendance_type.value,
+            'Hora de Entrada': record.check_in_time.strftime('%H:%M:%S') if record.check_in_time else '',
+            'Hora de Salida': record.check_out_time.strftime('%H:%M:%S') if record.check_out_time else '',
+            'Duración (min)': record.duration_minutes or 0,
+            'Porcentaje de Completitud': record.completion_percentage,
+            'Ubicación': record.location or '',
+            'Notas': record.notes or '',
+            'Fecha de Creación': record.created_at.strftime('%Y-%m-%d %H:%M:%S')
+        })
+    
+    # Create DataFrame and Excel file
+    df = pd.DataFrame(export_data)
+    
+    # Create Excel file in memory
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Asistencia', index=False)
+    
+    output.seek(0)
+    
+    # Generate filename
+    filename = f"asistencia_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    
+    return StreamingResponse(
+        io.BytesIO(output.read()),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
 # Attendance endpoints
 @router.get("", response_model=PaginatedResponse[AttendanceListResponse])
 @router.get("/", response_model=PaginatedResponse[AttendanceListResponse])
@@ -522,6 +604,151 @@ async def get_attendance_stats(
         stats["total_attendance"] += count
 
     return stats
+
+
+@router.get("/attendance-list")
+async def generate_attendance_list_pdf(
+    course_name: str = Query(..., description="Nombre del curso"),
+    session_date: str = Query(..., description="Fecha de la sesión (YYYY-MM-DD)"),
+    download: bool = Query(
+        False, description="Set to true to download the file with a custom filename"
+    ),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Generate attendance list PDF for all participants in a specific course session
+    """
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
+        )
+
+    try:
+        # Parse session date
+        session_date_obj = datetime.strptime(session_date, "%Y-%m-%d").date()
+        
+        # Get all attendance records for this course and date
+        attendances = (
+            db.query(Attendance)
+            .join(User, Attendance.user_id == User.id)
+            .filter(
+                Attendance.course_name == course_name,
+                func.date(Attendance.session_date) == session_date_obj
+            )
+            .order_by(User.first_name, User.last_name)
+            .all()
+        )
+
+        if not attendances:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No se encontraron registros de asistencia para este curso y fecha",
+            )
+
+        # Get course information (try to find from the first attendance record)
+        first_attendance = attendances[0]
+        course = db.query(Course).filter(Course.title == course_name).first()
+        
+        # Construir datos de sesión para la plantilla
+        session_data = {
+            "title": f"Lista de Asistencia - {course_name}",
+            "session_date": session_date_obj.strftime("%d/%m/%Y"),
+            "course_title": course_name,
+            "instructor_name": course.instructor_name if course else "No asignado",
+            "location": course.location if course else "No especificado",
+            "duration": f"{first_attendance.duration_minutes or 0} min",
+            "attendance_percentage": 100,
+        }
+
+        # Construir lista de participantes para la plantilla
+        attendees = []
+        for attendance in attendances:
+            user = attendance.user
+            attendees.append({
+                "name": f"{user.first_name} {user.last_name}",
+                "document": user.document_number or "",
+                "position": user.position or "",
+                "area": user.department or "",  # Usar department como área
+                "signature": "",  # Campo vacío para firma física
+            })
+
+        # Preparar datos para el servicio de PDF
+        template_data = {"session": session_data, "attendees": attendees}
+
+        # Usar servicio optimizado de PDF
+        pdf_service = HTMLToPDFConverter()
+        
+        # Generar PDF optimizado en memoria primero
+        pdf_bytes = pdf_service.generate_attendance_list_pdf(template_data)
+        
+        # Guardar en archivo temporal solo si es válido
+        if not pdf_bytes or len(pdf_bytes) < 1000:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error generando PDF: contenido vacío"
+            )
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+            tmp_file.write(pdf_bytes)
+            pdf_path = tmp_file.name
+
+        # Validar PDF generado
+        is_valid_pdf = False
+        if os.path.exists(pdf_path):
+            try:
+                with open(pdf_path, "rb") as f:
+                    header = f.read(4)
+                    is_valid_pdf = header == b"%PDF"
+            except Exception:
+                is_valid_pdf = False
+
+        if not is_valid_pdf:
+            if os.path.exists(pdf_path):
+                os.remove(pdf_path)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error generando PDF válido"
+            )
+
+        # Nombre de archivo para descarga
+        safe_course_name = "".join(c for c in course_name if c.isalnum() or c in "._-")[:20]
+        filename = f"lista_asistencia_{safe_course_name}_{session_date}.pdf"
+        
+        # Configurar respuesta
+        response_params = {
+            "path": pdf_path,
+            "media_type": "application/pdf",
+            "background": BackgroundTask(lambda: os.remove(pdf_path)),
+        }
+        
+        if download:
+            response_params["filename"] = filename
+            
+        response = FileResponse(**response_params)
+        
+        # Agregar headers adicionales para asegurar la descarga
+        if download:
+            response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+            response.headers["Content-Type"] = "application/pdf"
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+            
+        return response
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Formato de fecha inválido. Use YYYY-MM-DD"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al generar lista de asistencia: {str(e)}",
+        )
 
 
 @router.get("/{attendance_id}", response_model=AttendanceResponse)
@@ -1081,11 +1308,6 @@ async def generate_attendance_list_pdf(
 
     # Create PDF using HTML template
     try:
-        from app.services.html_to_pdf import HTMLToPDFConverter
-        import tempfile
-        from fastapi.responses import FileResponse
-        from starlette.background import BackgroundTask
-
         # Construir datos de sesión para la plantilla
         session_data = {
             "title": session.title,
@@ -1159,4 +1381,260 @@ async def generate_attendance_list_pdf(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al generar PDF de lista de asistencia: {str(e)}",
+        )
+
+
+@router.get("/{attendance_id}/certificate", response_class=FileResponse)
+async def generate_attendance_certificate(
+    attendance_id: int,
+    download: bool = Query(False, description="Si true, fuerza la descarga del archivo"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """
+    Generar certificado de asistencia individual en PDF horizontal
+    """
+    try:
+        # Obtener el registro de asistencia
+        attendance = db.query(Attendance).filter(Attendance.id == attendance_id).first()
+
+        if not attendance:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Registro de asistencia no encontrado"
+            )
+
+        # Verificar permisos: admin, trainer, supervisor o el propio usuario
+        user_role = getattr(current_user, 'role', None) or getattr(current_user, 'rol', None)
+        if (user_role not in ['admin', 'trainer', 'supervisor'] and 
+            current_user.id != attendance.user_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permisos para generar este certificado"
+            )
+
+        # Obtener información del usuario
+        user = db.query(User).filter(User.id == attendance.user_id).first()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Usuario no encontrado"
+            )
+
+        # Obtener información del curso por nombre si existe
+        course = None
+        course_title = attendance.course_name or "Curso"
+        if attendance.course_name:
+            course = db.query(Course).filter(Course.title == attendance.course_name).first()
+            if course:
+                course_title = course.title
+
+        # Preparar datos de asistencia
+        attendance_data = {
+            'course_name': course_title,
+            'session_date': attendance.session_date,  # Pasar objeto datetime
+            'instructor_name': course.instructor_name if course else 'No asignado',
+            'location': course.location if course else 'No especificado',
+            'duration_minutes': attendance.duration_minutes or 0,
+            'status': attendance.status.value if hasattr(attendance.status, 'value') else attendance.status,
+            'completion_percentage': attendance.completion_percentage or 100,
+            'notes': attendance.notes or ''
+        }
+
+        # Preparar datos del participante
+        participant_data = {
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'document': user.document_number or '',
+            'phone': user.phone or '',
+            'position': user.position or '',
+            'area': user.department or ''  # Usar department como área
+        }
+
+        # Generar PDF usando el servicio
+        pdf_service = HTMLToPDFConverter()
+        
+        # Guardar PDF en archivo temporal
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+            pdf_path = tmp_file.name
+            pdf_bytes = pdf_service.generate_attendance_certificate_pdf(
+                attendance_data, participant_data, output_path=pdf_path
+            )
+
+        # Validar PDF generado
+        is_valid_pdf = False
+        if os.path.exists(pdf_path):
+            try:
+                with open(pdf_path, "rb") as f:
+                    header = f.read(4)
+                    is_valid_pdf = header == b"%PDF"
+            except Exception:
+                is_valid_pdf = False
+
+        if not is_valid_pdf:
+            if os.path.exists(pdf_path):
+                os.remove(pdf_path)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error generando PDF válido"
+            )
+
+        # Nombre de archivo para descarga
+        safe_user_name = "".join(c for c in f"{user.first_name}_{user.last_name}" if c.isalnum() or c in "._-")
+        safe_course_name = "".join(c for c in course_title if c.isalnum() or c in "._-")[:20]
+        filename = f"certificado_asistencia_{safe_user_name}_{safe_course_name}.pdf"
+        
+        # Configurar respuesta
+        response_params = {
+            "path": pdf_path,
+            "media_type": "application/pdf",
+            "background": BackgroundTask(lambda: os.remove(pdf_path)),
+        }
+        
+        if download:
+            response_params["filename"] = filename
+            
+        response = FileResponse(**response_params)
+        
+        # Agregar headers adicionales para asegurar la descarga
+        if download:
+            response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+            response.headers["Content-Type"] = "application/pdf"
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+            
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al generar certificado de asistencia: {str(e)}",
+        )
+
+
+@router.get("/sessions/{session_id}/participants-list")
+async def generate_participants_list_pdf(
+    session_id: int,
+    download: bool = Query(
+        False, description="Set to true to download the file with a custom filename"
+    ),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Generate participants list PDF for a session with all enrolled users (admin and capacitador roles only)
+    """
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
+        )
+
+    # Check if session exists
+    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Session not found"
+        )
+
+    # Get course information
+    course = db.query(Course).filter(Course.id == session.course_id).first()
+    if not course:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Course not found"
+        )
+
+    # Get all enrolled users for this course (including those marked as absent)
+    enrolled_users = (
+        db.query(User)
+        .join(Enrollment)
+        .filter(Enrollment.course_id == course.id)
+        .order_by(User.first_name, User.last_name)
+        .all()
+    )
+
+    if not enrolled_users:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontraron usuarios inscritos para este curso",
+        )
+
+    # Create PDF using HTML template
+    try:
+        # Construir datos de sesión para la plantilla
+        session_data = {
+            "title": session.title,
+            "session_date": session.session_date.strftime("%d/%m/%Y"),
+            "course_title": course.title,
+            "instructor_name": getattr(
+                session,
+                "instructor_name",
+                f"{current_user.first_name} {current_user.last_name}",
+            ),
+            "location": session.location or "",
+            "duration": f"{getattr(session, 'duration_minutes', 0) or 0} min",
+            "attendance_percentage": 100,  # Puedes calcularlo si tienes datos
+        }
+
+        # Construir lista completa de participantes para la plantilla
+        attendees = []
+        for user in enrolled_users:
+            attendees.append(
+                {
+                    "name": f"{user.first_name} {user.last_name}",
+                    "document": getattr(user, "document_number", ""),
+                    "position": getattr(user, "position", ""),
+                    "area": getattr(user, "area", ""),
+                }
+            )
+
+        # Preparar datos para el servicio de PDF
+        template_data = {"session": session_data, "attendees": attendees}
+
+        pdf_service = HTMLToPDFConverter()
+        # Guardar PDF en archivo temporal
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+            pdf_path = tmp_file.name
+            pdf_bytes = pdf_service.generate_attendance_list_pdf(
+                template_data, output_path=pdf_path
+            )
+
+        # Validar PDF generado (debe existir y ser un PDF válido)
+        is_valid_pdf = False
+        if os.path.exists(pdf_path):
+            try:
+                with open(pdf_path, "rb") as f:
+                    header = f.read(4)
+                    is_valid_pdf = header == b"%PDF"
+            except Exception:
+                is_valid_pdf = False
+
+        if not is_valid_pdf:
+            if os.path.exists(pdf_path):
+                os.remove(pdf_path)
+            return Response(
+                content="Error generando PDF válido",
+                media_type="text/plain",
+                status_code=500,
+            )
+
+        # Nombre de archivo para descarga
+        filename = f"lista_participantes_{session_id}.pdf"
+        # Si se solicita descarga, agregar header
+        response_params = {
+            "path": pdf_path,
+            "media_type": "application/pdf",
+            "background": BackgroundTask(lambda: os.remove(pdf_path)),
+        }
+        if download:
+            response_params["filename"] = filename
+        return FileResponse(**response_params)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al generar PDF de lista de participantes: {str(e)}",
         )

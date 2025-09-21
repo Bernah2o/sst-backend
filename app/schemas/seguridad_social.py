@@ -1,4 +1,4 @@
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator, ValidationInfo
 from typing import Optional
 from datetime import datetime
 from app.models.seguridad_social import TipoSeguridadSocial
@@ -9,7 +9,8 @@ class SeguridadSocialBase(BaseModel):
     nombre: str
     is_active: bool = True
     
-    @validator('nombre')
+    @field_validator('nombre')
+    @classmethod
     def validate_nombre(cls, v):
         if not v or not v.strip():
             raise ValueError('El nombre no puede estar vacío')
@@ -26,7 +27,8 @@ class SeguridadSocialUpdate(BaseModel):
     nombre: Optional[str] = None
     is_active: Optional[bool] = None
     
-    @validator('nombre')
+    @field_validator('nombre')
+    @classmethod
     def validate_nombre(cls, v):
         if v is not None:
             if not v or not v.strip():

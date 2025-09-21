@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Certificado de Asistencia</title>
+    <link rel="stylesheet" href="css/attendance_certificate.css">
+    <style>
+        @page {
+            size: A4 landscape;
+            margin: 1cm;
+        }
+    </style>
+</head>
+<body>
+    <div class="certificate-container">
+        <!-- Header con logo y título -->
+        <div class="header">
+            <div class="logo-section">
+                {% if logo_base64 %}
+                <img src="data:image/png;base64,{{ logo_base64 }}" alt="Logo" class="logo">
+                {% endif %}
+            </div>
+            <div class="title-section">
+                <h1>CERTIFICADO DE ASISTENCIA</h1>
+                <h2>SISTEMA DE SEGURIDAD Y SALUD EN EL TRABAJO</h2>
+            </div>
+            <div class="icon-section">
+                <svg class="certificate-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L13.09 8.26L20 9L13.09 9.74L12 16L10.91 9.74L4 9L10.91 8.26L12 2Z" fill="#FFD700"/>
+                    <path d="M12 6L12.5 10.5L17 11L12.5 11.5L12 16L11.5 11.5L7 11L11.5 10.5L12 6Z" fill="#FFA500"/>
+                </svg>
+            </div>
+        </div>
+
+        <!-- Información del curso -->
+        <div class="course-info">
+            <div class="course-details">
+                <h3>INFORMACIÓN DEL CURSO</h3>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="label">Nombre del Curso:</span>
+                        <span class="value">{{ attendance.course_name }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Fecha:</span>
+                        <span class="value">{{ attendance.session_date_formatted }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Hora:</span>
+                        <span class="value">{{ attendance.session_time }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Duración:</span>
+                        <span class="value">{{ attendance.duration_formatted }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Información del participante -->
+        <div class="participant-info">
+            <h3>INFORMACIÓN DEL PARTICIPANTE</h3>
+            <div class="participant-grid">
+                <div class="participant-item">
+                    <span class="label">Nombre:</span>
+                    <span class="value">{{ participant.first_name }}</span>
+                </div>
+                <div class="participant-item">
+                    <span class="label">Apellido:</span>
+                    <span class="value">{{ participant.last_name }}</span>
+                </div>
+                <div class="participant-item">
+                    <span class="label">Documento:</span>
+                    <span class="value">{{ participant.document }}</span>
+                </div>
+                <div class="participant-item">
+                    <span class="label">Teléfono:</span>
+                    <span class="value">{{ participant.phone }}</span>
+                </div>
+                <div class="participant-item">
+                    <span class="label">Cargo:</span>
+                    <span class="value">{{ participant.position }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sección de asistencia -->
+        <div class="attendance-section">
+            <div class="attendance-status">
+                <h3>ESTADO DE ASISTENCIA</h3>
+                <div class="status-badge status-{{ attendance.status.lower() }}">
+                    {{ attendance.status_display }}
+                </div>
+                <div class="completion-info">
+                    <span class="label">Porcentaje de Completitud:</span>
+                    <span class="value">{{ attendance.completion_percentage }}%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sección de firma -->
+        <div class="signature-section">
+            <div class="signature-box">
+                <div class="signature-line"></div>
+                <div class="signature-label">
+                    <strong>FIRMA DEL PARTICIPANTE</strong>
+                    <br>
+                    <small>{{ participant.first_name }} {{ participant.last_name }}</small>
+                </div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line"></div>
+                <div class="signature-label">
+                    <strong>FIRMA DEL INSTRUCTOR</strong>
+                    <br>
+                    <small>{{ attendance.instructor_name | default("Instructor SST") }}</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <div class="footer-info">
+                <p><strong>Fecha de Generación:</strong> {{ generation_date }} - {{ generation_time }}</p>
+                <p><strong>Sistema SST</strong> - Gestión de Capacitaciones y Asistencia</p>
+            </div>
+            {% if attendance.notes %}
+            <div class="notes-section">
+                <p><strong>Observaciones:</strong> {{ attendance.notes }}</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Decorative elements -->
+        <div class="decorative-border"></div>
+    </div>
+</body>
+</html>
