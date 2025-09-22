@@ -53,9 +53,10 @@ def get_reinduction_records(
 ):
     """Obtiene la lista de registros de reinducción con filtros"""
     from app.models.worker import Worker
+    from app.models.course import Course
     from sqlalchemy import or_, func
     
-    query = db.query(ReinductionRecord).join(Worker)
+    query = db.query(ReinductionRecord).join(Worker).outerjoin(Course, ReinductionRecord.assigned_course_id == Course.id)
     
     if worker_id:
         query = query.filter(ReinductionRecord.worker_id == worker_id)

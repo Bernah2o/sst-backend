@@ -167,6 +167,8 @@ class Worker(Base):
     seguimientos = relationship("Seguimiento", back_populates="worker", cascade="all, delete-orphan")
     absenteeism_records = relationship("Absenteeism", back_populates="worker", cascade="all, delete-orphan")
     documents = relationship("WorkerDocument", back_populates="worker", cascade="all, delete-orphan")
+    vacations = relationship("WorkerVacation", back_populates="worker", cascade="all, delete-orphan")
+    vacation_balance = relationship("VacationBalance", back_populates="worker", uselist=False, cascade="all, delete-orphan")
     user = relationship("User", foreign_keys=[user_id])
     
     @hybrid_property
