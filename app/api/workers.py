@@ -875,6 +875,16 @@ async def delete_occupational_exam(
             detail="Examen ocupacional no encontrado"
         )
     
+    # Eliminar archivo PDF de Firebase Storage si existe
+    if exam.pdf_file_path:
+        try:
+            firebase_storage_service = FirebaseStorageService()
+            firebase_storage_service.delete_file(exam.pdf_file_path)
+            logger.info(f"PDF eliminado de Firebase Storage: {exam.pdf_file_path}")
+        except Exception as e:
+            logger.warning(f"Error al eliminar PDF de Firebase Storage: {str(e)}")
+            # No fallar la eliminación del examen si no se puede eliminar el PDF
+    
     db.delete(exam)
     db.commit()
     
