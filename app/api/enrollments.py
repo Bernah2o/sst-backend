@@ -281,6 +281,15 @@ async def mark_course_completed(
     db.commit()
     db.refresh(enrollment)
 
+    # Check and update reinduction records if applicable
+    try:
+        from app.services.reinduction_service import ReinductionService
+        reinduction_service = ReinductionService(db)
+        reinduction_service.check_completed_reinducciones()
+    except Exception as e:
+        # Log the error but don't fail the enrollment completion
+        print(f"Error checking completed reinducciones: {str(e)}")
+
     return {
         "message": "Curso marcado como completado exitosamente",
         "enrollment_id": enrollment.id,
@@ -1419,6 +1428,16 @@ async def update_enrollment(
 
     db.commit()
     db.refresh(enrollment)
+
+    # Check if enrollment was completed and update reinduction records if applicable
+    if enrollment_data.status == EnrollmentStatus.COMPLETED:
+        try:
+            from app.services.reinduction_service import ReinductionService
+            reinduction_service = ReinductionService(db)
+            reinduction_service.check_completed_reinducciones()
+        except Exception as e:
+            # Log the error but don't fail the enrollment update
+            print(f"Error checking completed reinducciones: {str(e)}")
 
     # Get user and course details for response
     user = db.query(User).filter(User.id == enrollment.user_id).first()

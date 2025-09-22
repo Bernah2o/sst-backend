@@ -4,6 +4,7 @@ from .permission import Permission
 from .worker import Worker, WorkerContract, Gender, DocumentType, ContractType, RiskLevel, BloodType, EPS, AFP, ARL
 from .worker_document import WorkerDocument
 from .worker_novedad import WorkerNovedad, NovedadType, NovedadStatus
+from .worker_vacation import VacationBalance
 from .cargo import Cargo
 from .seguridad_social import SeguridadSocial
 from .absenteeism import Absenteeism, EventMonth, EventType
@@ -84,4 +85,5 @@ __all__ = [
     "WorkerNovedad",
     "NovedadType",
     "NovedadStatus",
+    "VacationBalance",
 ]

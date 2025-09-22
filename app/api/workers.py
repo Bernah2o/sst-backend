@@ -1,4 +1,4 @@
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session
@@ -6,13 +6,13 @@ from sqlalchemy import or_
 from io import BytesIO
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
-from datetime import datetime
+from datetime import datetime, date
 import os
 import uuid
 
 from app.database import get_db
 from app.dependencies import get_current_user, get_current_active_user, require_admin, require_supervisor_or_admin
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.worker import Worker, WorkerContract
 from app.models.worker_document import WorkerDocument, DocumentCategory
 from app.models.worker_novedad import WorkerNovedad, NovedadType, NovedadStatus
@@ -39,6 +39,16 @@ from app.schemas.worker_novedad import (
     WorkerNovedadList,
     WorkerNovedadApproval,
     WorkerNovedadStats
+)
+from app.schemas.worker_vacation import (
+    WorkerVacation,
+    WorkerVacationCreate,
+    WorkerVacationUpdate,
+    VacationBalance,
+    VacationAvailability,
+    VacationStats,
+    VacationStatus,
+    VacationRequestWithWorker
 )
 from app.schemas.occupational_exam import (
     OccupationalExamCreate,
@@ -159,6 +169,25 @@ async def get_workers_basic(
     
     workers = query.offset(skip).limit(limit).all()
     return workers
+
+
+# ==================== ENDPOINT PARA USUARIO AUTENTICADO ====================
+
+@router.get("/me", response_model=WorkerSchema)
+async def get_current_worker(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+) -> Any:
+    """Obtener información del worker del usuario autenticado"""
+    worker = db.query(Worker).filter(Worker.user_id == current_user.id).first()
+    
+    if not worker:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontró información de trabajador para este usuario"
+        )
+    
+    return worker
 
 
 @router.get("/{worker_id}", response_model=WorkerSchema)
@@ -1822,6 +1851,188 @@ async def get_worker_novedades_stats(
     )
 
 
+@router.get("/{worker_id}/novedades/export")
+async def export_worker_novedades_to_excel(
+    worker_id: int,
+    tipo: NovedadType = Query(None, description="Filtrar por tipo de novedad"),
+    status: NovedadStatus = Query(None, description="Filtrar por estado"),
+    start_date: Optional[str] = Query(None, description="Fecha de inicio (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="Fecha de fin (YYYY-MM-DD)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> Any:
+    """
+    Exportar las novedades de un trabajador a Excel con filtros de fecha
+    """
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Construir query para obtener todas las novedades (sin paginación para exportar)
+    query = db.query(WorkerNovedad).filter(
+        WorkerNovedad.worker_id == worker_id,
+        WorkerNovedad.is_active == True
+    )
+    
+    # Aplicar filtros
+    if tipo:
+        query = query.filter(WorkerNovedad.tipo == tipo)
+    if status:
+        query = query.filter(WorkerNovedad.status == status)
+    
+    # Aplicar filtros de fecha - incluir novedades que se solapen con el período seleccionado
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+            # Incluir novedades que terminen después o en la fecha de inicio
+            query = query.filter(
+                or_(
+                    WorkerNovedad.fecha_fin >= start_dt,
+                    WorkerNovedad.fecha_fin.is_(None)  # Incluir novedades sin fecha fin
+                )
+            )
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Formato de fecha de inicio inválido. Use YYYY-MM-DD")
+    
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+            # Incluir novedades que inicien antes o en la fecha de fin
+            query = query.filter(
+                or_(
+                    WorkerNovedad.fecha_inicio <= end_dt,
+                    WorkerNovedad.fecha_inicio.is_(None)  # Incluir novedades sin fecha inicio
+                )
+            )
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Formato de fecha de fin inválido. Use YYYY-MM-DD")
+    
+    # Ordenar por fecha de creación descendente
+    query = query.order_by(WorkerNovedad.created_at.desc())
+    
+    # Obtener todas las novedades
+    novedades = query.all()
+    
+    # Crear el archivo Excel
+    workbook = openpyxl.Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Novedades"
+    
+    # Configurar estilos
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center")
+    
+    # Definir encabezados
+    headers = [
+        "ID", "Tipo", "Título", "Descripción", "Estado", 
+        "Fecha Inicio", "Fecha Fin", "Días Calculados",
+        "Salario Anterior", "Salario Nuevo", "Monto Aumento",
+        "Cantidad Horas", "Valor Hora", "Valor Total",
+        "Observaciones", "Registrado Por", "Aprobado Por",
+        "Fecha Aprobación", "Fecha Registro", "Última Actualización"
+    ]
+    
+    # Escribir encabezados
+    for col, header in enumerate(headers, 1):
+        cell = worksheet.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+    
+    # Mapeo de tipos de novedad para mostrar nombres legibles
+    NOVEDAD_TYPES_MAP = {
+        "permiso_dia_familia": "Permiso Día de la Familia",
+        "licencia_paternidad": "Licencia de Paternidad", 
+        "incapacidad_medica": "Incapacidad Médica",
+        "permiso_dia_no_remunerado": "Permiso Día No Remunerado",
+        "aumento_salario": "Aumento de Salario",
+        "licencia_maternidad": "Licencia de Maternidad",
+        "horas_extras": "Horas Extras",
+        "recargos": "Recargos"
+    }
+    
+    # Mapeo de estados
+    STATUS_MAP = {
+        "pendiente": "Pendiente",
+        "aprobada": "Aprobada",
+        "rechazada": "Rechazada", 
+        "procesada": "Procesada"
+    }
+    
+    # Escribir datos
+    for row, novedad in enumerate(novedades, 2):
+        # Obtener información del usuario que registró
+        registrado_por_user = db.query(User).filter(User.id == novedad.registrado_por).first()
+        registrado_por_name = "Usuario desconocido"
+        if registrado_por_user:
+            registrado_por_name = getattr(registrado_por_user, 'full_name', f"{registrado_por_user.first_name} {registrado_por_user.last_name}")
+        
+        # Obtener información del aprobador si existe
+        aprobado_por_name = ""
+        if novedad.aprobado_por:
+            aprobado_por_user = db.query(User).filter(User.id == novedad.aprobado_por).first()
+            if aprobado_por_user:
+                aprobado_por_name = getattr(aprobado_por_user, 'full_name', f"{aprobado_por_user.first_name} {aprobado_por_user.last_name}")
+        
+        # Escribir datos de la fila
+        data = [
+            novedad.id,
+            NOVEDAD_TYPES_MAP.get(novedad.tipo.value if hasattr(novedad.tipo, 'value') else novedad.tipo, novedad.tipo),
+            novedad.titulo,
+            novedad.descripcion or "",
+            STATUS_MAP.get(novedad.status.value if hasattr(novedad.status, 'value') else novedad.status, novedad.status),
+            novedad.fecha_inicio.strftime("%Y-%m-%d") if novedad.fecha_inicio else "",
+            novedad.fecha_fin.strftime("%Y-%m-%d") if novedad.fecha_fin else "",
+            novedad.dias_calculados or "",
+            novedad.salario_anterior or "",
+            novedad.salario_nuevo or "",
+            novedad.monto_aumento or "",
+            novedad.cantidad_horas or "",
+            novedad.valor_hora or "",
+            novedad.valor_total or "",
+            novedad.observaciones or "",
+            registrado_por_name,
+            aprobado_por_name,
+            novedad.fecha_aprobacion.strftime("%Y-%m-%d %H:%M") if novedad.fecha_aprobacion else "",
+            novedad.created_at.strftime("%Y-%m-%d %H:%M") if novedad.created_at else "",
+            novedad.updated_at.strftime("%Y-%m-%d %H:%M") if novedad.updated_at else ""
+        ]
+        
+        for col, value in enumerate(data, 1):
+            worksheet.cell(row=row, column=col, value=value)
+    
+    # Ajustar ancho de columnas
+    for column in worksheet.columns:
+        max_length = 0
+        column_letter = column[0].column_letter
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = min(max_length + 2, 50)  # Máximo 50 caracteres
+        worksheet.column_dimensions[column_letter].width = adjusted_width
+    
+    # Crear el archivo en memoria
+    excel_buffer = BytesIO()
+    workbook.save(excel_buffer)
+    excel_buffer.seek(0)
+    
+    # Generar nombre del archivo
+    worker_name = f"{worker.first_name}_{worker.last_name}".replace(" ", "_")
+    filename = f"novedades_{worker_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    
+    # Retornar el archivo como respuesta de streaming
+    return StreamingResponse(
+        BytesIO(excel_buffer.getvalue()),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
 @router.get("/novedades/stats/summary", response_model=WorkerNovedadStats)
 async def get_novedades_stats(
     db: Session = Depends(get_db),
@@ -1864,4 +2075,739 @@ async def get_novedades_stats(
         rechazadas=rechazadas,
         procesadas=procesadas,
         por_tipo=por_tipo
+    )
+
+
+
+
+# ==================== ENDPOINTS DE VACACIONES ====================
+
+@router.get("/vacations/all", response_model=List[VacationRequestWithWorker])
+async def get_all_vacation_requests(
+    status: Optional[VacationStatus] = None,
+    year: Optional[int] = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> Any:
+    """Obtener todas las solicitudes de vacaciones (solo para administradores y supervisores)"""
+    from app.models.worker_vacation import WorkerVacation, VacationStatus
+    from sqlalchemy import and_
+    
+    # Construir query base
+    query = db.query(WorkerVacation).filter(WorkerVacation.is_active == True)
+    
+    # Filtrar por estado si se especifica
+    if status:
+        query = query.filter(WorkerVacation.status == status)
+    
+    # Filtrar por año si se especifica
+    if year:
+        query = query.filter(
+            and_(
+                WorkerVacation.start_date >= date(year, 1, 1),
+                WorkerVacation.start_date <= date(year, 12, 31)
+            )
+        )
+    
+    # Obtener las solicitudes con información del trabajador
+    vacations = query.order_by(WorkerVacation.created_at.desc()).offset(skip).limit(limit).all()
+    
+    # Enriquecer con información del trabajador
+    result = []
+    for vacation in vacations:
+        worker = db.query(Worker).filter(Worker.id == vacation.worker_id).first()
+        vacation_data = VacationRequestWithWorker(
+            id=vacation.id,
+            worker_id=vacation.worker_id,
+            worker_name=f"{worker.first_name} {worker.last_name}" if worker else "Trabajador no encontrado",
+            start_date=vacation.start_date,
+            end_date=vacation.end_date,
+            days_requested=vacation.days,
+            reason=vacation.reason,
+            status=vacation.status,
+            admin_comments=vacation.rejection_reason,
+            created_at=vacation.created_at,
+            updated_at=vacation.updated_at,
+            approved_by=vacation.approved_by,
+            approved_at=vacation.approved_date,
+            is_active=vacation.is_active
+        )
+        result.append(vacation_data)
+    
+    return result
+
+@router.get("/vacations/availability", response_model=VacationAvailability)
+async def check_vacation_availability(
+    start_date: date,
+    end_date: date,
+    worker_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """Verificar disponibilidad de fechas para vacaciones"""
+    from app.models.worker_vacation import WorkerVacation, VacationStatus
+    from app.schemas.worker_vacation import VacationAvailability, VacationConflict
+    from app.models.vacation_balance import VacationBalance
+    
+    # Calcular días solicitados (solo días laborales)
+    requested_days = 0
+    current_date = start_date
+    while current_date <= end_date:
+        if current_date.weekday() < 5:  # Lunes a Viernes
+            requested_days += 1
+        current_date = current_date.replace(day=current_date.day + 1)
+    
+    # Buscar conflictos con otras vacaciones aprobadas
+    conflicts = db.query(WorkerVacation).filter(
+        WorkerVacation.status == VacationStatus.APPROVED,
+        WorkerVacation.start_date <= end_date,
+        WorkerVacation.end_date >= start_date
+    ).all()
+    
+    conflict_list = []
+    for conflict in conflicts:
+        worker = db.query(Worker).filter(Worker.id == conflict.worker_id).first()
+        if worker:
+            # Calcular días de solapamiento
+            overlap_start = max(start_date, conflict.start_date)
+            overlap_end = min(end_date, conflict.end_date)
+            
+            overlapping_days = 0
+            current_date = overlap_start
+            while current_date <= overlap_end:
+                if current_date.weekday() < 5:  # Solo días laborales
+                    overlapping_days += 1
+                current_date = current_date.replace(day=current_date.day + 1)
+            
+            conflict_list.append(VacationConflict(
+                worker_name=f"{worker.first_name} {worker.last_name}",
+                start_date=conflict.start_date,
+                end_date=conflict.end_date,
+                overlapping_days=overlapping_days
+            ))
+    
+    # Verificar días disponibles si se especifica worker_id
+    available_days = None
+    if worker_id:
+        vacation_balance = db.query(VacationBalance).filter(
+            VacationBalance.worker_id == worker_id,
+            VacationBalance.year == start_date.year
+        ).first()
+        
+        if vacation_balance:
+            available_days = vacation_balance.available_days
+        else:
+            available_days = 15  # Días por defecto
+    
+    # Determinar disponibilidad
+    is_available = len(conflict_list) == 0 and (not worker_id or available_days >= requested_days)
+    
+    return VacationAvailability(
+        start_date=start_date,
+        end_date=end_date,
+        is_available=is_available,
+        conflicts=conflict_list,
+        requested_days=requested_days,
+        available_days=available_days
+    )
+
+
+@router.get("/vacations/stats", response_model=VacationStats)
+async def get_vacation_stats(
+    year: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> Any:
+    """Obtener estadísticas de vacaciones"""
+    from app.models.worker_vacation import WorkerVacation, VacationStatus
+    from app.schemas.worker_vacation import VacationStats
+    
+    if year is None:
+        year = datetime.now().year
+    
+    # Obtener todas las solicitudes del año
+    all_requests = db.query(WorkerVacation).filter(
+        WorkerVacation.start_date >= datetime(year, 1, 1).date(),
+        WorkerVacation.start_date <= datetime(year, 12, 31).date()
+    ).all()
+    
+    total_requests = len(all_requests)
+    pending_requests = len([r for r in all_requests if r.status == VacationStatus.PENDING])
+    approved_requests = len([r for r in all_requests if r.status == VacationStatus.APPROVED])
+    rejected_requests = len([r for r in all_requests if r.status == VacationStatus.REJECTED])
+    
+    total_days_requested = sum(r.days for r in all_requests)
+    total_days_approved = sum(r.days for r in all_requests if r.status == VacationStatus.APPROVED)
+    
+    # Trabajadores con solicitudes pendientes
+    workers_with_pending = len(set(r.worker_id for r in all_requests if r.status == VacationStatus.PENDING))
+    
+    return VacationStats(
+        total_requests=total_requests,
+        pending_requests=pending_requests,
+        approved_requests=approved_requests,
+        rejected_requests=rejected_requests,
+        total_days_requested=total_days_requested,
+        total_days_approved=total_days_approved,
+        workers_with_pending=workers_with_pending
+    )
+
+
+@router.get("/{worker_id}/vacations/availability", response_model=VacationAvailability)
+async def check_worker_vacation_availability(
+    worker_id: int,
+    start_date: date,
+    end_date: date,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """Verificar disponibilidad de fechas para vacaciones de un trabajador específico"""
+    from app.models.worker_vacation import WorkerVacation, VacationStatus, VacationBalance
+    from app.schemas.worker_vacation import VacationAvailability, VacationConflict
+    
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Calcular días solicitados (solo días laborales)
+    requested_days = 0
+    current_date = start_date
+    while current_date <= end_date:
+        if current_date.weekday() < 5:  # Lunes a Viernes
+            requested_days += 1
+        current_date = current_date.replace(day=current_date.day + 1)
+    
+    # Buscar conflictos con otras vacaciones aprobadas (excluyendo al trabajador actual)
+    conflicts = db.query(WorkerVacation).filter(
+        WorkerVacation.worker_id != worker_id,
+        WorkerVacation.status == VacationStatus.APPROVED,
+        WorkerVacation.is_active == True,
+        WorkerVacation.start_date <= end_date,
+        WorkerVacation.end_date >= start_date
+    ).all()
+    
+    conflict_list = []
+    for conflict in conflicts:
+        conflict_worker = db.query(Worker).filter(Worker.id == conflict.worker_id).first()
+        if conflict_worker:
+            conflict_list.append(VacationConflict(
+                id=conflict.id,
+                worker_name=f"{conflict_worker.first_name} {conflict_worker.last_name}",
+                start_date=conflict.start_date,
+                end_date=conflict.end_date
+            ))
+    
+    # Verificar días disponibles del trabajador
+    vacation_balance = db.query(VacationBalance).filter(
+        VacationBalance.worker_id == worker_id,
+        VacationBalance.year == start_date.year
+    ).first()
+    
+    if not vacation_balance:
+        # Crear balance por defecto si no existe
+        vacation_balance = VacationBalance(
+            worker_id=worker_id,
+            year=start_date.year,
+            total_days=15,
+            used_days=0,
+            pending_days=0
+        )
+        db.add(vacation_balance)
+        db.commit()
+        db.refresh(vacation_balance)
+    
+    available_days = vacation_balance.available_days
+    
+    # Determinar disponibilidad
+    is_available = len(conflict_list) == 0 and available_days >= requested_days
+    
+    return VacationAvailability(
+        start_date=start_date,
+        end_date=end_date,
+        is_available=is_available,
+        conflicts=conflict_list,
+        requested_days=requested_days,
+        available_days=available_days
+    )
+
+
+@router.get("/{worker_id}/vacations", response_model=List[WorkerVacation])
+async def get_worker_vacations(
+    worker_id: int,
+    status: Optional[VacationStatus] = None,
+    year: Optional[int] = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """Obtener vacaciones de un trabajador"""
+    from app.models.worker_vacation import WorkerVacation, VacationStatus
+    from app.schemas.worker_vacation import WorkerVacation as WorkerVacationSchema
+    
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id, Worker.is_active == True).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Verificar permisos: admin, supervisor o el mismo trabajador
+    if not (current_user.role in [UserRole.ADMIN, UserRole.SUPERVISOR] or 
+            (hasattr(worker, 'user_id') and worker.user_id == current_user.id)):
+        raise HTTPException(status_code=403, detail="No tiene permisos para ver estas vacaciones")
+    
+    # Construir query
+    query = db.query(WorkerVacation).filter(
+        WorkerVacation.worker_id == worker_id,
+        WorkerVacation.is_active == True
+    )
+    
+    if status:
+        query = query.filter(WorkerVacation.status == status)
+    
+    if year:
+        from sqlalchemy import extract
+        query = query.filter(extract('year', WorkerVacation.start_date) == year)
+    
+    vacations = query.order_by(WorkerVacation.start_date.desc()).offset(skip).limit(limit).all()
+    
+    # Enriquecer con información adicional
+    result = []
+    for vacation in vacations:
+        vacation_dict = vacation.__dict__.copy()
+        vacation_dict['worker_name'] = f"{worker.first_name} {worker.last_name}"
+        
+        # Información del solicitante
+        if vacation.requested_by:
+            requested_user = db.query(User).filter(User.id == vacation.requested_by).first()
+            if requested_user:
+                vacation_dict['requested_by_name'] = getattr(requested_user, 'full_name', 
+                                                           f"{requested_user.first_name} {requested_user.last_name}")
+        
+        # Información del aprobador
+        if vacation.approved_by:
+            approved_user = db.query(User).filter(User.id == vacation.approved_by).first()
+            if approved_user:
+                vacation_dict['approved_by_name'] = getattr(approved_user, 'full_name', 
+                                                          f"{approved_user.first_name} {approved_user.last_name}")
+        
+        result.append(WorkerVacationSchema(**vacation_dict))
+    
+    return result
+
+
+@router.post("/{worker_id}/vacations", response_model=WorkerVacation)
+async def create_vacation_request(
+    worker_id: int,
+    vacation_data: WorkerVacationCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """Crear solicitud de vacaciones"""
+    from app.models.worker_vacation import WorkerVacation, VacationStatus, VacationBalance
+    from app.schemas.worker_vacation import WorkerVacation as WorkerVacationSchema
+    from datetime import timedelta
+    
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id, Worker.is_active == True).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Verificar permisos: admin, supervisor o el mismo trabajador
+    if not (current_user.role in [UserRole.ADMIN, UserRole.SUPERVISOR] or 
+            (hasattr(worker, 'user_id') and worker.user_id == current_user.id)):
+        raise HTTPException(status_code=403, detail="No tiene permisos para crear solicitudes de vacaciones")
+    
+    # Calcular días laborales (excluyendo fines de semana)
+    start_date = vacation_data.start_date
+    end_date = vacation_data.end_date
+    days = 0
+    current_date = start_date
+    
+    while current_date <= end_date:
+        if current_date.weekday() < 5:  # Lunes a Viernes (0-4)
+            days += 1
+        current_date += timedelta(days=1)
+    
+    if days <= 0:
+        raise HTTPException(status_code=400, detail="La solicitud debe incluir al menos un día laboral")
+    
+    # Verificar balance de vacaciones
+    current_year = start_date.year
+    vacation_balance = db.query(VacationBalance).filter(
+        VacationBalance.worker_id == worker_id,
+        VacationBalance.year == current_year
+    ).first()
+    
+    if not vacation_balance:
+        # Crear balance inicial si no existe
+        vacation_balance = VacationBalance(
+            worker_id=worker_id,
+            year=current_year,
+            total_days=15,
+            used_days=0,
+            pending_days=0
+        )
+        db.add(vacation_balance)
+        db.flush()
+    
+    # Verificar días disponibles
+    if vacation_balance.available_days < days:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"No tiene suficientes días disponibles. Disponibles: {vacation_balance.available_days}, Solicitados: {days}"
+        )
+    
+    # Verificar conflictos con otras solicitudes aprobadas
+    conflicts = db.query(WorkerVacation).filter(
+        WorkerVacation.worker_id != worker_id,
+        WorkerVacation.status == VacationStatus.APPROVED,
+        WorkerVacation.is_active == True,
+        WorkerVacation.start_date <= end_date,
+        WorkerVacation.end_date >= start_date
+    ).all()
+    
+    # Crear la solicitud
+    vacation = WorkerVacation(
+        worker_id=worker_id,
+        start_date=start_date,
+        end_date=end_date,
+        days=days,
+        reason=vacation_data.reason,
+        status=VacationStatus.PENDING,
+        requested_by=current_user.id
+    )
+    
+    db.add(vacation)
+    
+    # Actualizar días pendientes en el balance
+    vacation_balance.pending_days += days
+    
+    db.commit()
+    db.refresh(vacation)
+    
+    # Preparar respuesta con información adicional
+    vacation_dict = vacation.__dict__.copy()
+    vacation_dict['worker_name'] = f"{worker.first_name} {worker.last_name}"
+    vacation_dict['requested_by_name'] = getattr(current_user, 'full_name', 
+                                                f"{current_user.first_name} {current_user.last_name}")
+    
+    return WorkerVacationSchema(**vacation_dict)
+
+
+@router.put("/vacations/{vacation_id}/approve", response_model=WorkerVacation)
+async def approve_vacation(
+    vacation_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> Any:
+    """Aprobar solicitud de vacaciones"""
+    from app.models.worker_vacation import WorkerVacation, VacationStatus, VacationBalance
+    from app.schemas.worker_vacation import WorkerVacation as WorkerVacationSchema
+    from datetime import datetime
+    
+    # Buscar la solicitud
+    vacation = db.query(WorkerVacation).filter(
+        WorkerVacation.id == vacation_id,
+        WorkerVacation.is_active == True
+    ).first()
+    
+    if not vacation:
+        raise HTTPException(status_code=404, detail="Solicitud de vacaciones no encontrada")
+    
+    if vacation.status != VacationStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Solo se pueden aprobar solicitudes pendientes")
+    
+    # Obtener información del trabajador
+    worker = db.query(Worker).filter(Worker.id == vacation.worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Actualizar la solicitud
+    vacation.status = VacationStatus.APPROVED
+    vacation.approved_by = current_user.id
+    vacation.approved_date = datetime.utcnow()
+    
+    # Actualizar balance de vacaciones
+    vacation_balance = db.query(VacationBalance).filter(
+        VacationBalance.worker_id == vacation.worker_id,
+        VacationBalance.year == vacation.start_date.year
+    ).first()
+    
+    if vacation_balance:
+        vacation_balance.pending_days -= vacation.days
+        vacation_balance.used_days += vacation.days
+    
+    db.commit()
+    db.refresh(vacation)
+    
+    # Preparar respuesta
+    vacation_dict = vacation.__dict__.copy()
+    vacation_dict['worker_name'] = f"{worker.first_name} {worker.last_name}"
+    vacation_dict['approved_by_name'] = getattr(current_user, 'full_name', 
+                                              f"{current_user.first_name} {current_user.last_name}")
+    
+    # Información del solicitante
+    if vacation.requested_by:
+        requested_user = db.query(User).filter(User.id == vacation.requested_by).first()
+        if requested_user:
+            vacation_dict['requested_by_name'] = getattr(requested_user, 'full_name', 
+                                                       f"{requested_user.first_name} {requested_user.last_name}")
+    
+    return WorkerVacationSchema(**vacation_dict)
+
+
+@router.put("/vacations/{vacation_id}/reject", response_model=WorkerVacation)
+async def reject_vacation(
+    vacation_id: int,
+    rejection_data: WorkerVacationUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> Any:
+    """Rechazar solicitud de vacaciones"""
+    from app.models.worker_vacation import WorkerVacation, VacationStatus, VacationBalance
+    from app.schemas.worker_vacation import WorkerVacation as WorkerVacationSchema
+    from datetime import datetime
+    
+    # Buscar la solicitud
+    vacation = db.query(WorkerVacation).filter(
+        WorkerVacation.id == vacation_id,
+        WorkerVacation.is_active == True
+    ).first()
+    
+    if not vacation:
+        raise HTTPException(status_code=404, detail="Solicitud de vacaciones no encontrada")
+    
+    if vacation.status != VacationStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Solo se pueden rechazar solicitudes pendientes")
+    
+    if not rejection_data.rejection_reason:
+        raise HTTPException(status_code=400, detail="La razón de rechazo es requerida")
+    
+    # Obtener información del trabajador
+    worker = db.query(Worker).filter(Worker.id == vacation.worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Actualizar la solicitud
+    vacation.status = VacationStatus.REJECTED
+    vacation.approved_by = current_user.id
+    vacation.approved_date = datetime.utcnow()
+    vacation.rejection_reason = rejection_data.rejection_reason
+    
+    # Liberar días pendientes en el balance
+    vacation_balance = db.query(VacationBalance).filter(
+        VacationBalance.worker_id == vacation.worker_id,
+        VacationBalance.year == vacation.start_date.year
+    ).first()
+    
+    if vacation_balance:
+        vacation_balance.pending_days -= vacation.days
+    
+    db.commit()
+    db.refresh(vacation)
+    
+    # Preparar respuesta
+    vacation_dict = vacation.__dict__.copy()
+    vacation_dict['worker_name'] = f"{worker.first_name} {worker.last_name}"
+    vacation_dict['approved_by_name'] = getattr(current_user, 'full_name', 
+                                              f"{current_user.first_name} {current_user.last_name}")
+    
+    # Información del solicitante
+    if vacation.requested_by:
+        requested_user = db.query(User).filter(User.id == vacation.requested_by).first()
+        if requested_user:
+            vacation_dict['requested_by_name'] = getattr(requested_user, 'full_name', 
+                                                       f"{requested_user.first_name} {requested_user.last_name}")
+    
+    return WorkerVacationSchema(**vacation_dict)
+
+
+@router.get("/{worker_id}/vacation-balance", response_model=VacationBalance)
+async def get_vacation_balance(
+    worker_id: int,
+    year: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    """Obtener balance de vacaciones de un trabajador"""
+    from app.models.worker_vacation import VacationBalance
+    from app.schemas.worker_vacation import VacationBalance as VacationBalanceSchema
+    from datetime import datetime
+    
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id, Worker.is_active == True).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Verificar permisos
+    if not (current_user.role in [UserRole.ADMIN, UserRole.SUPERVISOR] or 
+            (hasattr(worker, 'user_id') and worker.user_id == current_user.id)):
+        raise HTTPException(status_code=403, detail="No tiene permisos para ver este balance")
+    
+    if not year:
+        year = datetime.now().year
+    
+    # Buscar o crear balance
+    vacation_balance = db.query(VacationBalance).filter(
+        VacationBalance.worker_id == worker_id,
+        VacationBalance.year == year
+    ).first()
+    
+    if not vacation_balance:
+        # Crear balance inicial
+        vacation_balance = VacationBalance(
+            worker_id=worker_id,
+            year=year,
+            total_days=15,
+            used_days=0,
+            pending_days=0
+        )
+        db.add(vacation_balance)
+        db.commit()
+        db.refresh(vacation_balance)
+    
+    return VacationBalanceSchema.from_orm(vacation_balance)
+
+
+@router.get("/vacations/export/excel")
+async def export_vacations_to_excel(
+    start_date: str = Query(None, description="Fecha de inicio (YYYY-MM-DD)"),
+    end_date: str = Query(None, description="Fecha de fin (YYYY-MM-DD)"),
+    status: str = Query(None, description="Estado de la solicitud"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> StreamingResponse:
+    """
+    Exportar solicitudes de vacaciones a Excel por período
+    """
+    from app.models.worker_vacation import WorkerVacation, VacationStatus
+    from datetime import datetime
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from io import BytesIO
+    from fastapi.responses import StreamingResponse
+    
+    # Construir query base
+    query = db.query(WorkerVacation, Worker).join(
+        Worker, WorkerVacation.worker_id == Worker.id
+    ).filter(WorkerVacation.is_active == True)
+    
+    # Filtros por fecha - lógica inclusiva para capturar vacaciones que se solapan con el período
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, '%Y-%m-%d').date()
+            # Incluir vacaciones que terminen después o en la fecha de inicio del período
+            query = query.filter(WorkerVacation.end_date >= start_dt)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Formato de fecha de inicio inválido. Use YYYY-MM-DD")
+    
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d').date()
+            # Incluir vacaciones que empiecen antes o en la fecha de fin del período
+            query = query.filter(WorkerVacation.start_date <= end_dt)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Formato de fecha de fin inválido. Use YYYY-MM-DD")
+    
+    # Filtro por estado
+    if status:
+        if status.lower() == 'pending':
+            query = query.filter(WorkerVacation.status == VacationStatus.PENDING)
+        elif status.lower() == 'approved':
+            query = query.filter(WorkerVacation.status == VacationStatus.APPROVED)
+        elif status.lower() == 'rejected':
+            query = query.filter(WorkerVacation.status == VacationStatus.REJECTED)
+    
+    # Ordenar por fecha de solicitud
+    query = query.order_by(WorkerVacation.created_at.desc())
+    
+    results = query.all()
+    
+    # Crear el archivo Excel
+    workbook = openpyxl.Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Solicitudes de Vacaciones"
+    
+    # Definir estilos
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center")
+    
+    # Encabezados
+    headers = [
+        "ID Solicitud", "Trabajador", "Documento", "Cargo", "Fecha Inicio", 
+        "Fecha Fin", "Días Solicitados", "Motivo", "Estado", "Comentarios Admin",
+        "Fecha Solicitud", "Aprobado Por", "Fecha Aprobación"
+    ]
+    
+    # Escribir encabezados
+    for col, header in enumerate(headers, 1):
+        cell = worksheet.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+    
+    # Escribir datos
+    for row, (vacation, worker) in enumerate(results, 2):
+        # Obtener información del aprobador si existe
+        approved_by_name = ""
+        if vacation.approved_by:
+            approver = db.query(User).filter(User.id == vacation.approved_by).first()
+            if approver:
+                approved_by_name = f"{approver.first_name} {approver.last_name}"
+        
+        # Estado en español
+        status_text = {
+            VacationStatus.PENDING: "Pendiente",
+            VacationStatus.APPROVED: "Aprobado", 
+            VacationStatus.REJECTED: "Rechazado"
+        }.get(vacation.status, vacation.status.value if vacation.status else "")
+        
+        data = [
+            vacation.id,
+            f"{worker.first_name} {worker.last_name}",
+            worker.document_number,
+            worker.position or "",
+            vacation.start_date.strftime('%d/%m/%Y') if vacation.start_date else "",
+            vacation.end_date.strftime('%d/%m/%Y') if vacation.end_date else "",
+            vacation.days,
+            vacation.reason or "",
+            status_text,
+            vacation.rejection_reason or "",
+            vacation.created_at.strftime('%d/%m/%Y %H:%M') if vacation.created_at else "",
+            approved_by_name,
+            vacation.approved_date.strftime('%d/%m/%Y %H:%M') if vacation.approved_date else ""
+        ]
+        
+        for col, value in enumerate(data, 1):
+            worksheet.cell(row=row, column=col, value=value)
+    
+    # Ajustar ancho de columnas
+    for column in worksheet.columns:
+        max_length = 0
+        column_letter = column[0].column_letter
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = min(max_length + 2, 50)
+        worksheet.column_dimensions[column_letter].width = adjusted_width
+    
+    # Guardar en memoria
+    excel_buffer = BytesIO()
+    workbook.save(excel_buffer)
+    excel_buffer.seek(0)
+    
+    # Generar nombre del archivo
+    filename = f"solicitudes_vacaciones_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    
+    return StreamingResponse(
+        BytesIO(excel_buffer.read()),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )

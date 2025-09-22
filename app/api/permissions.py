@@ -520,10 +520,7 @@ async def get_my_pages(
                 })
         return {"pages": pages}
     
-    # For users with custom roles, check their specific permissions
-    if not current_user.custom_role_id:
-        return {"pages": []}
-    
+    # Check permissions for all users (custom role or hardcoded role)
     pages = []
     
     # Check view permissions for all resources
@@ -605,11 +602,21 @@ def _check_hardcoded_role_permission(user: User, resource_type: str, action: str
             "certificates": ["view", "read", "download"]
         },
         UserRole.SUPERVISOR: {
+            "dashboard": ["view", "read"],
+            "users": ["view", "read"],
             "courses": ["view", "read"],
             "evaluations": ["view", "read"],
+            "surveys": ["view", "read"],
+            "certificates": ["view", "read"],
             "attendance": ["view", "read"],
             "reports": ["view", "read"],
-            "workers": ["view", "read"]
+            "notifications": ["view", "read"],
+            "workers": ["view", "read"],
+            "reinductions": ["view", "read"],
+            "seguimiento": ["view", "read"],
+            "occupational_exam": ["view", "read"],
+            "absenteeism": ["view", "read"],
+            "suppliers": ["view", "read"]
         }
     }
     
