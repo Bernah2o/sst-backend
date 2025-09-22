@@ -43,6 +43,9 @@ class OccupationalExam(Base):
     # Información adicional
     observations = Column(Text)  # Observaciones adicionales
     
+    # Archivo PDF del examen
+    pdf_file_path = Column(String(500), nullable=True)  # Ruta del archivo PDF del examen
+    
     # Relaciones con Supplier y Doctor (nuevos campos)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
     doctor_id = Column(Integer, ForeignKey("doctors.id"), nullable=True)

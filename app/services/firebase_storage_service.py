@@ -118,6 +118,32 @@ class FirebaseStorageService:
             logger.error(f"Error al subir archivo a Firebase Storage: {str(e)}")
             raise
     
+    def upload_from_bytes(self, file_bytes: bytes, destination_path: str, content_type: str = None) -> str:
+        """Sube un archivo desde bytes a Firebase Storage"""
+        try:
+            self._initialize_firebase()
+            
+            # Crear blob en el bucket
+            blob = self._bucket.blob(destination_path)
+            
+            # Subir archivo desde bytes
+            if content_type:
+                blob.upload_from_string(file_bytes, content_type=content_type)
+            else:
+                blob.upload_from_string(file_bytes)
+            
+            # Hacer el archivo público (opcional)
+            blob.make_public()
+            
+            # Retornar URL pública
+            public_url = blob.public_url
+            logger.info(f"Archivo subido exitosamente desde bytes: {destination_path}")
+            return public_url
+            
+        except Exception as e:
+            logger.error(f"Error al subir archivo desde bytes a Firebase Storage: {str(e)}")
+            raise
+    
     def upload_file_from_path(self, local_path: str, destination_path: str, content_type: str = None) -> str:
         """Sube un archivo desde una ruta local a Firebase Storage"""
         try:

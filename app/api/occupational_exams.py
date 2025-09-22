@@ -1,10 +1,16 @@
 from typing import Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, UploadFile, File
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from datetime import date, timedelta
+import os
+import uuid
+from pathlib import Path
+import requests
 
 from app.database import get_db
+from app.services.firebase_storage_service import firebase_storage_service
 from app.dependencies import get_current_user, require_admin, require_supervisor_or_admin
 from app.models.user import User
 from app.models.worker import Worker
@@ -106,6 +112,7 @@ async def get_occupational_exams(
             "observations": exam.observations,
             "examining_doctor": exam.examining_doctor,
             "medical_center": exam.medical_center,
+            "pdf_file_path": exam.pdf_file_path,  # Campo que faltaba
             "supplier_id": exam.supplier_id,
             "doctor_id": exam.doctor_id,
             "next_exam_date": next_exam_date.isoformat(),
@@ -251,6 +258,7 @@ async def create_occupational_exam(
         "observations": exam.observations,
         "examining_doctor": exam.examining_doctor,
         "medical_center": exam.medical_center,
+        "pdf_file_path": exam.pdf_file_path,  # Campo faltante agregado
         "supplier_id": exam.supplier_id,
         "doctor_id": exam.doctor_id,
         "worker_id": exam.worker_id,
@@ -313,6 +321,7 @@ async def get_occupational_exam(
         "observations": exam.observations,
         "examining_doctor": exam.examining_doctor,
         "medical_center": exam.medical_center,
+        "pdf_file_path": exam.pdf_file_path,  # Campo faltante agregado
         "supplier_id": exam.supplier_id,
         "doctor_id": exam.doctor_id,
         "worker_id": exam.worker_id,
@@ -358,7 +367,59 @@ async def update_occupational_exam(
     db.commit()
     db.refresh(exam)
     
-    return exam
+    # Calcular fecha del próximo examen basado en la periodicidad del cargo
+    worker = exam.worker
+    cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
+    periodicidad = cargo.periodicidad_emo if cargo else "anual"
+    
+    from datetime import timedelta
+    if periodicidad == "semestral":
+        next_exam_date = exam.exam_date + timedelta(days=180)  # 6 meses
+    elif periodicidad == "bianual":
+        next_exam_date = exam.exam_date + timedelta(days=730)  # 2 años
+    else:  # anual por defecto
+        next_exam_date = exam.exam_date + timedelta(days=365)  # 1 año
+    
+    # Mapear medical_aptitude_concept a result legacy
+    result_mapping = {
+        "apto": "apto",
+        "apto_con_recomendaciones": "apto_con_restricciones",
+        "no_apto": "no_apto"
+    }
+    
+    # Crear respuesta enriquecida con datos del trabajador
+    exam_dict = {
+        "id": exam.id,
+        "exam_type": exam.exam_type,
+        "exam_date": exam.exam_date,
+        "programa": exam.programa,
+        "occupational_conclusions": exam.occupational_conclusions,
+        "preventive_occupational_behaviors": exam.preventive_occupational_behaviors,
+        "general_recommendations": exam.general_recommendations,
+        "medical_aptitude_concept": exam.medical_aptitude_concept,
+        "observations": exam.observations,
+        "examining_doctor": exam.examining_doctor,
+        "medical_center": exam.medical_center,
+        "pdf_file_path": exam.pdf_file_path,  # Campo incluido
+        "supplier_id": exam.supplier_id,
+        "doctor_id": exam.doctor_id,
+        "worker_id": exam.worker_id,
+        "worker_name": worker.full_name if worker else None,
+        "worker_document": worker.document_number if worker else None,
+        "worker_position": worker.position if worker else None,
+        "worker_hire_date": worker.fecha_de_ingreso.isoformat() if worker and worker.fecha_de_ingreso else None,
+        "next_exam_date": next_exam_date.isoformat(),
+        
+        # Campos legacy para compatibilidad con el frontend
+        "status": "realizado",
+        "result": result_mapping.get(exam.medical_aptitude_concept, "pendiente"),
+        "restrictions": exam.general_recommendations if exam.medical_aptitude_concept == "apto_con_recomendaciones" else None,
+        
+        "created_at": exam.created_at,
+        "updated_at": exam.updated_at
+    }
+    
+    return exam_dict
 
 
 @router.delete("/{exam_id}", response_model=MessageResponse)
@@ -480,3 +541,259 @@ async def acknowledge_exam_notification(
         "message": f"Confirmación de recepción registrada exitosamente. No recibirá más notificaciones de tipo '{notification_type}' para este examen.",
         "success": True
     }
+
+
+@router.post("/upload-pdf", response_model=dict)
+async def upload_pdf_file(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> Any:
+    """
+    Cargar archivo PDF temporal para exámenes ocupacionales
+    """
+    # Verificar que el archivo es un PDF
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Solo se permiten archivos PDF"
+        )
+    
+    # Verificar el tipo de contenido
+    if file.content_type != 'application/pdf':
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo debe ser un PDF válido"
+        )
+    
+    # Generar nombre único para el archivo en Firebase Storage
+    file_extension = Path(file.filename).suffix
+    unique_filename = f"{uuid.uuid4()}{file_extension}"
+    firebase_path = f"occupational_exams/temp/{unique_filename}"
+    
+    try:
+        # Leer el contenido del archivo
+        content = await file.read()
+        
+        # Subir archivo a Firebase Storage
+        public_url = firebase_storage_service.upload_from_bytes(
+            file_bytes=content,
+            destination_path=firebase_path,
+            content_type=file.content_type
+        )
+        
+        return {
+            "message": "Archivo PDF cargado exitosamente",
+            "file_path": public_url,
+            "original_filename": file.filename,
+            "success": True
+        }
+        
+    except Exception as e:
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al cargar el archivo: {str(e)}"
+        )
+
+
+@router.post("/{exam_id}/upload-pdf", response_model=MessageResponse)
+async def upload_exam_pdf(
+    exam_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> Any:
+    """
+    Cargar archivo PDF para un examen ocupacional
+    """
+    # Verificar que el examen existe
+    exam = db.query(OccupationalExam).filter(OccupationalExam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Examen ocupacional no encontrado"
+        )
+    
+    # Verificar que el archivo es un PDF
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Solo se permiten archivos PDF"
+        )
+    
+    # Verificar el tipo de contenido
+    if file.content_type != 'application/pdf':
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo debe ser un PDF válido"
+        )
+    
+    # Generar nombre único para el archivo en Firebase Storage
+    file_extension = Path(file.filename).suffix
+    unique_filename = f"{uuid.uuid4()}{file_extension}"
+    firebase_path = f"occupational_exams/{exam_id}/{unique_filename}"
+    
+    try:
+        # Leer el contenido del archivo
+        content = await file.read()
+        
+        # Subir archivo a Firebase Storage
+        public_url = firebase_storage_service.upload_from_bytes(
+            file_bytes=content,
+            destination_path=firebase_path,
+            content_type=file.content_type
+        )
+        
+        # Eliminar archivo anterior de Firebase Storage si existe
+        if exam.pdf_file_path:
+            try:
+                # Extraer la ruta de Firebase desde la URL
+                old_firebase_path = exam.pdf_file_path.split('/')[-2:]  # Obtener las últimas dos partes de la ruta
+                old_firebase_path = '/'.join(old_firebase_path)
+                firebase_storage_service.delete_file(old_firebase_path)
+            except Exception as e:
+                # Ignorar errores al eliminar archivo anterior
+                pass
+        
+        # Actualizar la URL del archivo en la base de datos
+        exam.pdf_file_path = public_url
+        db.commit()
+        
+        return {
+            "message": "Archivo PDF cargado exitosamente",
+            "success": True
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al cargar el archivo: {str(e)}"
+        )
+
+
+@router.delete("/{exam_id}/pdf", response_model=MessageResponse)
+async def delete_exam_pdf(
+    exam_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> Any:
+    """
+    Eliminar archivo PDF de un examen ocupacional
+    """
+    # Verificar que el examen existe
+    exam = db.query(OccupationalExam).filter(OccupationalExam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Examen ocupacional no encontrado"
+        )
+    
+    if not exam.pdf_file_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No hay archivo PDF asociado a este examen"
+        )
+    
+    # Eliminar archivo de Firebase Storage
+    try:
+        # Extraer la ruta de Firebase desde la URL
+        # Asumiendo que la URL tiene el formato: https://storage.googleapis.com/bucket/path/to/file
+        firebase_path = exam.pdf_file_path.split('/')[-2:]  # Obtener las últimas dos partes de la ruta
+        firebase_path = '/'.join(firebase_path)
+        
+        success = firebase_storage_service.delete_file(firebase_path)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error al eliminar el archivo de Firebase Storage"
+            )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al eliminar el archivo: {str(e)}"
+        )
+    
+    # Limpiar la ruta en la base de datos
+    exam.pdf_file_path = None
+    db.commit()
+    
+    return {
+        "message": "Archivo PDF eliminado exitosamente",
+        "success": True
+    }
+
+
+@router.get("/{exam_id}/pdf")
+async def get_exam_pdf(
+    exam_id: int,
+    download: bool = Query(False, description="Si es True, fuerza la descarga del archivo"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> Any:
+    """
+    Obtener/descargar archivo PDF de un examen ocupacional
+    """
+    import httpx
+    from fastapi.responses import StreamingResponse
+    import io
+    
+    # Verificar que el examen existe
+    exam = db.query(OccupationalExam).filter(OccupationalExam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Examen ocupacional no encontrado"
+        )
+    
+    if not exam.pdf_file_path:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No hay archivo PDF asociado a este examen"
+        )
+    
+    # Si es una URL de Firebase Storage, descargar y servir el archivo
+    if exam.pdf_file_path.startswith('http'):
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(exam.pdf_file_path)
+                response.raise_for_status()
+                
+                # Crear un stream de bytes
+                pdf_content = io.BytesIO(response.content)
+                
+                # Configurar headers para la respuesta
+                headers = {
+                    "Content-Type": "application/pdf",
+                }
+                
+                if download:
+                    # Para forzar descarga
+                    filename = f"Examen_Ocupacional_{exam.worker_name.replace(' ', '_') if exam.worker_name else exam_id}.pdf"
+                    headers["Content-Disposition"] = f"attachment; filename={filename}"
+                else:
+                    # Para previsualización en el navegador
+                    headers["Content-Disposition"] = "inline"
+                
+                return StreamingResponse(
+                    io.BytesIO(response.content),
+                    media_type="application/pdf",
+                    headers=headers
+                )
+                
+        except httpx.HTTPError as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al obtener el archivo PDF: {str(e)}"
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error interno al procesar el archivo PDF: {str(e)}"
+            )
+    
+    # Si es una ruta local (legacy), manejar como antes
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Archivo no encontrado"
+    )
