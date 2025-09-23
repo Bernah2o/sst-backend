@@ -50,9 +50,12 @@ class WorkerVacationBase(BaseModel):
     @field_validator('start_date')
     @classmethod
     def validate_start_date(cls, v):
-        """Valida que la fecha de inicio no sea en el pasado"""
-        if v and v < date.today():
-            raise ValueError('La fecha de inicio no puede ser en el pasado')
+        """Valida que la fecha de inicio no sea anterior a hoy"""
+        from datetime import date, timedelta
+        # Permitir fechas desde ayer para dar flexibilidad con zonas horarias
+        min_date = date.today() - timedelta(days=1)
+        if v and v < min_date:
+            raise ValueError('La fecha de inicio no puede ser anterior a ayer')
         return v
 
     @field_validator('reason')
