@@ -1256,14 +1256,24 @@ async def upload_worker_document(
         "contrato": DocumentCategory.CONTRACT,
         "Médico": DocumentCategory.MEDICAL,
         "medico": DocumentCategory.MEDICAL,
+        "Exámenes Médicos": DocumentCategory.MEDICAL,
+        "examenes_medicos": DocumentCategory.MEDICAL,
         "Capacitación": DocumentCategory.TRAINING,
         "capacitacion": DocumentCategory.TRAINING,
+        "Capacitaciones": DocumentCategory.TRAINING,
+        "capacitaciones": DocumentCategory.TRAINING,
         "Certificación": DocumentCategory.CERTIFICATION,
         "certificacion": DocumentCategory.CERTIFICATION,
+        "Certificados": DocumentCategory.CERTIFICATION,
+        "certificados": DocumentCategory.CERTIFICATION,
         "Personal": DocumentCategory.PERSONAL,
         "personal": DocumentCategory.PERSONAL,
+        "Otrosí": DocumentCategory.OTROSI,
+        "otrosi": DocumentCategory.OTROSI,
         "Otro": DocumentCategory.OTHER,
-        "otro": DocumentCategory.OTHER
+        "otro": DocumentCategory.OTHER,
+        "Otros": DocumentCategory.OTHER,
+        "otros": DocumentCategory.OTHER
     }
     
     # Validar y convertir la categoría

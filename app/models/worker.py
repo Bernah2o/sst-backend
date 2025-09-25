@@ -127,6 +127,9 @@ class Worker(Base):
     fecha_de_ingreso = Column(Date, nullable=True)  # Fecha de ingreso del trabajador
     fecha_de_retiro = Column(Date, nullable=True)  # Fecha de retiro del trabajador
     
+    # Área de trabajo
+    area_id = Column(Integer, ForeignKey("areas.id"), nullable=True)
+    
     # Seguridad Social (valores dinámicos desde admin_config)
     eps = Column(String(100))  # Entidad Promotora de Salud
     afp = Column(String(100))  # Administradora de Fondos de Pensiones
@@ -170,6 +173,7 @@ class Worker(Base):
     vacations = relationship("WorkerVacation", back_populates="worker", cascade="all, delete-orphan")
     vacation_balance = relationship("VacationBalance", back_populates="worker", uselist=False, cascade="all, delete-orphan")
     user = relationship("User", foreign_keys=[user_id])
+    area_obj = relationship("Area", back_populates="workers")
     
     @hybrid_property
     def age(self) -> int:

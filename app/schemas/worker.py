@@ -115,6 +115,7 @@ class WorkerBase(BaseModel):
     direccion: Optional[str] = None
     blood_type: Optional[BloodType] = None
     observations: Optional[str] = None
+    area_id: Optional[int] = None
     is_active: bool = True
     assigned_role: UserRole = UserRole.EMPLOYEE
     
@@ -165,6 +166,7 @@ class WorkerUpdate(BaseModel):
     direccion: Optional[str] = None
     blood_type: Optional[BloodType] = None
     observations: Optional[str] = None
+    area_id: Optional[int] = None
     is_active: Optional[bool] = None
     assigned_role: Optional[UserRole] = None
     
@@ -214,6 +216,8 @@ class WorkerList(BaseModel):
     assigned_role: UserRole
     is_registered: bool
     photo: Optional[str] = None
+    area_id: Optional[int] = None
+    area_name: Optional[str] = None
     # Legacy fields for compatibility
     cedula: Optional[str] = None
     base_salary: Optional[float] = None

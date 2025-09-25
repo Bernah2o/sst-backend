@@ -16,6 +16,7 @@ class DocumentCategory(str, Enum):
     TRAINING = "capacitacion"
     CERTIFICATION = "certificacion"
     PERSONAL = "personal"
+    OTROSI = "otrosi"
     OTHER = "otro"
 
 
@@ -28,7 +29,7 @@ class WorkerDocument(Base):
     # Información del documento
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    category = Column(SQLEnum(DocumentCategory), nullable=False)
+    category = Column(SQLEnum(DocumentCategory, values_callable=lambda obj: [e.value for e in obj]), nullable=False)
     
     # Información del archivo
     file_name = Column(String(255), nullable=False)
