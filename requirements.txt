@@ -41,6 +41,9 @@ Pillow==11.3.0
 # Excel file processing
 openpyxl==3.1.5
 
+# Data analysis and manipulation
+pandas==2.2.3
+
 # Firebase integration
 firebase-admin==6.9.0
 
