@@ -168,6 +168,26 @@ app = FastAPI(
             "name": "admin",
             "description": "Administración y configuración del sistema"
         },
+        {
+            "name": "committees",
+            "description": "Gestión de comités y tipos de comités"
+        },
+        {
+            "name": "committee-members",
+            "description": "Gestión de miembros y roles de comités"
+        },
+        {
+            "name": "committee-meetings",
+            "description": "Gestión de reuniones y asistencia de comités"
+        },
+        {
+            "name": "committee-votings",
+            "description": "Gestión de votaciones y votos de comités"
+        },
+        {
+            "name": "committee-activities",
+            "description": "Gestión de actividades y documentos de comités"
+        },
     ],
     lifespan=lifespan,
     docs_url="/docs" if settings.debug else None,
