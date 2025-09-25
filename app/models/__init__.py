@@ -1,6 +1,18 @@
 from .user import User, UserRole
 from .custom_role import CustomRole
 from .permission import Permission
+from .committee import (
+    CommitteeType, Committee, CommitteeRole, CommitteeMember,
+    CommitteeMeeting, MeetingAttendance, CommitteeVoting, CommitteeVote,
+    CommitteeActivity, CommitteeDocument, CommitteePermission,
+    CommitteeTypeEnum, CommitteeRoleEnum, MeetingStatusEnum,
+    AttendanceStatusEnum, VotingStatusEnum, VoteChoiceEnum,
+    ActivityStatusEnum, ActivityPriorityEnum, DocumentTypeEnum
+)
+from .candidate_voting import (
+    CandidateVoting, CandidateVotingCandidate, CandidateVote, 
+    CandidateVotingResult, CandidateVotingStatus
+)
 from .worker import Worker, WorkerContract, Gender, DocumentType, ContractType, RiskLevel, BloodType, EPS, AFP, ARL
 from .worker_document import WorkerDocument
 from .worker_novedad import WorkerNovedad, NovedadType, NovedadStatus
@@ -86,4 +98,31 @@ __all__ = [
     "NovedadType",
     "NovedadStatus",
     "VacationBalance",
+    # Committee models
+    "CommitteeType",
+    "Committee", 
+    "CommitteeRole",
+    "CommitteeMember",
+    "CommitteeMeeting",
+    "MeetingAttendance",
+    "CommitteeVoting",
+    "CommitteeVote",
+    "CommitteeActivity",
+    "CommitteeDocument",
+    "CommitteePermission",
+    # Committee enums
+    "CommitteeTypeEnum",
+    "CommitteeRoleEnum",
+    "MeetingStatusEnum",
+    "AttendanceStatusEnum",
+    "VotingStatusEnum",
+    "VoteChoiceEnum",
+    "ActivityStatusEnum",
+    "ActivityPriorityEnum",
+    "DocumentTypeEnum",
+    "CandidateVoting",
+    "CandidateVotingCandidate",
+    "CandidateVote",
+    "CandidateVotingResult",
+    "CandidateVotingStatus",
 ]

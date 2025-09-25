@@ -27,6 +27,13 @@ from .occupational_exam_notifications import router as occupational_exam_notific
 from .admin_notifications import router as admin_notifications_router
 from .suppliers import router as suppliers_router
 from .supervisor_dashboard import router as supervisor_dashboard_router
+from .committees import router as committees_router
+from .committee_members import router as committee_members_router
+from .committee_meetings import router as committee_meetings_router
+from .committee_votings import router as committee_votings_router
+from .committee_activities import router as committee_activities_router
+from .committee_permissions import router as committee_permissions_router
+from .candidate_voting import router as candidate_voting_router
 
 
 
@@ -61,3 +68,10 @@ api_router.include_router(occupational_exam_notifications_router, prefix="/exam-
 api_router.include_router(admin_notifications_router, tags=["admin-notifications"])
 api_router.include_router(suppliers_router, prefix="/suppliers", tags=["suppliers"])
 api_router.include_router(supervisor_dashboard_router, prefix="/supervisor", tags=["supervisor"])
+api_router.include_router(committees_router, prefix="/committees", tags=["committees"])
+api_router.include_router(committee_members_router, prefix="/committee-members", tags=["committee-members"])
+api_router.include_router(committee_meetings_router, prefix="/committee-meetings", tags=["committee-meetings"])
+api_router.include_router(committee_votings_router, prefix="/committee-votings", tags=["committee-votings"])
+api_router.include_router(committee_activities_router, prefix="/committee-activities", tags=["committee-activities"])
+api_router.include_router(committee_permissions_router, prefix="/committee-permissions", tags=["committee-permissions"])
+api_router.include_router(candidate_voting_router, prefix="/candidate-voting", tags=["candidate-voting"])
