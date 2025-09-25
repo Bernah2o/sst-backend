@@ -19,6 +19,7 @@ from .worker_novedad import WorkerNovedad, NovedadType, NovedadStatus
 from .worker_vacation import VacationBalance
 from .cargo import Cargo
 from .seguridad_social import SeguridadSocial
+from .area import Area
 from .absenteeism import Absenteeism, EventMonth, EventType
 from .occupational_exam import OccupationalExam, ExamType, MedicalAptitude
 from .supplier import Supplier, Doctor, SupplierType, SupplierStatus
@@ -89,6 +90,7 @@ __all__ = [
     "ReinductionStatus",
     "Cargo",
     "SeguridadSocial",
+    "Area",
     "Absenteeism",
     "EventMonth",
     "EventType",

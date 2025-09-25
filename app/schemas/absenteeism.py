@@ -1,12 +1,14 @@
 from datetime import date
 from decimal import Decimal
 from typing import Optional
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator, ConfigDict
 from app.models.absenteeism import EventMonth, EventType
 
 
 class AbsenteeismBase(BaseModel):
     """Esquema base para Absenteeism"""
+    model_config = ConfigDict(use_enum_values=True)
+    
     event_month: EventMonth = Field(..., description="Mes del evento")
     worker_id: int = Field(..., description="ID del trabajador")
     event_type: EventType = Field(..., description="Tipo de evento")
@@ -16,13 +18,27 @@ class AbsenteeismBase(BaseModel):
     extension: int = Field(default=0, ge=0, description="Prórroga en días")
     charged_days: int = Field(default=0, ge=0, description="Días cargados")
     disability_or_charged_days: Optional[int] = Field(None, ge=0, description="Días de incapacidad o días cargados")
-    diagnostic_code: str = Field(..., max_length=20, description="Código diagnóstico")
-    health_condition_description: str = Field(..., description="Descripción de la categoría de la condición de salud")
+    diagnostic_code: Optional[str] = Field(None, max_length=20, description="Código diagnóstico")
+    health_condition_description: Optional[str] = Field(None, description="Descripción de la categoría de la condición de salud")
     observations: Optional[str] = Field(None, description="Observaciones")
     insured_costs_at: Decimal = Field(default=Decimal('0.00'), ge=0, description="Costos asegurados A.T.")
     insured_costs_ac_eg: Decimal = Field(default=Decimal('0.00'), ge=0, description="Costos asegurados A.C. - E.G.")
     assumed_costs_at: Decimal = Field(default=Decimal('0.00'), ge=0, description="Costos asumidos A.T.")
     assumed_costs_ac_eg: Decimal = Field(default=Decimal('0.00'), ge=0, description="Costos asumidos A.C. - E.G.")
+
+    @model_validator(mode='after')
+    def validate_required_fields_by_event_type(self):
+        """Valida que diagnostic_code y health_condition_description sean requeridos excepto para ENFERMEDAD_LEVE"""
+        # Con use_enum_values=True, el event_type es un string con el valor del enum
+        if self.event_type != EventType.ENFERMEDAD_LEVE.value:
+            # Para todos los tipos de evento excepto ENFERMEDAD_LEVE, estos campos son requeridos
+            if not self.diagnostic_code or not self.diagnostic_code.strip():
+                raise ValueError('El código diagnóstico es requerido para este tipo de evento')
+            
+            if not self.health_condition_description or not self.health_condition_description.strip():
+                raise ValueError('La descripción de condición de salud es requerida para este tipo de evento')
+        
+        return self
 
 
 class AbsenteeismCreate(AbsenteeismBase):

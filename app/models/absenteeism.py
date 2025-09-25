@@ -7,25 +7,26 @@ from datetime import datetime
 
 
 class EventMonth(enum.Enum):
-    ENERO = "enero"
-    FEBRERO = "febrero"
-    MARZO = "marzo"
-    ABRIL = "abril"
-    MAYO = "mayo"
-    JUNIO = "junio"
-    JULIO = "julio"
-    AGOSTO = "agosto"
-    SEPTIEMBRE = "septiembre"
-    OCTUBRE = "octubre"
-    NOVIEMBRE = "noviembre"
-    DICIEMBRE = "diciembre"
+    ENERO = "ENERO"
+    FEBRERO = "FEBRERO"
+    MARZO = "MARZO"
+    ABRIL = "ABRIL"
+    MAYO = "MAYO"
+    JUNIO = "JUNIO"
+    JULIO = "JULIO"
+    AGOSTO = "AGOSTO"
+    SEPTIEMBRE = "SEPTIEMBRE"
+    OCTUBRE = "OCTUBRE"
+    NOVIEMBRE = "NOVIEMBRE"
+    DICIEMBRE = "DICIEMBRE"
 
 
 class EventType(enum.Enum):
-    ACCIDENTE_TRABAJO = "ACCIDENTE DE TRABAJO"
-    ENFERMEDAD_LABORAL = "ENFERMEDAD LABORAL"
-    ACCIDENTE_COMUN = "ACCIDENTE COMÚN"
-    ENFERMEDAD_GENERAL = "ENFERMEDAD GENERAL"
+    ACCIDENTE_TRABAJO = "ACCIDENTE_TRABAJO"
+    ENFERMEDAD_LABORAL = "ENFERMEDAD_LABORAL"
+    ACCIDENTE_COMUN = "ACCIDENTE_COMUN"
+    ENFERMEDAD_GENERAL = "ENFERMEDAD_GENERAL"
+    ENFERMEDAD_LEVE = "ENFERMEDAD LEVE"
 
 
 class Absenteeism(Base):
@@ -60,10 +61,10 @@ class Absenteeism(Base):
     disability_or_charged_days = Column(Integer, nullable=True)
     
     # Código diagnóstico
-    diagnostic_code = Column(String(20), nullable=False)
+    diagnostic_code = Column(String(20), nullable=True)
     
     # Descripción de la categoría de la condición de salud
-    health_condition_description = Column(Text, nullable=False)
+    health_condition_description = Column(Text, nullable=True)
     
     # Observaciones
     observations = Column(Text)

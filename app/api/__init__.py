@@ -34,6 +34,7 @@ from .committee_votings import router as committee_votings_router
 from .committee_activities import router as committee_activities_router
 from .committee_permissions import router as committee_permissions_router
 from .candidate_voting import router as candidate_voting_router
+from .areas import router as areas_router
 
 
 
@@ -75,3 +76,4 @@ api_router.include_router(committee_votings_router, prefix="/committee-votings",
 api_router.include_router(committee_activities_router, prefix="/committee-activities", tags=["committee-activities"])
 api_router.include_router(committee_permissions_router, prefix="/committee-permissions", tags=["committee-permissions"])
 api_router.include_router(candidate_voting_router, prefix="/candidate-voting", tags=["candidate-voting"])
+api_router.include_router(areas_router, prefix="/areas", tags=["areas"])
