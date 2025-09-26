@@ -474,7 +474,7 @@ def delete_voting(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Elimina una votación (solo en borrador)"""
+    """Elimina una votación (administradores pueden eliminar borradores y cerradas)"""
     check_admin_permissions(current_user)
     
     voting = db.query(CandidateVoting).filter(CandidateVoting.id == voting_id).first()
@@ -484,16 +484,44 @@ def delete_voting(
             detail="Votación no encontrada"
         )
     
-    if voting.status != CandidateVotingStatus.DRAFT.value:
+    # Los administradores pueden eliminar votaciones en borrador y cerradas, pero no activas
+    if voting.status == CandidateVotingStatus.ACTIVE.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Solo se pueden eliminar votaciones en borrador"
+            detail="No se puede eliminar una votación activa. Debe cerrarla primero."
         )
     
-    db.delete(voting)
-    db.commit()
-    
-    return {"message": "Votación eliminada exitosamente"}
+    try:
+        # Eliminar dependencias en el orden correcto para evitar errores de integridad
+        
+        # 1. Eliminar resultados de votación (si existen)
+        db.query(CandidateVotingResultModel).filter(
+            CandidateVotingResultModel.voting_id == voting_id
+        ).delete()
+        
+        # 2. Eliminar votos individuales
+        db.query(CandidateVote).filter(
+            CandidateVote.voting_id == voting_id
+        ).delete()
+        
+        # 3. Eliminar candidatos
+        db.query(CandidateVotingCandidate).filter(
+            CandidateVotingCandidate.voting_id == voting_id
+        ).delete()
+        
+        # 4. Finalmente eliminar la votación
+        db.delete(voting)
+        
+        db.commit()
+        
+        return {"message": "Votación eliminada exitosamente"}
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al eliminar la votación: {str(e)}"
+        )
 
 
 @router.get("/{voting_id}/results", response_model=List[CandidateVotingResult])
