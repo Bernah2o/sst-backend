@@ -58,12 +58,16 @@ class ActivityPriorityEnum(str, Enum):
 
 class DocumentTypeEnum(str, Enum):
     MEETING_MINUTES = "meeting_minutes"
+    VOTING_RECORD = "voting_record"
     REGULATION = "regulation"
     REPORT = "report"
     INVESTIGATION = "investigation"
     PROCEDURE = "procedure"
     FORM = "form"
     CERTIFICATE = "certificate"
+    ACTIVITY_REPORT = "activity_report"
+    AGREEMENT = "agreement"
+    PRESENTATION = "presentation"
     OTHER = "other"
 
 # Base schemas

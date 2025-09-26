@@ -1,11 +1,14 @@
 """
 API endpoints for Committee Activities and Documents Management
 """
+import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, desc, asc
 from datetime import date
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.dependencies import get_current_user
@@ -462,10 +465,18 @@ async def upload_document_file(
     document_type: DocumentTypeEnum,
     file: UploadFile = File(...),
     description: Optional[str] = None,
+    version: Optional[str] = None,
+    tags: Optional[str] = None,
+    expiry_date: Optional[str] = None,
+    notes: Optional[str] = None,
+    is_public: Optional[bool] = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Subir un archivo de documento para un comité"""
+    from app.utils.storage import storage_manager
+    from datetime import datetime
+    
     # Verificar que el comité existe
     committee = db.query(Committee).filter(Committee.id == committee_id).first()
     if not committee:
@@ -475,39 +486,78 @@ async def upload_document_file(
         )
     
     # Validar tipo de archivo
-    allowed_extensions = {'.pdf', '.doc', '.docx', '.txt', '.xlsx', '.xls', '.ppt', '.pptx'}
+    allowed_extensions = {'.pdf', '.doc', '.docx', '.txt', '.xlsx', '.xls', '.ppt', '.pptx', '.png', '.jpg', '.jpeg'}
     file_extension = '.' + file.filename.split('.')[-1].lower() if '.' in file.filename else ''
     
     if file_extension not in allowed_extensions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Tipo de archivo no permitido. Tipos permitidos: PDF, DOC, DOCX, TXT, XLS, XLSX, PPT, PPTX"
+            detail="Tipo de archivo no permitido. Tipos permitidos: PDF, DOC, DOCX, TXT, XLS, XLSX, PPT, PPTX, PNG, JPG, JPEG"
         )
     
-    # TODO: Implementar lógica de guardado de archivo
-    # Por ahora, solo creamos el registro en la base de datos
-    file_path = f"/uploads/committees/{committee_id}/{file.filename}"
-    
-    document_data = {
-        "committee_id": committee_id,
-        "title": title,
-        "description": description,
-        "document_type": document_type,
-        "file_name": file.filename,
-        "file_path": file_path,
-        "file_size": file.size if hasattr(file, 'size') else 0,
-        "uploaded_by": current_user.id
-    }
-    
-    db_document = CommitteeDocument(**document_data)
-    db.add(db_document)
-    db.commit()
-    db.refresh(db_document)
-    
-    return {
-        "message": "Documento subido exitosamente",
-        "document": db_document
-    }
+    try:
+        # Subir archivo usando StorageManager
+        upload_result = await storage_manager.upload_file(
+            file, 
+            folder=f"committees/{committee_id}/documents"
+        )
+        
+        # Obtener el tamaño del archivo
+        file_size = 0
+        if hasattr(file, 'size') and file.size:
+            file_size = file.size
+        else:
+            # Si no tiene size, leer el contenido para obtenerlo
+            await file.seek(0)
+            content = await file.read()
+            file_size = len(content)
+            await file.seek(0)
+        
+        # Convertir expiry_date string a date si se proporciona
+        expiry_date_obj = None
+        if expiry_date:
+            try:
+                expiry_date_obj = datetime.strptime(expiry_date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Formato de fecha de expiración inválido. Use YYYY-MM-DD"
+                )
+        
+        document_data = {
+            "committee_id": committee_id,
+            "title": title,
+            "description": description,
+            "document_type": document_type,
+            "file_name": upload_result["filename"],
+            "file_path": upload_result["path"],
+            "file_size": file_size,
+            "mime_type": file.content_type,
+            "version": version or "1.0",
+            "tags": tags,
+            "expiry_date": expiry_date_obj,
+            "notes": notes,
+            "is_public": is_public,
+            "uploaded_by": current_user.id
+        }
+        
+        db_document = CommitteeDocument(**document_data)
+        db.add(db_document)
+        db.commit()
+        db.refresh(db_document)
+        
+        return {
+            "message": "Documento subido exitosamente",
+            "document": db_document,
+            "file_url": upload_result["url"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error al subir documento: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al subir el archivo: {str(e)}"
+        )
 
 @router.get("/activities/user/{user_id}", response_model=List[CommitteeActivitySchema])
 async def get_activities_by_user(
@@ -563,3 +613,162 @@ async def get_overdue_activities(
     activities = query.all()
     
     return activities
+
+@router.get("/documents/statistics/{committee_id}")
+async def get_document_statistics(
+    committee_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Obtener estadísticas de documentos para un comité específico"""
+    from sqlalchemy import func
+    
+    # Verificar que el comité existe
+    committee = db.query(Committee).filter(Committee.id == committee_id).first()
+    if not committee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Comité no encontrado"
+        )
+    
+    # Obtener conteo de documentos por tipo
+    documents_by_type = db.query(
+        CommitteeDocument.document_type.label('type'),
+        func.count(CommitteeDocument.id).label('count')
+    ).filter(
+        CommitteeDocument.committee_id == committee_id
+    ).group_by(CommitteeDocument.document_type).all()
+    
+    # Convertir a formato esperado por el frontend
+    documents_by_type_list = [
+        {"type": doc_type, "count": count}
+        for doc_type, count in documents_by_type
+    ]
+    
+    # Obtener estadísticas adicionales
+    total_documents = db.query(func.count(CommitteeDocument.id)).filter(
+        CommitteeDocument.committee_id == committee_id
+    ).scalar()
+    
+    public_documents = db.query(func.count(CommitteeDocument.id)).filter(
+        and_(
+            CommitteeDocument.committee_id == committee_id,
+            CommitteeDocument.is_public == True
+        )
+    ).scalar()
+    
+    return {
+        "committee_id": committee_id,
+        "total_documents": total_documents or 0,
+        "public_documents": public_documents or 0,
+        "private_documents": (total_documents or 0) - (public_documents or 0),
+        "documents_by_type": documents_by_type_list
+    }
+
+@router.get("/documents/{document_id}/url")
+async def get_document_url(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Obtener la URL de un documento específico"""
+    # Buscar el documento
+    document = db.query(CommitteeDocument).filter(
+        CommitteeDocument.id == document_id
+    ).first()
+    
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Documento no encontrado"
+        )
+    
+    # Verificar permisos del usuario para acceder al documento
+    # Los administradores tienen acceso a todos los documentos
+    # Si el documento no es público, verificar que el usuario sea admin o miembro del comité
+    if not document.is_public and not current_user.is_admin():
+        committee_member = db.query(CommitteeMember).filter(
+            and_(
+                CommitteeMember.committee_id == document.committee_id,
+                CommitteeMember.user_id == current_user.id,
+                CommitteeMember.is_active == True
+            )
+        ).first()
+        
+        if not committee_member:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permisos para acceder a este documento"
+            )
+    
+    # Retornar la URL del archivo
+    return {
+        "url": document.file_path,
+        "filename": document.file_name,
+        "mime_type": document.mime_type
+    }
+
+@router.get("/documents/{document_id}/download")
+async def download_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Descargar un documento específico"""
+    from fastapi.responses import StreamingResponse
+    from app.services.firebase_storage_service import firebase_storage_service
+    import io
+    
+    # Buscar el documento
+    document = db.query(CommitteeDocument).filter(
+        CommitteeDocument.id == document_id
+    ).first()
+    
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Documento no encontrado"
+        )
+    
+    # Verificar permisos del usuario para acceder al documento
+    # Los administradores tienen acceso a todos los documentos
+    # Si el documento no es público, verificar que el usuario sea admin o miembro del comité
+    if not document.is_public and not current_user.is_admin():
+        committee_member = db.query(CommitteeMember).filter(
+            and_(
+                CommitteeMember.committee_id == document.committee_id,
+                CommitteeMember.user_id == current_user.id,
+                CommitteeMember.is_active == True
+            )
+        ).first()
+        
+        if not committee_member:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permisos para acceder a este documento"
+            )
+    
+    try:
+        # Incrementar contador de descargas
+        document.download_count = (document.download_count or 0) + 1
+        db.commit()
+        
+        # Descargar el archivo usando Firebase Storage
+        file_content = firebase_storage_service.download_file_as_bytes(document.file_path)
+        
+        # Crear un stream de bytes para la respuesta
+        file_stream = io.BytesIO(file_content)
+        
+        # Retornar el archivo como respuesta streaming
+        return StreamingResponse(
+            io.BytesIO(file_content),
+            media_type=document.mime_type or 'application/octet-stream',
+            headers={"Content-Disposition": f"attachment; filename={document.file_name}"}
+        )
+        
+    except Exception as e:
+        logger.error(f"Error downloading document {document_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al descargar el documento: {str(e)}"
+        )
