@@ -36,7 +36,7 @@ class VacationBalance(VacationBalanceBase):
 class WorkerVacationBase(BaseModel):
     start_date: date
     end_date: date
-    reason: str
+    comments: Optional[str] = None
 
     @field_validator('end_date')
     @classmethod
@@ -58,13 +58,13 @@ class WorkerVacationBase(BaseModel):
             raise ValueError('La fecha de inicio no puede ser anterior a ayer')
         return v
 
-    @field_validator('reason')
+    @field_validator('comments')
     @classmethod
-    def validate_reason(cls, v):
-        """Valida que la razón no esté vacía"""
-        if not v or not v.strip():
-            raise ValueError('La razón es requerida')
-        return v.strip()
+    def validate_comments(cls, v):
+        """Valida que los comentarios no estén vacíos si se proporcionan"""
+        if v is not None and not v.strip():
+            return None  # Convertir string vacío a None
+        return v.strip() if v else v
 
 
 class WorkerVacationCreate(WorkerVacationBase):
@@ -75,9 +75,8 @@ class WorkerVacationCreate(WorkerVacationBase):
 class WorkerVacationUpdate(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
-    reason: Optional[str] = None
+    comments: Optional[str] = None
     status: Optional[VacationStatus] = None
-    rejection_reason: Optional[str] = None
 
     @field_validator('end_date')
     @classmethod
@@ -88,33 +87,21 @@ class WorkerVacationUpdate(BaseModel):
                 raise ValueError('La fecha de fin debe ser posterior a la fecha de inicio')
         return v
 
-    @field_validator('rejection_reason')
-    @classmethod
-    def validate_rejection_reason(cls, v, info: ValidationInfo):
-        """Valida que se proporcione razón de rechazo cuando el estado es rechazado"""
-        if info.data and 'status' in info.data and info.data['status'] == VacationStatus.REJECTED:
-            if not v or not v.strip():
-                raise ValueError('La razón de rechazo es requerida cuando se rechaza una solicitud')
-        return v
-
 
 class WorkerVacation(WorkerVacationBase):
     id: int
     worker_id: int
-    days: int
+    days_requested: int
+    comments: Optional[str] = None
     status: VacationStatus
     request_date: datetime
-    requested_by: int
     approved_by: Optional[int] = None
     approved_date: Optional[datetime] = None
-    rejection_reason: Optional[str] = None
-    is_active: bool
     created_at: datetime
     updated_at: datetime
 
     # Información adicional del trabajador y usuarios
     worker_name: Optional[str] = None
-    requested_by_name: Optional[str] = None
     approved_by_name: Optional[str] = None
 
     class Config:
@@ -129,14 +116,12 @@ class VacationRequestWithWorker(BaseModel):
     start_date: date
     end_date: date
     days_requested: int
-    reason: str
+    comments: Optional[str] = None
     status: VacationStatus
-    admin_comments: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     approved_by: Optional[int] = None
-    approved_at: Optional[datetime] = None
-    is_active: bool
+    approved_date: Optional[datetime] = None
 
     class Config:
         from_attributes = True

@@ -1058,8 +1058,7 @@ async def update_vacation_request(
     # Buscar la solicitud de vacaciones
     vacation = db.query(WorkerVacation).filter(
         WorkerVacation.id == vacation_id,
-        WorkerVacation.worker_id == worker_id,
-        WorkerVacation.is_active == True
+        WorkerVacation.worker_id == worker_id
     ).first()
     
     if not vacation:
@@ -1085,7 +1084,7 @@ async def update_vacation_request(
         vacation.end_date = vacation_data.end_date
     
     if vacation_data.reason is not None:
-        vacation.reason = vacation_data.reason
+        vacation.comments = vacation_data.reason
     
     # Recalcular días si se cambiaron las fechas
     if vacation_data.start_date is not None or vacation_data.end_date is not None:
@@ -1132,12 +1131,6 @@ async def update_vacation_request(
     # Preparar respuesta
     vacation_dict = vacation.__dict__.copy()
     vacation_dict['worker_name'] = f"{worker.first_name} {worker.last_name}"
-    
-    if vacation.requested_by:
-        requested_user = db.query(User).filter(User.id == vacation.requested_by).first()
-        if requested_user:
-            vacation_dict['requested_by_name'] = getattr(requested_user, 'full_name',
-                                                       f"{requested_user.first_name} {requested_user.last_name}")
     
     if vacation.approved_by:
         approved_user = db.query(User).filter(User.id == vacation.approved_by).first()
@@ -1209,17 +1202,15 @@ async def fix_inactive_vacation_status(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Solo administradores pueden ejecutar esta función")
     
-    # Actualizar solicitudes rechazadas
+    # Contar solicitudes rechazadas (ya no necesitamos actualizar is_active)
     rejected_count = db.query(WorkerVacation).filter(
-        WorkerVacation.status == VacationStatus.REJECTED,
-        WorkerVacation.is_active == True
-    ).update({"is_active": False})
+        WorkerVacation.status == VacationStatus.REJECTED
+    ).count()
     
-    # Actualizar solicitudes canceladas
+    # Contar solicitudes canceladas (ya no necesitamos actualizar is_active)
     cancelled_count = db.query(WorkerVacation).filter(
-        WorkerVacation.status == VacationStatus.CANCELLED,
-        WorkerVacation.is_active == True
-    ).update({"is_active": False})
+        WorkerVacation.status == VacationStatus.CANCELLED
+    ).count()
     
     db.commit()
     
@@ -2256,10 +2247,9 @@ async def get_occupied_dates(
         if start_dt > end_dt:
             raise HTTPException(status_code=400, detail="La fecha de inicio debe ser anterior a la fecha de fin")
         
-        # Buscar todas las vacaciones aprobadas y pendientes activas que se solapen con el rango
+        # Buscar todas las vacaciones aprobadas y pendientes que se solapen con el rango
         occupied_vacations = db.query(WorkerVacation).filter(
             WorkerVacation.status.in_([VacationStatus.APPROVED, VacationStatus.PENDING]),
-            WorkerVacation.is_active == True,
             WorkerVacation.start_date <= end_dt,
             WorkerVacation.end_date >= start_dt
         ).all()
@@ -2389,15 +2379,13 @@ async def get_all_vacation_requests(
             worker_name=f"{worker.first_name} {worker.last_name}" if worker else "Trabajador no encontrado",
             start_date=vacation.start_date,
             end_date=vacation.end_date,
-            days_requested=vacation.days,
-            reason=vacation.reason,
+            days_requested=vacation.days_requested,
+            comments=vacation.comments,
             status=vacation.status,
-            admin_comments=vacation.rejection_reason,
             created_at=vacation.created_at,
             updated_at=vacation.updated_at,
             approved_by=vacation.approved_by,
-            approved_at=vacation.approved_date,
-            is_active=vacation.is_active
+            approved_date=vacation.approved_date
         )
         result.append(vacation_data)
     
@@ -2429,7 +2417,6 @@ async def check_vacation_availability(
         WorkerVacation.status == VacationStatus.APPROVED,
         WorkerVacation.status != VacationStatus.REJECTED,
         WorkerVacation.status != VacationStatus.CANCELLED,
-        WorkerVacation.is_active == True,
         WorkerVacation.start_date <= end_date,
         WorkerVacation.end_date >= start_date
     ).all()
@@ -2554,7 +2541,6 @@ async def check_worker_vacation_availability(
         WorkerVacation.status == VacationStatus.APPROVED,
         WorkerVacation.status != VacationStatus.REJECTED,
         WorkerVacation.status != VacationStatus.CANCELLED,
-        WorkerVacation.is_active == True,
         WorkerVacation.start_date <= end_date,
         WorkerVacation.end_date >= start_date
     ).all()
@@ -2637,8 +2623,7 @@ async def get_worker_vacations(
     
     # Construir query
     query = db.query(WorkerVacation).filter(
-        WorkerVacation.worker_id == worker_id,
-        WorkerVacation.is_active == True
+        WorkerVacation.worker_id == worker_id
     )
     
     if status:
@@ -2655,13 +2640,6 @@ async def get_worker_vacations(
     for vacation in vacations:
         vacation_dict = vacation.__dict__.copy()
         vacation_dict['worker_name'] = f"{worker.first_name} {worker.last_name}"
-        
-        # Información del solicitante
-        if vacation.requested_by:
-            requested_user = db.query(User).filter(User.id == vacation.requested_by).first()
-            if requested_user:
-                vacation_dict['requested_by_name'] = getattr(requested_user, 'full_name', 
-                                                           f"{requested_user.first_name} {requested_user.last_name}")
         
         # Información del aprobador
         if vacation.approved_by:
@@ -2741,7 +2719,6 @@ async def create_vacation_request(
     conflicts = db.query(WorkerVacation).filter(
         WorkerVacation.worker_id != worker_id,
         WorkerVacation.status == VacationStatus.APPROVED,
-        WorkerVacation.is_active == True,
         WorkerVacation.start_date <= end_date,
         WorkerVacation.end_date >= start_date
     ).all()
@@ -2751,10 +2728,9 @@ async def create_vacation_request(
         worker_id=worker_id,
         start_date=start_date,
         end_date=end_date,
-        days=days,
-        reason=vacation_data.reason,
-        status=VacationStatus.PENDING,
-        requested_by=current_user.id
+        days_requested=days,
+        comments=vacation_data.reason,
+        status=VacationStatus.PENDING
     )
     
     db.add(vacation)
@@ -2787,8 +2763,7 @@ async def approve_vacation(
     
     # Buscar la solicitud
     vacation = db.query(WorkerVacation).filter(
-        WorkerVacation.id == vacation_id,
-        WorkerVacation.is_active == True
+        WorkerVacation.id == vacation_id
     ).first()
     
     if not vacation:
@@ -2827,12 +2802,6 @@ async def approve_vacation(
                                               f"{current_user.first_name} {current_user.last_name}")
     
     # Información del solicitante
-    if vacation.requested_by:
-        requested_user = db.query(User).filter(User.id == vacation.requested_by).first()
-        if requested_user:
-            vacation_dict['requested_by_name'] = getattr(requested_user, 'full_name', 
-                                                       f"{requested_user.first_name} {requested_user.last_name}")
-    
     return WorkerVacationSchema(**vacation_dict)
 
 
@@ -2850,8 +2819,7 @@ async def reject_vacation(
     
     # Buscar la solicitud
     vacation = db.query(WorkerVacation).filter(
-        WorkerVacation.id == vacation_id,
-        WorkerVacation.is_active == True
+        WorkerVacation.id == vacation_id
     ).first()
     
     if not vacation:
@@ -2860,7 +2828,7 @@ async def reject_vacation(
     if vacation.status != VacationStatus.PENDING:
         raise HTTPException(status_code=400, detail="Solo se pueden rechazar solicitudes pendientes")
     
-    if not rejection_data.rejection_reason:
+    if not rejection_data.reason:
         raise HTTPException(status_code=400, detail="La razón de rechazo es requerida")
     
     # Obtener información del trabajador
@@ -2870,10 +2838,9 @@ async def reject_vacation(
     
     # Actualizar la solicitud
     vacation.status = VacationStatus.REJECTED
-    vacation.is_active = False  # Marcar como inactiva
     vacation.approved_by = current_user.id
     vacation.approved_date = datetime.utcnow()
-    vacation.rejection_reason = rejection_data.rejection_reason
+    vacation.comments = rejection_data.reason
     
     # Liberar días pendientes en el balance
     vacation_balance = db.query(VacationBalance).filter(
@@ -2882,7 +2849,7 @@ async def reject_vacation(
     ).first()
     
     if vacation_balance:
-        vacation_balance.pending_days -= vacation.days
+        vacation_balance.pending_days -= vacation.days_requested
     
     db.commit()
     db.refresh(vacation)
@@ -2892,13 +2859,6 @@ async def reject_vacation(
     vacation_dict['worker_name'] = f"{worker.first_name} {worker.last_name}"
     vacation_dict['approved_by_name'] = getattr(current_user, 'full_name', 
                                               f"{current_user.first_name} {current_user.last_name}")
-    
-    # Información del solicitante
-    if vacation.requested_by:
-        requested_user = db.query(User).filter(User.id == vacation.requested_by).first()
-        if requested_user:
-            vacation_dict['requested_by_name'] = getattr(requested_user, 'full_name', 
-                                                       f"{requested_user.first_name} {requested_user.last_name}")
     
     return WorkerVacationSchema(**vacation_dict)
 
@@ -2945,7 +2905,6 @@ async def cancel_vacation(
     
     # Actualizar la solicitud
     vacation.status = VacationStatus.CANCELLED
-    vacation.is_active = False  # Marcar como inactiva
     vacation.approved_by = current_user.id
     vacation.approved_date = datetime.utcnow()
     
@@ -2971,13 +2930,6 @@ async def cancel_vacation(
     vacation_dict['worker_name'] = f"{worker.first_name} {worker.last_name}"
     vacation_dict['approved_by_name'] = getattr(current_user, 'full_name', 
                                               f"{current_user.first_name} {current_user.last_name}")
-    
-    # Información del solicitante
-    if vacation.requested_by:
-        requested_user = db.query(User).filter(User.id == vacation.requested_by).first()
-        if requested_user:
-            vacation_dict['requested_by_name'] = getattr(requested_user, 'full_name', 
-                                                       f"{requested_user.first_name} {requested_user.last_name}")
     
     return WorkerVacationSchema(**vacation_dict)
 
@@ -3050,7 +3002,7 @@ async def export_vacations_to_excel(
     # Construir query base
     query = db.query(WorkerVacation, Worker).join(
         Worker, WorkerVacation.worker_id == Worker.id
-    ).filter(WorkerVacation.is_active == True)
+    )
     
     # Filtros por fecha - lógica inclusiva para capturar vacaciones que se solapan con el período
     if start_date:
@@ -3130,10 +3082,10 @@ async def export_vacations_to_excel(
             worker.position or "",
             vacation.start_date.strftime('%d/%m/%Y') if vacation.start_date else "",
             vacation.end_date.strftime('%d/%m/%Y') if vacation.end_date else "",
-            vacation.days,
-            vacation.reason or "",
+            vacation.days_requested,
+            vacation.comments or "",
             status_text,
-            vacation.rejection_reason or "",
+            vacation.comments or "",
             vacation.created_at.strftime('%d/%m/%Y %H:%M') if vacation.created_at else "",
             approved_by_name,
             vacation.approved_date.strftime('%d/%m/%Y %H:%M') if vacation.approved_date else ""
