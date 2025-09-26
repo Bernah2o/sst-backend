@@ -217,6 +217,7 @@ async def get_committees(
     )
 
 @router.post("/", response_model=CommitteeSchema, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=CommitteeSchema, status_code=status.HTTP_201_CREATED)  # Add route without trailing slash to avoid 405 error
 async def create_committee(
     committee: CommitteeCreate,
     db: Session = Depends(get_db),
