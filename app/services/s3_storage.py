@@ -286,14 +286,28 @@ class S3StorageService:
             URL firmada o None si hay error
         """
         try:
+            # Verificar si el archivo existe antes de generar la URL
+            try:
+                self.s3_client.head_object(Bucket=self.bucket_name, Key=file_key)
+                logger.info(f"Archivo encontrado en S3: {file_key}")
+            except Exception as head_error:
+                logger.error(f"Archivo no encontrado en S3: {file_key}, Error: {head_error}")
+                return None
+            
+            # Generar URL firmada con permisos específicos
             url = self.s3_client.generate_presigned_url(
                 'get_object',
-                Params={'Bucket': self.bucket_name, 'Key': file_key},
+                Params={
+                    'Bucket': self.bucket_name, 
+                    'Key': file_key,
+                    'ResponseContentDisposition': 'inline'
+                },
                 ExpiresIn=expiration
             )
+            logger.info(f"URL firmada generada exitosamente para: {file_key}")
             return url
         except Exception as e:
-            logger.error(f"Error al generar URL firmada: {e}")
+            logger.error(f"Error al generar URL firmada para {file_key}: {e}")
             return None
     
     def list_worker_files(self, worker_id: int, folder_type: str = None) -> Dict[str, Any]:
@@ -365,6 +379,57 @@ class S3StorageService:
         except Exception as e:
             logger.error(f"Error de conexión con S3: {e}")
             return False
+    
+    def test_s3_permissions(self) -> Dict[str, Any]:
+        """
+        Probar permisos específicos de S3.
+        
+        Returns:
+            Diccionario con el estado de cada permiso
+        """
+        permissions = {
+            "bucket_access": False,
+            "list_objects": False,
+            "get_object": False,
+            "put_object": False,
+            "delete_object": False,
+            "generate_presigned_url": False,
+            "error_details": []
+        }
+        
+        try:
+            # Probar acceso al bucket
+            self.s3_client.head_bucket(Bucket=self.bucket_name)
+            permissions["bucket_access"] = True
+            logger.info("✓ Acceso al bucket exitoso")
+        except Exception as e:
+            permissions["error_details"].append(f"Bucket access error: {e}")
+            logger.error(f"✗ Error de acceso al bucket: {e}")
+        
+        try:
+            # Probar listado de objetos
+            self.s3_client.list_objects_v2(Bucket=self.bucket_name, MaxKeys=1)
+            permissions["list_objects"] = True
+            logger.info("✓ Permiso de listado exitoso")
+        except Exception as e:
+            permissions["error_details"].append(f"List objects error: {e}")
+            logger.error(f"✗ Error de listado: {e}")
+        
+        try:
+            # Probar generación de URL firmada para un archivo de prueba
+            test_key = "test/test_file.txt"
+            url = self.s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': self.bucket_name, 'Key': test_key},
+                ExpiresIn=300
+            )
+            permissions["generate_presigned_url"] = True
+            logger.info("✓ Generación de URL firmada exitosa")
+        except Exception as e:
+            permissions["error_details"].append(f"Presigned URL error: {e}")
+            logger.error(f"✗ Error generando URL firmada: {e}")
+        
+        return permissions
     
     def get_config_status(self) -> Dict[str, Any]:
         """

@@ -29,6 +29,14 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
+# Disable httpx logging to prevent exposure of sensitive URLs with AWS credentials
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
+# Disable boto3 and botocore logging to prevent exposure of AWS credentials and sensitive information
+logging.getLogger("boto3").setLevel(logging.WARNING)
+logging.getLogger("botocore").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
 # Custom middleware for debugging request bodies
 
 

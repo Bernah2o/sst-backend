@@ -1283,57 +1283,7 @@ async def delete_file_s3(
         raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
 
 
-@router.get("/s3/connection-test", response_model=Dict[str, Any])
-async def test_s3_connection(
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Probar la conexión con S3.
-    
-    Args:
-        current_user: Usuario actual
-    
-    Returns:
-        Estado de la conexión
-    """
-    from app.services.s3_storage import s3_service
-    
-    # Verificar permisos de administrador
-    if not has_permission(current_user, "admin", "read"):
-        raise HTTPException(status_code=403, detail="No tienes permisos para probar la conexión")
-    
-    try:
-        # Obtener estado de configuración (sin exponer credenciales)
-        config_status = s3_service.get_config_status()
-        
-        # Probar conexión solo si está completamente configurado
-        is_connected = False
-        if config_status["fully_configured"]:
-            is_connected = s3_service.check_connection()
-        
-        return {
-            "success": True,
-            "message": "Prueba de conexión completada",
-            "data": {
-                "connected": is_connected,
-                "configuration": config_status
-            }
-        }
-        
-    except Exception as e:
-        logger.error(f"Error al probar conexión S3: {e}")
-        return {
-            "success": False,
-            "message": "Error al probar conexión",
-            "data": {
-                "connected": False,
-                "error": str(e),
-                "configuration": {
-                    "fully_configured": False,
-                    "error": "Error al verificar configuración"
-                }
-            }
-        }
+
 
 
 @router.put("/{worker_id}/vacations/{vacation_id}", response_model=WorkerVacation)
@@ -1848,12 +1798,12 @@ def delete_worker_document(
                 file_key = document.file_url.split('.com/')[-1]
                 result = s3_service.delete_file(file_key)
                 if not result["success"]:
-                    print(f"Error al eliminar archivo de S3 Storage: {result.get('error', 'Error desconocido')}")
+                    logger.warning(f"Error al eliminar archivo de S3 Storage: {result.get('error', 'Error desconocido')}")
             else:
-                print(f"URL de archivo no válida para S3 Storage: {document.file_url}")
+                logger.warning(f"URL de archivo no válida para S3 Storage")
         except Exception as e:
             # Log el error pero continúa con la eliminación del registro
-            print(f"Error al eliminar archivo del storage: {str(e)}")
+            logger.error(f"Error al eliminar archivo del storage: {str(e)}")
     
     # Soft delete
     document.is_active = False
@@ -1898,18 +1848,18 @@ async def download_worker_document(
             file_key = document.file_url.split('.com/')[-1]
             
             # Obtener URL firmada para descarga desde S3
-            signed_url_result = s3_service.get_signed_url(file_key, expiration=3600)
+            signed_url = s3_service.get_file_url(file_key, expiration=3600)
             
-            if not signed_url_result["success"]:
+            if not signed_url:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Error al generar URL de descarga: {signed_url_result.get('error', 'Error desconocido')}"
+                    detail="Error al generar URL de descarga desde S3"
                 )
             
             # Descargar el archivo desde S3 usando la URL firmada
             import httpx
             async with httpx.AsyncClient() as client:
-                response = await client.get(signed_url_result["signed_url"])
+                response = await client.get(signed_url)
                 response.raise_for_status()
                 file_content = response.content
         else:
