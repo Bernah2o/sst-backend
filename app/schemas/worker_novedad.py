@@ -154,12 +154,14 @@ class WorkerNovedadList(BaseModel):
     worker_document: str
     tipo: NovedadType
     titulo: str
+    descripcion: Optional[str] = None
     status: NovedadStatus
     fecha_inicio: Optional[date] = None
     fecha_fin: Optional[date] = None
     dias_calculados: Optional[int] = None
     monto_aumento: Optional[Decimal] = None
     valor_total: Optional[Decimal] = None
+    observaciones: Optional[str] = None
     registrado_por_name: str
     aprobado_por_name: Optional[str] = None
     fecha_aprobacion: Optional[datetime] = None

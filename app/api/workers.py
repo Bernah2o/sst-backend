@@ -16,7 +16,7 @@ from app.models.user import User, UserRole
 from app.models.worker import Worker, WorkerContract
 from app.models.worker_document import WorkerDocument, DocumentCategory
 from app.models.worker_novedad import WorkerNovedad, NovedadType, NovedadStatus
-from app.services.firebase_storage_service import FirebaseStorageService
+from app.services.s3_storage import s3_service
 from app.config import settings
 from app.models.occupational_exam import OccupationalExam
 from app.models.seguimiento import Seguimiento, EstadoSeguimiento
@@ -904,14 +904,21 @@ async def delete_occupational_exam(
             detail="Examen ocupacional no encontrado"
         )
     
-    # Eliminar archivo PDF de Firebase Storage si existe
+    # Eliminar archivo PDF de S3 Storage si existe
     if exam.pdf_file_path:
         try:
-            firebase_storage_service = FirebaseStorageService()
-            firebase_storage_service.delete_file(exam.pdf_file_path)
-            logger.info(f"PDF eliminado de Firebase Storage: {exam.pdf_file_path}")
+            # Extraer la clave del archivo desde la URL de S3
+            if "s3.amazonaws.com" in exam.pdf_file_path:
+                file_key = exam.pdf_file_path.split('.com/')[-1]
+                result = s3_service.delete_file(file_key)
+                if result["success"]:
+                    logger.info(f"PDF eliminado de S3 Storage: {exam.pdf_file_path}")
+                else:
+                    logger.warning(f"Error al eliminar PDF de S3 Storage: {result.get('error', 'Error desconocido')}")
+            else:
+                logger.warning(f"URL de archivo no válida para S3 Storage: {exam.pdf_file_path}")
         except Exception as e:
-            logger.warning(f"Error al eliminar PDF de Firebase Storage: {str(e)}")
+            logger.warning(f"Error al eliminar PDF de S3 Storage: {str(e)}")
             # No fallar la eliminación del examen si no se puede eliminar el PDF
     
     db.delete(exam)
@@ -1035,6 +1042,298 @@ async def export_workers_to_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+# =============================================================================
+# ENDPOINTS DE ALMACENAMIENTO S3
+# =============================================================================
+
+@router.post("/{worker_id}/documents/upload-s3", response_model=Dict[str, Any])
+async def upload_worker_document_s3(
+    worker_id: int,
+    file: UploadFile = File(...),
+    document_type: str = Form("general"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Subir documento de empleado a S3.
+    
+    Args:
+        worker_id: ID del trabajador
+        file: Archivo a subir
+        document_type: Tipo de documento (cedula, contrato, hoja_vida, etc.)
+        current_user: Usuario actual
+        db: Sesión de base de datos
+    
+    Returns:
+        Información del archivo subido
+    """
+    from app.services.s3_storage import upload_employee_document
+    
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Verificar permisos
+    if not has_permission(current_user, "workers", "update"):
+        raise HTTPException(status_code=403, detail="No tienes permisos para subir documentos")
+    
+    try:
+        # Subir archivo a S3
+        result = await upload_employee_document(worker_id, file, document_type)
+        
+        if result["success"]:
+            logger.info(f"Documento subido exitosamente para trabajador {worker_id}: {result['file_key']}")
+            return {
+                "success": True,
+                "message": "Documento subido exitosamente",
+                "data": result
+            }
+        else:
+            raise HTTPException(status_code=400, detail=f"Error al subir documento: {result['error']}")
+            
+    except Exception as e:
+        logger.error(f"Error al subir documento S3 para trabajador {worker_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+
+
+@router.post("/{worker_id}/medical-exams/upload-s3", response_model=Dict[str, Any])
+async def upload_medical_exam_s3(
+    worker_id: int,
+    file: UploadFile = File(...),
+    exam_type: str = Form("ocupacional"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Subir examen médico a S3.
+    
+    Args:
+        worker_id: ID del trabajador
+        file: Archivo del examen médico
+        exam_type: Tipo de examen (ocupacional, ingreso, egreso, etc.)
+        current_user: Usuario actual
+        db: Sesión de base de datos
+    
+    Returns:
+        Información del archivo subido
+    """
+    from app.services.s3_storage import upload_medical_exam
+    
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Verificar permisos
+    if not has_permission(current_user, "workers", "update"):
+        raise HTTPException(status_code=403, detail="No tienes permisos para subir exámenes médicos")
+    
+    try:
+        # Subir archivo a S3
+        result = await upload_medical_exam(worker_id, file, exam_type)
+        
+        if result["success"]:
+            logger.info(f"Examen médico subido exitosamente para trabajador {worker_id}: {result['file_key']}")
+            return {
+                "success": True,
+                "message": "Examen médico subido exitosamente",
+                "data": result
+            }
+        else:
+            raise HTTPException(status_code=400, detail=f"Error al subir examen médico: {result['error']}")
+            
+    except Exception as e:
+        logger.error(f"Error al subir examen médico S3 para trabajador {worker_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+
+
+@router.get("/{worker_id}/files/s3", response_model=Dict[str, Any])
+async def list_worker_files_s3(
+    worker_id: int,
+    folder_type: Optional[str] = Query(None, description="Tipo de carpeta: documentos o examenes_medicos"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Listar archivos de un trabajador en S3.
+    
+    Args:
+        worker_id: ID del trabajador
+        folder_type: Tipo de carpeta (documentos/examenes_medicos)
+        current_user: Usuario actual
+        db: Sesión de base de datos
+    
+    Returns:
+        Lista de archivos del trabajador
+    """
+    from app.services.s3_storage import list_worker_files
+    
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    # Verificar permisos
+    if not has_permission(current_user, "workers", "read"):
+        raise HTTPException(status_code=403, detail="No tienes permisos para ver archivos")
+    
+    try:
+        # Listar archivos en S3
+        result = list_worker_files(worker_id, folder_type)
+        
+        if result["success"]:
+            return {
+                "success": True,
+                "message": "Archivos listados exitosamente",
+                "data": result
+            }
+        else:
+            raise HTTPException(status_code=400, detail=f"Error al listar archivos: {result['error']}")
+            
+    except Exception as e:
+        logger.error(f"Error al listar archivos S3 para trabajador {worker_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+
+
+@router.get("/files/s3/{file_key:path}/url", response_model=Dict[str, Any])
+async def get_file_url_s3(
+    file_key: str,
+    expiration: int = Query(3600, description="Tiempo de expiración en segundos"),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Obtener URL firmada para acceder a un archivo en S3.
+    
+    Args:
+        file_key: Clave del archivo en S3
+        expiration: Tiempo de expiración en segundos
+        current_user: Usuario actual
+    
+    Returns:
+        URL firmada para acceder al archivo
+    """
+    from app.services.s3_storage import get_file_url
+    
+    # Verificar permisos
+    if not has_permission(current_user, "workers", "read"):
+        raise HTTPException(status_code=403, detail="No tienes permisos para acceder a archivos")
+    
+    try:
+        # Obtener URL firmada
+        url = get_file_url(file_key, expiration)
+        
+        if url:
+            return {
+                "success": True,
+                "message": "URL generada exitosamente",
+                "data": {
+                    "file_key": file_key,
+                    "url": url,
+                    "expiration": expiration
+                }
+            }
+        else:
+            raise HTTPException(status_code=400, detail="Error al generar URL del archivo")
+            
+    except Exception as e:
+        logger.error(f"Error al generar URL S3 para archivo {file_key}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+
+
+@router.delete("/files/s3/{file_key:path}", response_model=Dict[str, Any])
+async def delete_file_s3(
+    file_key: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Eliminar archivo de S3.
+    
+    Args:
+        file_key: Clave del archivo en S3
+        current_user: Usuario actual
+    
+    Returns:
+        Resultado de la operación
+    """
+    from app.services.s3_storage import delete_file
+    
+    # Verificar permisos
+    if not has_permission(current_user, "workers", "delete"):
+        raise HTTPException(status_code=403, detail="No tienes permisos para eliminar archivos")
+    
+    try:
+        # Eliminar archivo de S3
+        result = delete_file(file_key)
+        
+        if result["success"]:
+            logger.info(f"Archivo eliminado exitosamente de S3: {file_key}")
+            return {
+                "success": True,
+                "message": "Archivo eliminado exitosamente",
+                "data": result
+            }
+        else:
+            raise HTTPException(status_code=400, detail=f"Error al eliminar archivo: {result['error']}")
+            
+    except Exception as e:
+        logger.error(f"Error al eliminar archivo S3 {file_key}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+
+
+@router.get("/s3/connection-test", response_model=Dict[str, Any])
+async def test_s3_connection(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Probar la conexión con S3.
+    
+    Args:
+        current_user: Usuario actual
+    
+    Returns:
+        Estado de la conexión
+    """
+    from app.services.s3_storage import s3_service
+    
+    # Verificar permisos de administrador
+    if not has_permission(current_user, "admin", "read"):
+        raise HTTPException(status_code=403, detail="No tienes permisos para probar la conexión")
+    
+    try:
+        # Obtener estado de configuración (sin exponer credenciales)
+        config_status = s3_service.get_config_status()
+        
+        # Probar conexión solo si está completamente configurado
+        is_connected = False
+        if config_status["fully_configured"]:
+            is_connected = s3_service.check_connection()
+        
+        return {
+            "success": True,
+            "message": "Prueba de conexión completada",
+            "data": {
+                "connected": is_connected,
+                "configuration": config_status
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error al probar conexión S3: {e}")
+        return {
+            "success": False,
+            "message": "Error al probar conexión",
+            "data": {
+                "connected": False,
+                "error": str(e),
+                "configuration": {
+                    "fully_configured": False,
+                    "error": "Error al verificar configuración"
+                }
+            }
+        }
 
 
 @router.put("/{worker_id}/vacations/{vacation_id}", response_model=WorkerVacation)
@@ -1301,13 +1600,32 @@ async def upload_worker_document(
         # Leer el contenido del archivo
         file_content = await file.read()
         
-        # Convertir bytes a BytesIO para Firebase Storage
-        file_stream = BytesIO(file_content)
+        # Crear un UploadFile temporal para S3
+        from fastapi import UploadFile
+        from io import BytesIO
         
-        # Subir a Firebase Storage
-        storage_service = FirebaseStorageService()
-        file_path = f"worker_documents/{worker_id}/{unique_filename}"
-        file_url = storage_service.upload_file(file_stream, file_path, file.content_type)
+        # Crear un nuevo UploadFile para S3
+        temp_file = UploadFile(
+            filename=file.filename,
+            file=BytesIO(file_content),
+            size=len(file_content),
+            headers=file.headers
+        )
+        
+        # Subir a S3 Storage como documento de empleado
+        result = await s3_service.upload_employee_document(
+            worker_id=worker_id,
+            file=temp_file,
+            document_type=document_category.value if document_category else "general"
+        )
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al subir archivo: {result.get('error', 'Error desconocido')}"
+            )
+        
+        file_url = result["file_url"]
         
         # Crear registro en la base de datos
         db_document = WorkerDocument(
@@ -1522,11 +1840,17 @@ def delete_worker_document(
     if not document:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     
-    # Eliminar archivo del storage de Firebase
-    if document.file_path:
+    # Eliminar archivo del storage de S3
+    if document.file_url:
         try:
-            firebase_storage_service = FirebaseStorageService()
-            firebase_storage_service.delete_file(document.file_path)
+            # Extraer la clave del archivo desde la URL de S3
+            if "s3.amazonaws.com" in document.file_url:
+                file_key = document.file_url.split('.com/')[-1]
+                result = s3_service.delete_file(file_key)
+                if not result["success"]:
+                    print(f"Error al eliminar archivo de S3 Storage: {result.get('error', 'Error desconocido')}")
+            else:
+                print(f"URL de archivo no válida para S3 Storage: {document.file_url}")
         except Exception as e:
             # Log el error pero continúa con la eliminación del registro
             print(f"Error al eliminar archivo del storage: {str(e)}")
@@ -1568,9 +1892,31 @@ async def download_worker_document(
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     
     try:
-        # Descargar desde Firebase Storage
-        storage_service = FirebaseStorageService()
-        file_content = storage_service.download_file(document.file_url)
+        # Verificar si la URL es de S3 Storage
+        if "s3.amazonaws.com" in document.file_url:
+            # Extraer la clave del archivo desde la URL de S3
+            file_key = document.file_url.split('.com/')[-1]
+            
+            # Obtener URL firmada para descarga desde S3
+            signed_url_result = s3_service.get_signed_url(file_key, expiration=3600)
+            
+            if not signed_url_result["success"]:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error al generar URL de descarga: {signed_url_result.get('error', 'Error desconocido')}"
+                )
+            
+            # Descargar el archivo desde S3 usando la URL firmada
+            import httpx
+            async with httpx.AsyncClient() as client:
+                response = await client.get(signed_url_result["signed_url"])
+                response.raise_for_status()
+                file_content = response.content
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="URL de archivo no válida para S3 Storage"
+            )
         
         return Response(
             content=file_content,
@@ -1749,12 +2095,14 @@ async def get_worker_novedades(
             worker_document=worker.document_number,
             tipo=novedad.tipo,
             titulo=novedad.titulo,
+            descripcion=novedad.descripcion,
             status=novedad.status,
             fecha_inicio=novedad.fecha_inicio,
             fecha_fin=novedad.fecha_fin,
             dias_calculados=novedad.dias_calculados,
             monto_aumento=novedad.monto_aumento,
             valor_total=novedad.valor_total,
+            observaciones=novedad.observaciones,
             registrado_por_name=registrado_por_name,
             aprobado_por_name=aprobado_por_name,
             fecha_aprobacion=novedad.fecha_aprobacion,
@@ -1825,12 +2173,14 @@ async def get_all_novedades(
             worker_document=worker.document_number,
             tipo=novedad.tipo,
             titulo=novedad.titulo,
+            descripcion=novedad.descripcion,
             status=novedad.status,
             fecha_inicio=novedad.fecha_inicio,
             fecha_fin=novedad.fecha_fin,
             dias_calculados=novedad.dias_calculados,
             monto_aumento=novedad.monto_aumento,
             valor_total=novedad.valor_total,
+            observaciones=novedad.observaciones,
             registrado_por_name=registrado_por_name,
             aprobado_por_name=aprobado_por_name,
             fecha_aprobacion=novedad.fecha_aprobacion,

@@ -343,12 +343,13 @@ class ReinductionService:
             else:
                 subject = f"Reinducción Anual {record.year} Requerida"
             
-            # Enviar email
+            # Enviar email con copia a bernardino.deaguas@gmail.com
             success = send_email(
                 recipient=worker.email,
                 subject=subject,
                 template='reinduction_notification',
-                context=context
+                context=context,
+                cc=['bernardino.deaguas@gmail.com']
             )
             
             if success:
@@ -437,13 +438,14 @@ class ReinductionService:
                 'system_url': settings.react_app_api_url  
             }
             
-            # Enviar email de aniversario
+            # Enviar email de aniversario con copia a bernardino.deaguas@gmail.com
             subject = f"🎉 ¡Felicidades por tu {years_in_company}° aniversario! - Reinducción Requerida"
             success = send_email(
                 recipient=worker.email,
                 subject=subject,
                 template='reinduction_notification',
-                context=context
+                context=context,
+                cc=['bernardino.deaguas@gmail.com']
             )
             
             if success:

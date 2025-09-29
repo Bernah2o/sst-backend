@@ -10,7 +10,7 @@ from pathlib import Path
 import requests
 
 from app.database import get_db
-from app.services.firebase_storage_service import firebase_storage_service
+from app.services.s3_storage import s3_service
 from app.dependencies import get_current_user, require_admin, require_supervisor_or_admin
 from app.models.user import User
 from app.models.worker import Worker
@@ -566,25 +566,39 @@ async def upload_pdf_file(
             detail="El archivo debe ser un PDF válido"
         )
     
-    # Generar nombre único para el archivo en Firebase Storage
-    file_extension = Path(file.filename).suffix
-    unique_filename = f"{uuid.uuid4()}{file_extension}"
-    firebase_path = f"occupational_exams/temp/{unique_filename}"
-    
     try:
+        # Crear un UploadFile temporal para S3
+        from fastapi import UploadFile
+        from io import BytesIO
+        
         # Leer el contenido del archivo
         content = await file.read()
         
-        # Subir archivo a Firebase Storage
-        public_url = firebase_storage_service.upload_from_bytes(
-            file_bytes=content,
-            destination_path=firebase_path,
-            content_type=file.content_type
+        # Crear un nuevo UploadFile para S3
+        temp_file = UploadFile(
+            filename=file.filename,
+            file=BytesIO(content),
+            size=len(content),
+            headers=file.headers
         )
+        
+        # Subir archivo a S3 Storage como examen médico temporal
+        result = await s3_service.upload_medical_exam(
+            worker_id=0,  # ID temporal para archivos temporales
+            file=temp_file,
+            exam_type="temp"
+        )
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al subir archivo: {result.get('error', 'Error desconocido')}"
+            )
         
         return {
             "message": "Archivo PDF cargado exitosamente",
-            "file_path": public_url,
+            "file_path": result["file_url"],
+            "file_key": result["file_key"],
             "original_filename": file.filename,
             "success": True
         }
@@ -629,35 +643,49 @@ async def upload_exam_pdf(
             detail="El archivo debe ser un PDF válido"
         )
     
-    # Generar nombre único para el archivo en Firebase Storage
-    file_extension = Path(file.filename).suffix
-    unique_filename = f"{uuid.uuid4()}{file_extension}"
-    firebase_path = f"occupational_exams/{exam_id}/{unique_filename}"
-    
     try:
+        # Crear un UploadFile temporal para S3
+        from fastapi import UploadFile
+        from io import BytesIO
+        
         # Leer el contenido del archivo
         content = await file.read()
         
-        # Subir archivo a Firebase Storage
-        public_url = firebase_storage_service.upload_from_bytes(
-            file_bytes=content,
-            destination_path=firebase_path,
-            content_type=file.content_type
+        # Crear un nuevo UploadFile para S3
+        temp_file = UploadFile(
+            filename=file.filename,
+            file=BytesIO(content),
+            size=len(content),
+            headers=file.headers
         )
         
-        # Eliminar archivo anterior de Firebase Storage si existe
+        # Subir archivo a S3 Storage como examen médico
+        result = await s3_service.upload_medical_exam(
+            worker_id=exam.worker_id,
+            file=temp_file,
+            exam_type="ocupacional"
+        )
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al subir archivo: {result.get('error', 'Error desconocido')}"
+            )
+        
+        # Eliminar archivo anterior de S3 Storage si existe
         if exam.pdf_file_path:
             try:
-                # Extraer la ruta de Firebase desde la URL
-                old_firebase_path = exam.pdf_file_path.split('/')[-2:]  # Obtener las últimas dos partes de la ruta
-                old_firebase_path = '/'.join(old_firebase_path)
-                firebase_storage_service.delete_file(old_firebase_path)
+                # Extraer la clave del archivo desde la URL de S3
+                # Formato esperado: https://bucket-name.s3.amazonaws.com/path/to/file
+                if "s3.amazonaws.com" in exam.pdf_file_path:
+                    old_file_key = exam.pdf_file_path.split('.com/')[-1]
+                    s3_service.delete_file(old_file_key)
             except Exception as e:
                 # Ignorar errores al eliminar archivo anterior
                 pass
         
         # Actualizar la URL del archivo en la base de datos
-        exam.pdf_file_path = public_url
+        exam.pdf_file_path = result["file_url"]
         db.commit()
         
         return {
@@ -695,18 +723,23 @@ async def delete_exam_pdf(
             detail="No hay archivo PDF asociado a este examen"
         )
     
-    # Eliminar archivo de Firebase Storage
+    # Eliminar archivo de S3 Storage
     try:
-        # Extraer la ruta de Firebase desde la URL
-        # Asumiendo que la URL tiene el formato: https://storage.googleapis.com/bucket/path/to/file
-        firebase_path = exam.pdf_file_path.split('/')[-2:]  # Obtener las últimas dos partes de la ruta
-        firebase_path = '/'.join(firebase_path)
-        
-        success = firebase_storage_service.delete_file(firebase_path)
-        if not success:
+        # Extraer la clave del archivo desde la URL de S3
+        # Formato esperado: https://bucket-name.s3.amazonaws.com/path/to/file
+        if "s3.amazonaws.com" in exam.pdf_file_path:
+            file_key = exam.pdf_file_path.split('.com/')[-1]
+            result = s3_service.delete_file(file_key)
+            
+            if not result["success"]:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error al eliminar el archivo de S3 Storage: {result.get('error', 'Error desconocido')}"
+                )
+        else:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error al eliminar el archivo de Firebase Storage"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="URL de archivo no válida para S3 Storage"
             )
     except Exception as e:
         raise HTTPException(
@@ -752,11 +785,23 @@ async def get_exam_pdf(
             detail="No hay archivo PDF asociado a este examen"
         )
     
-    # Si es una URL de Firebase Storage, descargar y servir el archivo
-    if exam.pdf_file_path.startswith('http'):
+    # Si es una URL de S3 Storage, descargar y servir el archivo
+    if exam.pdf_file_path.startswith('http') and "s3.amazonaws.com" in exam.pdf_file_path:
         try:
+            # Extraer la clave del archivo desde la URL de S3
+            file_key = exam.pdf_file_path.split('.com/')[-1]
+            
+            # Obtener URL firmada para descarga desde S3
+            signed_url_result = s3_service.get_signed_url(file_key, expiration=3600)
+            
+            if not signed_url_result["success"]:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error al generar URL de descarga: {signed_url_result.get('error', 'Error desconocido')}"
+                )
+            
             async with httpx.AsyncClient() as client:
-                response = await client.get(exam.pdf_file_path)
+                response = await client.get(signed_url_result["signed_url"])
                 response.raise_for_status()
                 
                 # Crear un stream de bytes
@@ -784,12 +829,12 @@ async def get_exam_pdf(
         except httpx.HTTPError as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error al obtener el archivo PDF: {str(e)}"
+                detail=f"Error al obtener el archivo PDF desde S3: {str(e)}"
             )
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error interno al procesar el archivo PDF: {str(e)}"
+                detail=f"Error interno al procesar el archivo PDF desde S3: {str(e)}"
             )
     
     # Si es una ruta local (legacy), manejar como antes
