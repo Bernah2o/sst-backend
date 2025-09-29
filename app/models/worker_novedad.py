@@ -18,6 +18,7 @@ class NovedadType(str, Enum):
     LICENCIA_MATERNIDAD = "licencia_maternidad"
     HORAS_EXTRAS = "horas_extras"
     RECARGOS = "recargos"
+    CAPACITACION = "capacitacion"
 
 
 class NovedadStatus(str, Enum):
@@ -34,10 +35,10 @@ class WorkerNovedad(Base):
     worker_id = Column(Integer, ForeignKey("workers.id"), nullable=False)
     
     # Información básica de la novedad
-    tipo = Column(SQLEnum(NovedadType), nullable=False)
+    tipo = Column(String(50), nullable=False)  # Using string instead of SQLEnum
     titulo = Column(String(200), nullable=False)
     descripcion = Column(Text)
-    status = Column(SQLEnum(NovedadStatus), default=NovedadStatus.PENDIENTE, nullable=False)
+    status = Column(String(20), default="pendiente", nullable=False)  # Using string instead of SQLEnum
     
     # Fechas para licencias, incapacidades y permisos
     fecha_inicio = Column(Date, nullable=True)
@@ -89,7 +90,8 @@ class WorkerNovedad(Base):
             NovedadType.LICENCIA_PATERNIDAD,
             NovedadType.INCAPACIDAD_MEDICA,
             NovedadType.PERMISO_DIA_NO_REMUNERADO,
-            NovedadType.LICENCIA_MATERNIDAD
+            NovedadType.LICENCIA_MATERNIDAD,
+            NovedadType.CAPACITACION
         ]
         return self.tipo in tipos_con_fechas
     

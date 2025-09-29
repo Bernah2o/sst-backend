@@ -54,6 +54,7 @@ def get_reinduction_records(
     """Obtiene la lista de registros de reinducción con filtros"""
     from app.models.worker import Worker
     from app.models.course import Course
+    from app.models.enrollment import Enrollment
     from sqlalchemy import or_, func
     
     query = db.query(ReinductionRecord).join(Worker).outerjoin(Course, ReinductionRecord.assigned_course_id == Course.id)
@@ -80,13 +81,20 @@ def get_reinduction_records(
     # Enriquecer con información adicional
     response_records = []
     for record in records:
+        # Obtener el título del curso desde assigned_course o desde enrollment.course
+        course_title = None
+        if record.assigned_course:
+            course_title = record.assigned_course.title
+        elif record.enrollment and record.enrollment.course:
+            course_title = record.enrollment.course.title
+            
         record_dict = {
             **record.__dict__,
             "is_overdue": record.is_overdue,
             "days_until_due": record.days_until_due,
             "needs_notification": record.needs_notification,
             "worker_name": record.worker.full_name if record.worker else None,
-            "course_title": record.assigned_course.title if record.assigned_course else None,
+            "course_title": course_title,
             "enrollment_status": record.enrollment.status if record.enrollment else None
         }
         response_records.append(ReinductionRecordResponse(**record_dict))

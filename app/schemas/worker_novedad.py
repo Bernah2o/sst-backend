@@ -68,7 +68,8 @@ class WorkerNovedadCreate(WorkerNovedadBase):
                 NovedadType.LICENCIA_PATERNIDAD,
                 NovedadType.INCAPACIDAD_MEDICA,
                 NovedadType.PERMISO_DIA_NO_REMUNERADO,
-                NovedadType.LICENCIA_MATERNIDAD
+                NovedadType.LICENCIA_MATERNIDAD,
+                NovedadType.CAPACITACION
             ]
             
             if tipo in tipos_con_fechas and not v:
