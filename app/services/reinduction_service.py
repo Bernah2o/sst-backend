@@ -126,7 +126,7 @@ class ReinductionService:
                         year=year,
                         due_date=due_date,
                         status=ReinductionStatus.PENDING,
-                        assigned_course_id=config.default_reinduction_course_id
+                        assigned_course_id=None  # No asignar curso automáticamente
                     )
                     
                     self.db.add(record)
@@ -406,7 +406,7 @@ class ReinductionService:
                     year=current_year,
                     due_date=due_date,
                     status=ReinductionStatus.PENDING,
-                    assigned_course_id=config.default_reinduction_course_id,
+                    assigned_course_id=None,  # No asignar curso automáticamente
                     first_notification_sent=datetime.utcnow()
                 )
                 
@@ -683,7 +683,7 @@ class ReinductionService:
                     worker_id=worker_id,
                     year=bulk_data.year,
                     due_date=due_date,
-                    assigned_course_id=bulk_data.assigned_course_id or config.default_reinduction_course_id,
+                    assigned_course_id=bulk_data.assigned_course_id,  # Solo asignar si se especifica explícitamente
                     scheduled_date=bulk_data.scheduled_date,
                     notes=bulk_data.notes,
                     created_by=created_by
