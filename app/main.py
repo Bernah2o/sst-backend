@@ -626,10 +626,22 @@ async def health_check() -> Any:
 if __name__ == "__main__":
     import uvicorn
     
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=settings.debug,
-        log_level=settings.log_level.lower()
-    )
+    # Configuración de uvicorn optimizada para producción
+    uvicorn_config = {
+        "app": "main:app",
+        "host": "0.0.0.0",
+        "port": 8000,
+        "log_level": settings.log_level.lower(),
+        "access_log": settings.debug,  # Solo mostrar access logs en debug
+        "reload": settings.debug,      # Solo reload en debug
+    }
+    
+    # En producción, usar configuraciones más eficientes
+    if not settings.debug:
+        uvicorn_config.update({
+            "workers": 1,  # Puede ajustarse según recursos del servidor
+            "loop": "uvloop",  # Mejor rendimiento en producción
+            "http": "httptools",  # Mejor rendimiento en producción
+        })
+    
+    uvicorn.run(**uvicorn_config)
