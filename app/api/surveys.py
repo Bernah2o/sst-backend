@@ -8,7 +8,7 @@ from sqlalchemy import and_, or_, func
 
 from app.dependencies import get_current_active_user, get_current_user
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.survey import Survey, SurveyQuestion, UserSurvey, UserSurveyAnswer, SurveyStatus, UserSurveyStatus
 from app.models.course import Course
 from app.models.worker import Worker
@@ -404,9 +404,11 @@ async def assign_general_survey(
     # Verificar que los usuarios existen
     users = db.query(User).filter(User.id.in_(assignment.user_ids)).all()
     if len(users) != len(assignment.user_ids):
+        found_user_ids = [user.id for user in users]
+        missing_ids = set(assignment.user_ids) - set(found_user_ids)
         raise HTTPException(
             status_code=400,
-            detail="Algunos usuarios no existen"
+            detail=f"Algunos usuarios no existen. IDs faltantes: {list(missing_ids)}"
         )
     
     # Crear asignaciones de encuesta para cada usuario
@@ -423,7 +425,7 @@ async def assign_general_survey(
                 user_id=user_id,
                 survey_id=assignment.survey_id,
                 enrollment_id=None,  # No hay enrollment para encuestas generales
-                status=SurveyStatus.PENDING
+                status=UserSurveyStatus.NOT_STARTED
             )
             db.add(user_survey)
             assignments_created += 1
@@ -469,15 +471,32 @@ async def get_my_surveys(
         course_ids = [enrollment.course_id for enrollment in user_enrollments]
         
         # Get published surveys for these courses with course information
-        available_surveys = db.query(Survey).options(joinedload(Survey.course)).filter(
+        course_surveys = db.query(Survey).options(joinedload(Survey.course)).filter(
             Survey.course_id.in_(course_ids),
             Survey.status == SurveyStatus.PUBLISHED
         ).all()
         
-        # Get user's survey submissions
+        # Get user's survey submissions to find assigned general surveys
         user_surveys = db.query(UserSurvey).filter(
             UserSurvey.user_id == current_user.id
         ).all()
+        
+        # Get general surveys that are assigned to this user
+        assigned_general_survey_ids = [
+            us.survey_id for us in user_surveys 
+            if us.survey_id not in [cs.id for cs in course_surveys]
+        ]
+        
+        general_surveys = []
+        if assigned_general_survey_ids:
+            general_surveys = db.query(Survey).options(joinedload(Survey.course)).filter(
+                Survey.id.in_(assigned_general_survey_ids),
+                Survey.course_id.is_(None),  # Only general surveys
+                Survey.status == SurveyStatus.PUBLISHED
+            ).all()
+        
+        # Combine course surveys and general surveys
+        available_surveys = course_surveys + general_surveys
         
         # Create a map of survey_id to user_survey for quick lookup
         user_survey_map = {us.survey_id: us for us in user_surveys}
@@ -817,10 +836,32 @@ async def delete_survey(
             detail="Survey not found"
         )
     
-    db.delete(survey)
-    db.commit()
+    # Check if survey has responses
+    user_surveys_count = db.query(UserSurvey).filter(UserSurvey.survey_id == survey_id).count()
     
-    return MessageResponse(message="Encuesta eliminada exitosamente")
+    if user_surveys_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se puede eliminar la encuesta porque ya tiene respuestas asociadas. Para eliminarla, primero debe eliminar todas las respuestas."
+        )
+    
+    try:
+        db.delete(survey)
+        db.commit()
+        return MessageResponse(message="Encuesta eliminada exitosamente")
+    except Exception as e:
+        db.rollback()
+        # Handle any other integrity constraint violations
+        if "foreign key" in str(e).lower() or "viola la llave foránea" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se puede eliminar la encuesta porque tiene datos relacionados. Elimine primero las respuestas asociadas."
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Error interno del servidor al eliminar la encuesta"
+            )
 
 
 # Survey Questions endpoints
@@ -981,11 +1022,12 @@ async def submit_survey(
             detail="Encuesta no encontrada o no activa"
         )
     
-    # Check if user has already submitted this survey
+    # Check if user has already submitted this survey (only completed ones)
     existing_submission = db.query(UserSurvey).filter(
         and_(
             UserSurvey.user_id == current_user.id,
-            UserSurvey.survey_id == survey_id
+            UserSurvey.survey_id == survey_id,
+            UserSurvey.status == UserSurveyStatus.COMPLETED
         )
     ).first()
     
@@ -1021,17 +1063,34 @@ async def submit_survey(
         
         enrollment_id = enrollment.id
     
-    # Create user survey record
-    user_survey = UserSurvey(
-        user_id=current_user.id,
-        survey_id=survey_id,
-        enrollment_id=enrollment_id,
-        status=UserSurveyStatus.COMPLETED,
-        started_at=datetime.now(),
-        completed_at=datetime.now()
-    )
+    # Check if there's an existing NOT_STARTED survey to update
+    existing_not_started = db.query(UserSurvey).filter(
+        and_(
+            UserSurvey.user_id == current_user.id,
+            UserSurvey.survey_id == survey_id,
+            UserSurvey.status == UserSurveyStatus.NOT_STARTED
+        )
+    ).first()
     
-    db.add(user_survey)
+    if existing_not_started:
+        # Update existing record
+        user_survey = existing_not_started
+        user_survey.enrollment_id = enrollment_id
+        user_survey.status = UserSurveyStatus.COMPLETED
+        user_survey.started_at = datetime.now()
+        user_survey.completed_at = datetime.now()
+    else:
+        # Create new user survey record
+        user_survey = UserSurvey(
+            user_id=current_user.id,
+            survey_id=survey_id,
+            enrollment_id=enrollment_id,
+            status=UserSurveyStatus.COMPLETED,
+            started_at=datetime.now(),
+            completed_at=datetime.now()
+        )
+        db.add(user_survey)
+    
     db.flush()  # Get the ID without committing
     
     # Create answers
@@ -1054,7 +1113,8 @@ async def submit_survey(
             user_survey_id=user_survey.id,
             question_id=answer_data.question_id,
             answer_text=answer_data.answer_text,
-            answer_value=answer_data.answer_value
+            answer_value=answer_data.answer_value,
+            selected_options=answer_data.selected_options
         )
         
         db.add(answer)
@@ -1399,14 +1459,26 @@ async def get_survey_detailed_results(
                 if answer:
                     # Format display value based on question type
                     display_value = ""
-                    if question.question_type.value == "multiple_choice" or question.question_type.value == "single_choice":
-                        display_value = answer.answer_text or "Sin respuesta"
-                    elif question.question_type.value in ["rating", "scale"]:
+                    if question.question_type.value == "MULTIPLE_CHOICE" or question.question_type.value == "SINGLE_CHOICE":
+                        # For multiple/single choice, use selected_options if available, otherwise answer_text
+                        if answer.selected_options:
+                            try:
+                                import json
+                                selected = json.loads(answer.selected_options)
+                                if isinstance(selected, list):
+                                    display_value = ", ".join(selected) if selected else "Sin respuesta"
+                                else:
+                                    display_value = str(selected)
+                            except (json.JSONDecodeError, TypeError):
+                                display_value = answer.selected_options
+                        else:
+                            display_value = answer.answer_text or "Sin respuesta"
+                    elif question.question_type.value in ["SCALE"]:
                         if answer.answer_value is not None:
                             display_value = f"{answer.answer_value}/{question.max_value or 10}"
                         else:
                             display_value = "Sin calificación"
-                    elif question.question_type.value in ["text", "textarea"]:
+                    elif question.question_type.value in ["TEXT"]:
                         display_value = answer.answer_text or "Sin respuesta"
                     else:
                         display_value = answer.answer_text or "Sin respuesta"
