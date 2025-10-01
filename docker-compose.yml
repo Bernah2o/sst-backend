@@ -72,7 +72,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME:-bd_sst}
       - ENVIRONMENT=${ENVIRONMENT:-production}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_LEVEL=${LOG_LEVEL:-WARNING}
+      - DEBUG=false
     command: python migrate.py upgrade
     volumes:
       - app_logs:/app/logs
@@ -96,7 +97,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME:-bd_sst}
       - ENVIRONMENT=${ENVIRONMENT:-production}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_LEVEL=${LOG_LEVEL:-WARNING}
+      - DEBUG=false
       - USE_FIREBASE_STORAGE=${USE_FIREBASE_STORAGE:-true}
       - REACT_APP_API_URL=${REACT_APP_API_URL}
     expose:
@@ -154,7 +156,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME:-bd_sst}
       - ENVIRONMENT=${ENVIRONMENT:-production}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_LEVEL=${LOG_LEVEL:-WARNING}
+      - DEBUG=false
       - USE_FIREBASE_STORAGE=${USE_FIREBASE_STORAGE:-true}
       - REACT_APP_API_URL=${REACT_APP_API_URL}
     expose:
