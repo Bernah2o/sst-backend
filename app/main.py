@@ -42,6 +42,9 @@ logging.getLogger("botocore").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("multipart").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
+logging.getLogger("fastapi").setLevel(logging.WARNING)
+logging.getLogger("starlette").setLevel(logging.WARNING)
+logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
 
 # CRÍTICO: Deshabilitar access logs de uvicorn en producción
 if not DEBUG_MODE and ENVIRONMENT == "production":
@@ -66,6 +69,11 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Skip logging for OPTIONS requests (CORS preflight)
         if request.method == "OPTIONS":
+            response = await call_next(request)
+            return response
+
+        # En producción con debug deshabilitado, no hacer logging de requests
+        if not DEBUG_MODE and ENVIRONMENT == "production":
             response = await call_next(request)
             return response
 
