@@ -23,20 +23,43 @@ from app.scheduler.occupational_exam_scheduler import (
     stop_occupational_exam_scheduler,
 )
 
-# Configure logging using the configuration file
-import logging.config
+# Configurar logging basado en variables de entorno
+LOG_LEVEL = os.getenv("LOG_LEVEL", "WARNING").upper()
+DEBUG_MODE = os.getenv("DEBUG", "false").lower() == "true"
+ENVIRONMENT = os.getenv("ENVIRONMENT", "production")
 
-logging.config.fileConfig("logging.conf", disable_existing_loggers=False)
+# Configuración básica de logging
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
-# Disable httpx logging to prevent exposure of sensitive URLs with AWS credentials
+# Configurar loggers de librerías externas
 logging.getLogger("httpx").setLevel(logging.WARNING)
-
-# Disable boto3 and botocore logging to prevent exposure of AWS credentials and sensitive information
 logging.getLogger("boto3").setLevel(logging.WARNING)
 logging.getLogger("botocore").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("multipart").setLevel(logging.WARNING)
+logging.getLogger("asyncio").setLevel(logging.WARNING)
 
-# Custom middleware for debugging request bodies
+# CRÍTICO: Deshabilitar access logs de uvicorn en producción
+if not DEBUG_MODE and ENVIRONMENT == "production":
+    # Deshabilitar completamente los access logs
+    logging.getLogger("uvicorn.access").disabled = True
+    logging.getLogger("uvicorn.access").setLevel(logging.CRITICAL)
+    logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
+    
+    # Logger de la app
+    app_logger = logging.getLogger("app")
+    app_logger.info("Logging configurado para producción: access_logs=disabled")
+else:
+    # En desarrollo, mostrar logs normales
+    logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+    logging.getLogger("uvicorn.error").setLevel(logging.INFO)
+    
+    app_logger = logging.getLogger("app")
+    app_logger.info("Logging configurado para desarrollo: access_logs=enabled")
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):

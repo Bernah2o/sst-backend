@@ -54,13 +54,17 @@ async def login(
     """
     User login with email and password, get an access token for future requests
     """
-    user = auth_service.authenticate_user(db, user_credentials.email, user_credentials.password)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Correo electrónico o contraseña incorrectos",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    try:
+        user = auth_service.authenticate_user(db, user_credentials.email, user_credentials.password)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Correo electrónico o contraseña incorrectos",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    except HTTPException as e:
+        # Re-raise HTTPExceptions from auth_service (like account locked)
+        raise e
     
     tokens = auth_service.create_user_tokens(user)
     
@@ -293,15 +297,18 @@ async def reset_password(
             detail="Token de recuperación expirado"
         )
     
-    # Update password
+    # Update password and unlock account
     user.hashed_password = auth_service.get_password_hash(password_reset_confirm.new_password)
     user.password_reset_token = None
     user.password_reset_expires = None
     
+    # Reset failed login attempts and unlock account
+    user.reset_failed_login_attempts()
+    
     db.commit()
     
     return MessageResponse(
-        message="Contraseña actualizada exitosamente"
+        message="Contraseña actualizada exitosamente y cuenta desbloqueada"
     )
 
 

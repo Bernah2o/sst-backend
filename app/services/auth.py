@@ -29,14 +29,32 @@ class AuthService:
         return self.pwd_context.hash(password)
 
     def authenticate_user(self, db: Session, email: str, password: str) -> Optional[User]:
-        """Authenticate a user by email and password"""
+        """Authenticate a user by email and password with failed login attempt tracking"""
         # Find user by email only
         user = db.query(User).filter(User.email == email).first()
         
         if not user:
             return None
         
+        # Check if account is locked
+        if user.is_account_locked():
+            raise HTTPException(
+                status_code=status.HTTP_423_LOCKED,
+                detail="Su cuenta ha sido bloqueada por múltiples intentos de inicio de sesión fallidos. Para desbloquear su cuenta, debe restablecer su contraseña utilizando el enlace 'Olvidé mi contraseña'."
+            )
+        
         if not self.verify_password(password, user.hashed_password):
+            # Increment failed login attempts
+            user.increment_failed_login_attempts()
+            db.commit()
+            
+            # Check if account is now locked after this attempt
+            if user.is_account_locked():
+                raise HTTPException(
+                    status_code=status.HTTP_423_LOCKED,
+                    detail="Su cuenta ha sido bloqueada por múltiples intentos de inicio de sesión fallidos. Para desbloquear su cuenta, debe restablecer su contraseña utilizando el enlace 'Olvidé mi contraseña'."
+                )
+            
             return None
         
         if not user.is_active:
@@ -44,6 +62,9 @@ class AuthService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Inactive user"
             )
+        
+        # Reset failed login attempts on successful login
+        user.reset_failed_login_attempts()
         
         # Update last login
         user.last_login = datetime.utcnow()

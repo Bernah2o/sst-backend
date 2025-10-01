@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional
 
@@ -37,13 +37,18 @@ class User(Base):
     emergency_contact_name = Column(String(100))
     emergency_contact_phone = Column(String(20))
     notes = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     last_login = Column(DateTime)
     password_reset_token = Column(String(255))
     password_reset_expires = Column(DateTime)
     email_verification_token = Column(String(255))
     email_verification_expires = Column(DateTime)
+    
+    # Campos para control de intentos fallidos de login
+    failed_login_attempts = Column(Integer, default=0, nullable=False)
+    account_locked_until = Column(DateTime, nullable=True)
+    last_failed_login = Column(DateTime, nullable=True)
 
     # Relationships
     custom_role = relationship("CustomRole", back_populates="users")
@@ -91,3 +96,43 @@ class User(Base):
 
     def can_view_reports(self) -> bool:
         return self.role in [UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.TRAINER]
+    
+    def is_account_locked(self) -> bool:
+        """Verifica si la cuenta está bloqueada por intentos fallidos"""
+        # La cuenta está bloqueada si tiene 3 o más intentos fallidos
+        # Solo se puede desbloquear mediante restablecimiento de contraseña
+        return self.failed_login_attempts >= 3
+    
+    def increment_failed_login_attempts(self) -> None:
+        """Incrementa el contador de intentos fallidos"""
+        self.failed_login_attempts += 1
+        self.last_failed_login = datetime.now(timezone.utc)
+    
+    def reset_failed_login_attempts(self) -> None:
+        """Resetea el contador de intentos fallidos después de un login exitoso o restablecimiento de contraseña"""
+        self.failed_login_attempts = 0
+        self.account_locked_until = None
+        self.last_failed_login = None
+    
+    def generate_password_reset_token(self) -> str:
+        """Genera un token para restablecimiento de contraseña"""
+        import secrets
+        token = secrets.token_urlsafe(32)
+        self.password_reset_token = token
+        self.password_reset_expires = datetime.now(timezone.utc) + timedelta(hours=1)  # Token válido por 1 hora
+        return token
+    
+    def verify_password_reset_token(self, token: str) -> bool:
+        """Verifica si el token de restablecimiento es válido"""
+        if not self.password_reset_token or not self.password_reset_expires:
+            return False
+        
+        if datetime.now(timezone.utc) > self.password_reset_expires:
+            return False
+            
+        return self.password_reset_token == token
+    
+    def clear_password_reset_token(self) -> None:
+        """Limpia el token de restablecimiento después de usarlo"""
+        self.password_reset_token = None
+        self.password_reset_expires = None
