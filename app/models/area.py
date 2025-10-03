@@ -19,6 +19,7 @@ class Area(Base):
     
     # Relationships
     workers = relationship("Worker", back_populates="area_obj")
+    contractors = relationship("Contractor", back_populates="area_obj")
     
     def __repr__(self):
         return f"<Area(id={self.id}, name='{self.name}', is_active={self.is_active})>"

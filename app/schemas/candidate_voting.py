@@ -158,6 +158,8 @@ class CandidateVotingList(BaseModel):
     end_date: datetime
     candidate_count: int = 0
     total_votes: int = 0
+    total_voters: int = 0
+    participation_rate: Optional[float] = None
     created_at: datetime
 
     class Config:
