@@ -18,7 +18,8 @@ class Enrollment(Base):
     __tablename__ = "enrollments"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Nullable para contratistas
+    contractor_id = Column(Integer, ForeignKey("contractors.id"), nullable=True)  # Para contratistas
     course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
     status = Column(String(20), default=EnrollmentStatus.PENDING, nullable=False)
     enrolled_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -32,6 +33,7 @@ class Enrollment(Base):
 
     # Relationships
     user = relationship("User", back_populates="enrollments")
+    contractor = relationship("Contractor", back_populates="enrollments")
     course = relationship("Course", back_populates="enrollments")
     attendance_records = relationship("Attendance", back_populates="enrollment")
     

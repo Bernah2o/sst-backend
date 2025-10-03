@@ -87,6 +87,9 @@ def get_votings(
     
     votings = query.order_by(desc(CandidateVoting.created_at)).offset(skip).limit(limit).all()
     
+    # Obtener total de trabajadores activos para calcular participación
+    total_workers = db.query(Worker).filter(Worker.is_active == True).count()
+    
     # Agregar conteos
     result = []
     for voting in votings:
@@ -97,9 +100,14 @@ def get_votings(
             CandidateVote.voting_id == voting.id
         ).count()
         
+        # Calcular tasa de participación
+        participation_rate = (total_votes / total_workers * 100) if total_workers > 0 else 0
+        
         voting_data = CandidateVotingList.from_orm(voting)
         voting_data.candidate_count = candidate_count
         voting_data.total_votes = total_votes
+        voting_data.total_voters = total_workers
+        voting_data.participation_rate = round(participation_rate, 2)
         result.append(voting_data)
     
     return result

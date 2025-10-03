@@ -15,6 +15,7 @@ from .candidate_voting import (
 )
 from .worker import Worker, WorkerContract, Gender, DocumentType, ContractType, RiskLevel, BloodType, EPS, AFP, ARL
 from .worker_document import WorkerDocument
+from .contractor import Contractor, ContractorContract, ContractorDocument
 from .worker_novedad import WorkerNovedad, NovedadType, NovedadStatus
 from .worker_vacation import VacationBalance
 from .cargo import Cargo
@@ -44,6 +45,9 @@ __all__ = [
     "CustomRole",
     "Worker",
     "WorkerContract",
+    "Contractor",
+    "ContractorContract",
+    "ContractorDocument",
     "Gender",
     "DocumentType",
     "ContractType",
