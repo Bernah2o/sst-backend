@@ -4,17 +4,16 @@ from typing import Optional
 
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.user import User
 from app.schemas.user import TokenData
+from app.utils.password import password_manager
 
 
 class AuthService:
     def __init__(self):
-        self.pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         self.secret_key = settings.secret_key
         self.algorithm = settings.algorithm
         self.access_token_expire_minutes = settings.access_token_expire_minutes
@@ -22,11 +21,11 @@ class AuthService:
 
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """Verify a password against its hash"""
-        return self.pwd_context.verify(plain_password, hashed_password)
+        return password_manager.verify_password(plain_password, hashed_password)
 
     def get_password_hash(self, password: str) -> str:
         """Hash a password"""
-        return self.pwd_context.hash(password)
+        return password_manager.hash_password(password)
 
     def authenticate_user(self, db: Session, email: str, password: str) -> Optional[User]:
         """Authenticate a user by email and password with failed login attempt tracking"""
