@@ -222,9 +222,7 @@ async def create_contractor(
     # Mapear campos del esquema a nombres de columnas del modelo
     data = contractor_data.dict()
     
-    # LOGS DE DEPURACIÓN
-    print("=== BACKEND DEBUG: CREATE CONTRACTOR ===")
-    print(f"Raw data received: {data}")
+    
     
     # address (schema) -> direccion (modelo)
     if "address" in data:
@@ -237,15 +235,14 @@ async def create_contractor(
     if "afp_name" in data:
         data["afp"] = data.pop("afp_name")
     
-    print(f"Data after field mapping: {data}")
+    
     
     # Filtrar solo claves válidas del modelo para evitar TypeError por kwargs desconocidos
     model_fields = {c.name for c in Contractor.__table__.columns}
-    print(f"Valid model fields: {model_fields}")
+    
     
     filtered_data = {k: v for k, v in data.items() if k in model_fields}
-    print(f"Data after filtering: {filtered_data}")
-    print(f"Position field in filtered data: {filtered_data.get('position', 'NOT FOUND')}")
+    
     
     data = filtered_data
 
