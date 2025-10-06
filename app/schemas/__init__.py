@@ -147,6 +147,17 @@ from .absenteeism import (
     AbsenteeismList,
     AbsenteeismStats,
 )
+from .contractor import (
+    ContractorCreate,
+    ContractorUpdate,
+    ContractorResponse,
+    ContractorList,
+    ContractorDocumentResponse,
+    ContractorDocumentUpdate,
+    ContractorContractCreate,
+    ContractorContractUpdate,
+    ContractorContractResponse,
+)
 
 __all__ = [
     # User schemas
@@ -286,4 +297,14 @@ __all__ = [
     "AbsenteeismWithWorker",
     "AbsenteeismList",
     "AbsenteeismStats",
+    # Contractor schemas
+    "ContractorCreate",
+    "ContractorUpdate",
+    "ContractorResponse",
+    "ContractorList",
+    "ContractorDocumentResponse",
+    "ContractorDocumentUpdate",
+    "ContractorContractCreate",
+    "ContractorContractUpdate",
+    "ContractorContractResponse",
 ]

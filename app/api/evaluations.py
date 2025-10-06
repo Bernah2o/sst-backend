@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, or_, func
+from sqlalchemy import and_, or_, func, select
 
 from app.dependencies import get_current_active_user
 from app.database import get_db
@@ -57,9 +57,10 @@ async def get_evaluations(
     # For employees, only show evaluations from courses they are enrolled in
     if current_user.role.value == "employee":
         from app.models.enrollment import Enrollment
-        enrolled_course_ids = db.query(Enrollment.course_id).filter(
+        # Use an explicit select() in IN clause to avoid SAWarning
+        enrolled_course_ids = select(Enrollment.course_id).where(
             Enrollment.user_id == current_user.id
-        ).subquery()
+        )
         query = query.filter(Evaluation.course_id.in_(enrolled_course_ids))
     
     # Get total count
@@ -96,10 +97,10 @@ async def get_available_evaluations(
     """
     from app.models.enrollment import Enrollment
     
-    # Get courses the user is enrolled in
-    enrolled_course_ids = db.query(Enrollment.course_id).filter(
+    # Get courses the user is enrolled in (explicit select() to satisfy IN())
+    enrolled_course_ids = select(Enrollment.course_id).where(
         Enrollment.user_id == current_user.id
-    ).subquery()
+    )
     
     # Get active evaluations only from enrolled courses
     evaluations_query = db.query(Evaluation).filter(
@@ -109,10 +110,10 @@ async def get_available_evaluations(
         )
     )
     
-    # Get evaluations already completed by the user
-    completed_evaluation_ids = db.query(UserEvaluation.evaluation_id).filter(
+    # Get evaluations already completed by the user (explicit select())
+    completed_evaluation_ids = select(UserEvaluation.evaluation_id).where(
         UserEvaluation.user_id == current_user.id
-    ).subquery()
+    )
     
     # Filter out completed evaluations
     available_evaluations = evaluations_query.filter(
@@ -1074,13 +1075,56 @@ async def update_evaluation(
     
     # Update evaluation fields
     update_data = evaluation_data.dict(exclude_unset=True)
+    # Separate questions payload from scalar fields
+    questions_payload = update_data.pop("questions", None)
     for field, value in update_data.items():
         setattr(evaluation, field, value)
-    
+
+    # If questions provided, replace existing questions with new set
+    if questions_payload is not None:
+        from sqlalchemy.orm import joinedload
+        # Remove existing questions (answers are removed via cascade)
+        existing_questions = db.query(Question).filter(Question.evaluation_id == evaluation_id).all()
+        for q in existing_questions:
+            db.delete(q)
+        db.flush()
+
+        # Create new questions and answers
+        for idx, q_data in enumerate(questions_payload or []):
+            question = Question(
+                evaluation_id=evaluation_id,
+                question_text=q_data.get("question_text"),
+                question_type=q_data.get("question_type"),
+                points=q_data.get("points", 1.0),
+                order_index=q_data.get("order_index", idx),
+                explanation=q_data.get("explanation"),
+                image_url=q_data.get("image_url"),
+                required=q_data.get("required", True)
+            )
+            db.add(question)
+            db.flush()  # Ensure question.id is available
+
+            options = q_data.get("options") or []
+            correct_answer = q_data.get("correct_answer")
+
+            for opt_idx, opt_text in enumerate(options):
+                answer = Answer(
+                    question_id=question.id,
+                    answer_text=opt_text,
+                    is_correct=(opt_text == correct_answer) if correct_answer else False,
+                    order_index=opt_idx,
+                    explanation=None
+                )
+                db.add(answer)
+
     db.commit()
-    db.refresh(evaluation)
-    
-    return evaluation
+
+    # Return evaluation with questions eagerly loaded
+    updated_evaluation = db.query(Evaluation).options(
+        joinedload(Evaluation.questions).joinedload(Question.answers)
+    ).filter(Evaluation.id == evaluation_id).first()
+
+    return updated_evaluation
 
 
 @router.delete("/{evaluation_id}", response_model=MessageResponse)

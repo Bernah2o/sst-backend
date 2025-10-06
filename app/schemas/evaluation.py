@@ -50,7 +50,9 @@ class AnswerResponse(AnswerBase):
     created_at: datetime
 
     class Config:
+        # Compatibilidad Pydantic v1/v2
         from_attributes = True
+        orm_mode = True
 
 
 # Question Schemas
@@ -99,7 +101,9 @@ class QuestionResponse(QuestionBase):
     updated_at: datetime
 
     class Config:
+        # Compatibilidad Pydantic v1/v2
         from_attributes = True
+        orm_mode = True
 
 
 # User Answer Schemas
@@ -122,7 +126,9 @@ class UserAnswerResponse(UserAnswerBase):
     answered_at: datetime
 
     class Config:
+        # Compatibilidad Pydantic v1/v2
         from_attributes = True
+        orm_mode = True
 
 
 # User Evaluation Schemas
@@ -168,7 +174,9 @@ class UserEvaluationResponse(BaseModel):
     updated_at: datetime
 
     class Config:
+        # Compatibilidad Pydantic v1/v2
         from_attributes = True
+        orm_mode = True
 
 
 # Evaluation Schemas
@@ -202,6 +210,8 @@ class EvaluationUpdate(BaseModel):
     allow_review: Optional[bool] = None
     status: Optional[EvaluationStatus] = None
     expires_at: Optional[datetime] = None
+    # Permitir actualización de preguntas desde el PUT
+    questions: Optional[List[QuestionCreateForEvaluation]] = None
 
 
 class EvaluationResponse(EvaluationBase):
@@ -215,7 +225,9 @@ class EvaluationResponse(EvaluationBase):
     questions: List[QuestionResponse] = []
 
     class Config:
+        # Compatibilidad Pydantic v1/v2
         from_attributes = True
+        orm_mode = True
 
 
 class CourseInfo(BaseModel):
@@ -223,7 +235,9 @@ class CourseInfo(BaseModel):
     title: str
     
     class Config:
+        # Compatibilidad Pydantic v1/v2
         from_attributes = True
+        orm_mode = True
 
 
 class EvaluationListResponse(BaseModel):
@@ -240,7 +254,9 @@ class EvaluationListResponse(BaseModel):
     published_at: Optional[datetime] = None
 
     class Config:
+        # Compatibilidad Pydantic v1/v2
         from_attributes = True
+        orm_mode = True
 
 
 # Evaluation Submission Schema

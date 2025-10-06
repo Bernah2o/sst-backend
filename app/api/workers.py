@@ -2793,8 +2793,8 @@ async def get_vacation_stats(
     approved_requests = len([r for r in all_requests if r.status == VacationStatus.APPROVED])
     rejected_requests = len([r for r in all_requests if r.status == VacationStatus.REJECTED])
     
-    total_days_requested = sum(r.days for r in all_requests)
-    total_days_approved = sum(r.days for r in all_requests if r.status == VacationStatus.APPROVED)
+    total_days_requested = sum(r.days_requested for r in all_requests)
+    total_days_approved = sum(r.days_requested for r in all_requests if r.status == VacationStatus.APPROVED)
     
     # Trabajadores con solicitudes pendientes
     workers_with_pending = len(set(r.worker_id for r in all_requests if r.status == VacationStatus.PENDING))
