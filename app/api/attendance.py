@@ -1,5 +1,6 @@
 from typing import Any
 from datetime import datetime, date
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
@@ -16,6 +17,8 @@ from app.models.user import User
 from app.models.attendance import Attendance, AttendanceStatus, AttendanceType
 from app.models.course import Course
 from app.models.session import Session as SessionModel
+from app.models.certificate import Certificate, CertificateStatus
+from app.services.certificate_generator import CertificateGenerator
 from app.services.html_to_pdf import HTMLToPDFConverter
 from app.schemas.attendance import (
     AttendanceUpdate,
@@ -26,6 +29,7 @@ from app.schemas.attendance import (
     BulkAttendanceResponse,
     AttendanceNotificationData,
 )
+from app.schemas.certificate import CertificateResponse
 from app.schemas.session import (
     SessionCreate,
     SessionUpdate,
@@ -1638,3 +1642,142 @@ async def generate_participants_list_pdf(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al generar PDF de lista de participantes: {str(e)}",
         )
+
+
+@router.post("/{attendance_id}/send-certificate", response_model=CertificateResponse)
+async def send_attendance_certificate(
+    attendance_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Enviar (emitir) un certificado al empleado desde el registro de asistencia.
+    - Solo permitido para rol admin.
+    - Crea el registro de Certificate y genera el PDF asociado.
+    - El certificado quedará disponible en "Mis certificados" del empleado.
+    """
+
+    # Validar rol del usuario
+    user_role = getattr(current_user, "role", None) or getattr(current_user, "rol", None)
+    role_value = user_role.value if hasattr(user_role, "value") else user_role
+    if role_value != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para enviar certificados",
+        )
+
+    # Obtener asistencia
+    attendance = db.query(Attendance).filter(Attendance.id == attendance_id).first()
+    if not attendance:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Registro de asistencia no encontrado",
+        )
+
+    # Validar que el usuario exista
+    user = db.query(User).filter(User.id == attendance.user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado",
+        )
+
+    # Determinar el curso asociado
+    course_id = None
+    if attendance.session_id:
+        session = db.query(SessionModel).filter(SessionModel.id == attendance.session_id).first()
+        if session:
+            course_id = session.course_id
+    if not course_id and attendance.enrollment_id:
+        enrollment = db.query(Enrollment).filter(Enrollment.id == attendance.enrollment_id).first()
+        if enrollment:
+            course_id = enrollment.course_id
+    if not course_id and attendance.course_name:
+        # Intento exacto (case-insensitive)
+        course_by_name = (
+            db.query(Course)
+            .filter(func.lower(Course.title) == func.lower(attendance.course_name))
+            .first()
+        )
+        # Si no hay exacto, intento por coincidencia parcial
+        if not course_by_name:
+            course_by_name = (
+                db.query(Course)
+                .filter(Course.title.ilike(f"%{attendance.course_name}%"))
+                .order_by(Course.created_at.desc())
+                .first()
+            )
+        if course_by_name:
+            course_id = course_by_name.id
+
+    # Fallback: usar la inscripción más reciente del usuario si no se pudo resolver
+    if not course_id:
+        recent_enrollment = (
+            db.query(Enrollment)
+            .filter(Enrollment.user_id == user.id)
+            .order_by(Enrollment.created_at.desc())
+            .first()
+        )
+        if recent_enrollment:
+            course_id = recent_enrollment.course_id
+
+    if not course_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "No se pudo determinar el curso del registro de asistencia"
+            ),
+        )
+
+    course = db.query(Course).filter(Course.id == course_id).first()
+
+    # Evitar duplicados: mismo usuario/curso/fecha usando plantilla 'attendance'
+    existing = (
+        db.query(Certificate)
+        .filter(
+            Certificate.user_id == user.id,
+            Certificate.course_id == course_id,
+            Certificate.completion_date == attendance.session_date,
+            Certificate.template_used == "attendance",
+        )
+        .first()
+    )
+    if existing:
+        # Si existe, regenerar el PDF si falta la ruta
+        if not existing.file_path:
+            generator = CertificateGenerator(db)
+            try:
+                await generator.generate_certificate_pdf(existing.id)
+            except Exception:
+                pass
+        return existing
+
+    # Crear certificado
+    cert_number = uuid.uuid4().hex[:12].upper()
+    verification_code = uuid.uuid4().hex[:8].upper()
+    certificate = Certificate(
+        user_id=user.id,
+        course_id=course_id,
+        certificate_number=cert_number,
+        title=f"Certificado de Asistencia - {course.title if course else 'Curso'}",
+        description="Certificado de asistencia generado desde el módulo de asistencias",
+        completion_date=attendance.session_date,
+        issue_date=datetime.utcnow(),
+        status=CertificateStatus.ISSUED,
+        template_used="attendance",
+        issued_by=current_user.id,
+        verification_code=verification_code,
+    )
+    db.add(certificate)
+    db.commit()
+    db.refresh(certificate)
+
+    # Generar PDF y actualizar ruta
+    generator = CertificateGenerator(db)
+    try:
+        await generator.generate_certificate_pdf(certificate.id)
+    except Exception as e:
+        # Mantener el certificado aunque falle la generación de PDF
+        print(f"Error generando PDF del certificado {certificate.id}: {str(e)}")
+
+    return certificate
