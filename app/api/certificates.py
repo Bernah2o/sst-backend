@@ -15,7 +15,7 @@ from app.models.user import User
 from app.models.certificate import Certificate, CertificateStatus
 from app.models.course import Course
 from app.schemas.certificate import (
-    CertificateCreate, CertificateUpdate, CertificateResponse,
+    CertificateUpdate, CertificateResponse,
     CertificateListResponse, CertificateVerification,
     CertificateVerificationResponse, CertificateGeneration,
     CertificatePDFGeneration
@@ -115,73 +115,6 @@ async def get_certificates(
         has_prev=has_prev
     )
 
-
-@router.post("/", response_model=CertificateResponse)
-async def create_certificate(
-    certificate_data: CertificateCreate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-) -> Any:
-    """
-    Create new certificate (admin and capacitador roles only)
-    """
-    if current_user.role.value not in ["admin", "capacitador"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Permisos insuficientes"
-        )
-    
-    # Check if course exists
-    course = db.query(Course).filter(Course.id == certificate_data.course_id).first()
-    if not course:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Curso no encontrado"
-        )
-    
-    # Check if user exists
-    user = db.query(User).filter(User.id == certificate_data.user_id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado"
-        )
-    
-    # Check if certificate already exists for this user and course
-    existing_certificate = db.query(Certificate).filter(
-        and_(
-            Certificate.user_id == certificate_data.user_id,
-            Certificate.course_id == certificate_data.course_id
-        )
-    ).first()
-    
-    if existing_certificate:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ya existe un certificado para este usuario y curso"
-        )
-    
-    # Generate certificate number
-    import uuid
-    certificate_number = f"CERT-{datetime.now().year}-{str(uuid.uuid4())[:8].upper()}"
-    
-    # Generate verification code
-    verification_code = str(uuid.uuid4())
-    
-    # Create new certificate
-    certificate = Certificate(
-        **certificate_data.dict(),
-        certificate_number=certificate_number,
-        verification_code=verification_code,
-        issued_by=current_user.id,
-        issue_date=datetime.utcnow()
-    )
-    
-    db.add(certificate)
-    db.commit()
-    db.refresh(certificate)
-    
-    return certificate
 
 
 @router.get("/my-certificates", response_model=PaginatedResponse[CertificateListResponse])
@@ -310,7 +243,7 @@ async def delete_certificate(
     db: Session = Depends(get_db)
 ) -> Any:
     """
-    Delete certificate (admin only)
+    Revoke certificate (admin only) - Changes status to REVOKED instead of physical deletion
     """
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
@@ -326,7 +259,20 @@ async def delete_certificate(
             detail="Certificado no encontrado"
         )
     
-    # Eliminar archivos asociados antes de eliminar el registro de la base de datos
+    # Check if certificate is already revoked
+    if certificate.status == CertificateStatus.REVOKED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El certificado ya está revocado"
+        )
+    
+    # Revoke the certificate instead of deleting it
+    certificate.status = CertificateStatus.REVOKED
+    certificate.revoked_by = current_user.id
+    certificate.revoked_at = datetime.utcnow()
+    certificate.revocation_reason = "Revocado por administrador"
+    
+    # Optionally delete the physical file but keep the database record
     try:
         storage_manager = StorageManager()
         
@@ -346,14 +292,16 @@ async def delete_certificate(
         generator = CertificateGenerator(db)
         generator.delete_certificate_file(certificate_id)
         
+        # Clear the file path since the file has been deleted
+        certificate.file_path = None
+        
     except Exception as e:
-        # Continuar con la eliminación del registro aunque falle la eliminación de archivos
+        # Continue with revocation even if file deletion fails
         pass
     
-    db.delete(certificate)
     db.commit()
     
-    return MessageResponse(message="Certificado eliminado exitosamente")
+    return MessageResponse(message="Certificado revocado exitosamente")
 
 
 @router.post("/generate", response_model=CertificateResponse)

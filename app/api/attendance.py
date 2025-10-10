@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 from datetime import datetime, date
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Query
@@ -39,8 +39,13 @@ from app.schemas.session import (
 from app.schemas.common import MessageResponse, PaginatedResponse
 from app.models.notification import Notification, NotificationType, NotificationPriority
 from app.models.enrollment import Enrollment
+from pydantic import BaseModel
 
 router = APIRouter()
+
+
+class CertificateRequest(BaseModel):
+    course_id: Optional[int] = None
 
 
 # Session endpoints (must be before generic /{attendance_id} routes)
@@ -527,6 +532,55 @@ async def create_attendance_record(
     attendance_dict = attendance_data.copy()
     # Guardar el nombre del curso como texto plano
     attendance_dict["course_name"] = attendance_data.get("course_name", "")
+    
+    # Intentar encontrar enrollment_id basado en user_id y course_name
+    if not attendance_dict.get("enrollment_id") and attendance_dict.get("user_id") and attendance_dict.get("course_name"):
+        user_id = attendance_dict["user_id"]
+        course_name = attendance_dict["course_name"]
+        
+        # Buscar inscripción que coincida con el nombre del curso
+        enrollment = (
+            db.query(Enrollment)
+            .join(Course)
+            .filter(
+                Enrollment.user_id == user_id,
+                func.lower(Course.title) == func.lower(course_name)
+            )
+            .first()
+        )
+        
+        # Si no se encuentra coincidencia exacta, buscar coincidencia parcial
+        if not enrollment:
+            enrollment = (
+                db.query(Enrollment)
+                .join(Course)
+                .filter(
+                    Enrollment.user_id == user_id,
+                    Course.title.ilike(f"%{course_name}%")
+                )
+                .order_by(Enrollment.created_at.desc())
+                .first()
+            )
+        
+        # Si aún no se encuentra, buscar por palabras clave
+        if not enrollment and len(course_name.split()) > 1:
+            course_words = [word.strip() for word in course_name.split() if len(word.strip()) > 3]
+            for word in course_words:
+                enrollment = (
+                    db.query(Enrollment)
+                    .join(Course)
+                    .filter(
+                        Enrollment.user_id == user_id,
+                        Course.title.ilike(f"%{word}%")
+                    )
+                    .order_by(Enrollment.created_at.desc())
+                    .first()
+                )
+                if enrollment:
+                    break
+        
+        if enrollment:
+            attendance_dict["enrollment_id"] = enrollment.id
 
     # Calcular duración si aplica
     if attendance_dict.get("check_in_time") and attendance_dict.get("check_out_time"):
@@ -753,6 +807,38 @@ async def generate_attendance_list_pdf(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al generar lista de asistencia: {str(e)}",
         )
+
+
+@router.get("/courses-for-certificate", response_model=list)
+async def get_courses_for_certificate(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Obtener lista de cursos disponibles para asignar a certificados de asistencia.
+    Solo permitido para administradores.
+    """
+    # Validar rol del usuario
+    user_role = getattr(current_user, "role", None) or getattr(current_user, "rol", None)
+    role_value = user_role.value if hasattr(user_role, "value") else user_role
+    if role_value != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para acceder a esta información",
+        )
+
+    # Obtener todos los cursos activos
+    courses = db.query(Course).order_by(Course.title).all()
+    
+    return [
+        {
+            "id": course.id,
+            "title": course.title,
+            "description": course.description,
+            "course_type": course.course_type.value if course.course_type else None,
+        }
+        for course in courses
+    ]
 
 
 @router.get("/{attendance_id}", response_model=AttendanceResponse)
@@ -1027,9 +1113,6 @@ async def get_user_attendance_summary(
         attendance_rate=attendance_rate,
     )
 
-    # Eliminado endpoint de resumen por curso porque ya no hay course_id en asistencia
-
-
 @router.delete("/sessions/{session_id}", response_model=MessageResponse)
 async def delete_session(
     session_id: int,
@@ -1144,7 +1227,8 @@ async def bulk_register_attendance(
                 # Create new attendance record
                 attendance = Attendance(
                     user_id=user_id,
-                    course_id=course.id,
+                    course_name=course.title,  # Store course name for compatibility
+                    enrollment_id=enrollment.id,  # Link to enrollment for direct course_id access
                     session_id=bulk_data.session_id,
                     session_date=datetime.combine(
                         session.session_date, session.start_time
@@ -1647,6 +1731,7 @@ async def generate_participants_list_pdf(
 @router.post("/{attendance_id}/send-certificate", response_model=CertificateResponse)
 async def send_attendance_certificate(
     attendance_id: int,
+    request: CertificateRequest = CertificateRequest(),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
@@ -1682,66 +1767,38 @@ async def send_attendance_certificate(
             detail="Usuario no encontrado",
         )
 
-    # Determinar el curso asociado
+    # Determinar el curso asociado (opcional)
     course_id = None
-    if attendance.session_id:
-        session = db.query(SessionModel).filter(SessionModel.id == attendance.session_id).first()
-        if session:
-            course_id = session.course_id
-    if not course_id and attendance.enrollment_id:
-        enrollment = db.query(Enrollment).filter(Enrollment.id == attendance.enrollment_id).first()
-        if enrollment:
-            course_id = enrollment.course_id
-    if not course_id and attendance.course_name:
-        # Intento exacto (case-insensitive)
-        course_by_name = (
-            db.query(Course)
-            .filter(func.lower(Course.title) == func.lower(attendance.course_name))
-            .first()
-        )
-        # Si no hay exacto, intento por coincidencia parcial
-        if not course_by_name:
-            course_by_name = (
-                db.query(Course)
-                .filter(Course.title.ilike(f"%{attendance.course_name}%"))
-                .order_by(Course.created_at.desc())
-                .first()
+    course = None
+    
+    # Si se proporciona course_id como parámetro, usarlo directamente
+    if request.course_id:
+        # Verificar que el curso existe
+        course_exists = db.query(Course).filter(Course.id == request.course_id).first()
+        if not course_exists:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"El curso con ID {request.course_id} no existe",
             )
-        if course_by_name:
-            course_id = course_by_name.id
+        course_id = request.course_id
+        course = course_exists
 
-    # Fallback: usar la inscripción más reciente del usuario si no se pudo resolver
-    if not course_id:
-        recent_enrollment = (
-            db.query(Enrollment)
-            .filter(Enrollment.user_id == user.id)
-            .order_by(Enrollment.created_at.desc())
-            .first()
-        )
-        if recent_enrollment:
-            course_id = recent_enrollment.course_id
-
-    if not course_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "No se pudo determinar el curso del registro de asistencia"
-            ),
-        )
-
-    course = db.query(Course).filter(Course.id == course_id).first()
-
-    # Evitar duplicados: mismo usuario/curso/fecha usando plantilla 'attendance'
-    existing = (
-        db.query(Certificate)
-        .filter(
-            Certificate.user_id == user.id,
-            Certificate.course_id == course_id,
-            Certificate.completion_date == attendance.session_date,
-            Certificate.template_used == "attendance",
-        )
-        .first()
+    # Evitar duplicados: mismo usuario/fecha/asistencia usando plantilla 'attendance'
+    # Para certificados de asistencia, verificamos por usuario, fecha y tipo de plantilla
+    existing_query = db.query(Certificate).filter(
+        Certificate.user_id == user.id,
+        Certificate.completion_date == attendance.session_date,
+        Certificate.template_used == "attendance",
     )
+    
+    # Si hay course_id, también verificar por curso para evitar duplicados específicos
+    if course_id:
+        existing_query = existing_query.filter(Certificate.course_id == course_id)
+    else:
+        # Si no hay course_id, verificar que no exista otro certificado sin curso para la misma fecha
+        existing_query = existing_query.filter(Certificate.course_id.is_(None))
+    
+    existing = existing_query.first()
     if existing:
         # Si existe, regenerar el PDF si falta la ruta
         if not existing.file_path:
@@ -1759,7 +1816,7 @@ async def send_attendance_certificate(
         user_id=user.id,
         course_id=course_id,
         certificate_number=cert_number,
-        title=f"Certificado de Asistencia - {course.title if course else 'Curso'}",
+        title=f"Certificado de Asistencia{f' - {course.title}' if course else f' - {attendance.course_name}' if attendance.course_name else ''}",
         description="Certificado de asistencia generado desde el módulo de asistencias",
         completion_date=attendance.session_date,
         issue_date=datetime.utcnow(),

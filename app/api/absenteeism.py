@@ -20,95 +20,51 @@ from app.models.absenteeism import EventMonth, EventType
 router = APIRouter(tags=["absenteeism"])
 
 
-@router.post(
-    "/", response_model=AbsenteeismResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("/", response_model=AbsenteeismResponse, status_code=status.HTTP_200_OK)
 def create_absenteeism(
     absenteeism_data: AbsenteeismCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Crear un nuevo registro de ausentismo"""
-
-    try:
-        # Verificar que el trabajador existe
-        worker = (
-            db.query(Worker).filter(Worker.id == absenteeism_data.worker_id).first()
+    
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == absenteeism_data.worker_id).first()
+    if not worker:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Trabajador no encontrado"
         )
-        if not worker:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Trabajador no encontrado"
-            )
+    
+    # Validar que no haya otro registro del mismo tipo con fechas superpuestas
+    overlapping_record = db.query(Absenteeism).filter(
+        Absenteeism.worker_id == absenteeism_data.worker_id,
+        Absenteeism.event_type == absenteeism_data.event_type,
+        Absenteeism.start_date <= absenteeism_data.end_date,
+        Absenteeism.end_date >= absenteeism_data.start_date
+    ).first()
 
-        # Crear el registro de ausentismo
-        db_absenteeism = Absenteeism(**absenteeism_data.model_dump())
-        db.add(db_absenteeism)
-        db.commit()
-        db.refresh(db_absenteeism)
-
-        # Cargar la relación con el trabajador para obtener los campos calculados
-        db_absenteeism = (
-            db.query(Absenteeism)
-            .options(joinedload(Absenteeism.worker))
-            .filter(Absenteeism.id == db_absenteeism.id)
-            .first()
+    if overlapping_record:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Existe un registro del mismo tipo con fechas que se superponen"
         )
 
-        return db_absenteeism
+    # Crear el registro de ausentismo
+    db_absenteeism = Absenteeism(**absenteeism_data.model_dump())
+    db.add(db_absenteeism)
+    db.commit()
+    db.refresh(db_absenteeism)
 
-    except LookupError as e:
-        # En caso de error de enum durante la creación, usar SQL directo
-        # Primero verificar que el trabajador existe
-        worker_check = db.execute(
-            text("SELECT id FROM workers WHERE id = :worker_id"),
-            {"worker_id": absenteeism_data.worker_id},
-        ).fetchone()
-        if not worker_check:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Trabajador no encontrado"
-            )
+    # Cargar la relación con el trabajador
+    db_absenteeism = (
+        db.query(Absenteeism)
+        .options(joinedload(Absenteeism.worker))
+        .filter(Absenteeism.id == db_absenteeism.id)
+        .first()
+    )
 
-        # Crear usando SQL directo
-        data = absenteeism_data.model_dump()
-        columns = ", ".join(data.keys())
-        placeholders = ", ".join([f":{key}" for key in data.keys()])
-
-        insert_query = text(
-            f"""
-            INSERT INTO absenteeism ({columns}) 
-            VALUES ({placeholders})
-            RETURNING id
-        """
-        )
-
-        result = db.execute(insert_query, data)
-        new_id = result.fetchone()[0]
-        db.commit()
-
-        # Obtener el registro creado usando SQL directo
-        sql_query = text(
-            """
-            SELECT a.*, CONCAT(w.first_name, ' ', w.last_name) as worker_name, w.email as worker_email, 
-                   w.phone as worker_phone, 
-                   w.document_number as cedula,
-                   w.position as cargo,
-                   w.salary_ibc as base_salary
-            FROM absenteeism a
-            LEFT JOIN workers w ON a.worker_id = w.id
-            WHERE a.id = :absenteeism_id
-        """
-        )
-
-        result = db.execute(sql_query, {"absenteeism_id": new_id}).fetchone()
-        absenteeism_dict = dict(result._mapping)
-
-        # Convertir event_type y event_month a sus valores de enum correspondientes
-        if absenteeism_dict.get("event_type"):
-            absenteeism_dict["event_type"] = absenteeism_dict["event_type"]
-        if absenteeism_dict.get("event_month"):
-            absenteeism_dict["event_month"] = absenteeism_dict["event_month"]
-
-        return AbsenteeismResponse(**absenteeism_dict)
+    return db_absenteeism
 
 
 @router.get("/", response_model=AbsenteeismList)
@@ -417,8 +373,8 @@ def get_absenteeism(
             "insured_costs_ac_eg": row.insured_costs_ac_eg,
             "assumed_costs_at": row.assumed_costs_at,
             "assumed_costs_ac_eg": row.assumed_costs_ac_eg,
-            "created_at": row.created_at,
-            "updated_at": row.updated_at,
+            "created_at": getattr(row, "created_at", None),
+            "updated_at": getattr(row, "updated_at", None),
             "worker_name": (
                 f"{row.first_name} {row.last_name}"
                 if row.first_name and row.last_name
@@ -540,7 +496,7 @@ def update_absenteeism(
         return AbsenteeismWithWorker(**absenteeism_dict)
 
 
-@router.delete("/{absenteeism_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{absenteeism_id}", status_code=status.HTTP_200_OK)
 def delete_absenteeism(
     absenteeism_id: int,
     db: Session = Depends(get_db),
@@ -702,3 +658,4 @@ def search_workers(
         }
         for worker in workers
     ]
+

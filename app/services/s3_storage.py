@@ -244,6 +244,95 @@ class S3StorageService:
                 "error": str(e)
             }
     
+    async def upload_bytes(self, file_content: bytes, file_key: str, content_type: str = "application/octet-stream", metadata: Dict[str, str] = None) -> Dict[str, Any]:
+        """
+        Subir contenido de bytes directamente a S3.
+        
+        Args:
+            file_content: Contenido del archivo en bytes
+            file_key: Clave del archivo en S3
+            content_type: Tipo de contenido MIME
+            metadata: Metadatos adicionales del archivo
+            
+        Returns:
+            Dict con información del archivo subido
+        """
+        try:
+            if not self._validate_s3_config():
+                return {
+                    "success": False,
+                    "error": "Configuración de S3 incompleta"
+                }
+            
+            # Metadatos por defecto
+            if metadata is None:
+                metadata = {}
+            
+            metadata.update({
+                'upload_date': datetime.now().isoformat(),
+                'content_type': content_type,
+                'size': str(len(file_content))
+            })
+            
+            # Subir archivo a S3
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=file_key,
+                Body=file_content,
+                ContentType=content_type,
+                Metadata=metadata
+            )
+            
+            # Generar URL del archivo
+            file_url = f"https://{self.bucket_name}.s3.amazonaws.com/{file_key}"
+            
+            logger.info(f"Archivo subido exitosamente: {file_key}")
+            
+            return {
+                "success": True,
+                "file_key": file_key,
+                "file_url": file_url,
+                "size": len(file_content),
+                "content_type": content_type,
+                "upload_date": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error al subir archivo: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    def _generate_generic_file_key(self, folder: str, filename: str, user_id: int = None) -> str:
+        """
+        Generar clave única para archivos genéricos.
+        
+        Args:
+            folder: Carpeta donde guardar el archivo
+            filename: Nombre del archivo
+            user_id: ID del usuario (opcional)
+            
+        Returns:
+            Clave única del archivo
+        """
+        # Limpiar nombre del archivo
+        clean_filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
+        
+        # Generar timestamp único
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Generar ID único corto
+        unique_id = str(uuid.uuid4())[:8]
+        
+        # Construir clave del archivo
+        if user_id:
+            file_key = f"{folder}/user_{user_id}/{timestamp}_{unique_id}_{clean_filename}"
+        else:
+            file_key = f"{folder}/{timestamp}_{unique_id}_{clean_filename}"
+        
+        return file_key
+    
     def delete_file(self, file_key: str) -> Dict[str, Any]:
         """
         Eliminar archivo de S3.

@@ -8,6 +8,7 @@ data/
 *.so
 
 # Database backup script and backups
+unlock_user_account.py
 backup_production.py
 backups/
 *.sql
