@@ -9,14 +9,20 @@
     box-sizing: border-box;
 }
 
+html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
 body {
     font-family: 'Georgia', 'Times New Roman', serif;
     background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #7e22ce 100%);
-    min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 20px;
+    padding: 15px;
 }
 
 /* ============================================
@@ -25,8 +31,10 @@ body {
 
 .certificate {
     position: relative;
-    width: 279.4mm;  /* Ancho carta horizontal (11 pulgadas) */
-    height: 107.95mm; /* Media altura carta (4.25 pulgadas) */
+    width: 100%;
+    height: 100%;
+    max-width: 1100px;
+    max-height: 850px;
     background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
     border: 15px solid #1e3c72;
     box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
@@ -91,8 +99,8 @@ body {
     display: grid;
     grid-template-columns: 1.2fr 1fr;
     height: 100%;
-    padding: 25px 35px;
-    gap: 30px;
+    padding: 40px 50px;
+    gap: 40px;
     z-index: 2;
 }
 
@@ -110,13 +118,13 @@ body {
 /* Estrellas decorativas */
 .stars {
     text-align: center;
-    margin-bottom: 8px;
+    margin-bottom: 15px;
 }
 
 .star {
-    font-size: 18px;
+    font-size: 24px;
     color: #d4af37;
-    margin: 0 2px;
+    margin: 0 3px;
     display: inline-block;
     animation: twinkle 2s ease-in-out infinite;
 }
@@ -140,70 +148,70 @@ body {
 
 /* Título principal del certificado */
 .certificate-title {
-    font-size: 38px;
+    font-size: 52px;
     font-weight: 900;
     color: #1e3c72;
     text-align: center;
-    letter-spacing: 6px;
-    margin-bottom: 3px;
+    letter-spacing: 8px;
+    margin-bottom: 8px;
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* Subtítulo del certificado */
 .certificate-subtitle {
-    font-size: 16px;
+    font-size: 22px;
     color: #7e22ce;
     text-align: center;
     font-style: italic;
-    margin-bottom: 15px;
-    letter-spacing: 1.5px;
+    margin-bottom: 25px;
+    letter-spacing: 2px;
 }
 
 /* Nombre del recipiente */
 .recipient-name {
-    font-size: 26px;
+    font-size: 36px;
     font-weight: 700;
     color: #1e3c72;
     text-align: center;
-    margin-bottom: 15px;
-    padding: 10px 25px;
+    margin-bottom: 25px;
+    padding: 15px 30px;
     background: linear-gradient(90deg, transparent 0%, #f0e68c 50%, transparent 100%);
     border-top: 2px solid #d4af37;
     border-bottom: 2px solid #d4af37;
     text-transform: uppercase;
-    letter-spacing: 2px;
+    letter-spacing: 3px;
 }
 
 /* Texto de logro */
 .achievement-text {
     text-align: center;
-    margin-bottom: 12px;
+    margin-bottom: 20px;
 }
 
 .for-text {
-    font-size: 13px;
+    font-size: 16px;
     color: #555;
-    margin-bottom: 5px;
+    margin-bottom: 8px;
     font-style: italic;
 }
 
 .course-name {
-    font-size: 18px;
+    font-size: 24px;
     font-weight: 700;
     color: #7e22ce;
-    line-height: 1.3;
+    line-height: 1.4;
 }
 
 /* Descripción */
 .description {
     text-align: center;
-    margin-top: 12px;
+    margin-top: 18px;
 }
 
 .description p {
-    font-size: 11px;
+    font-size: 14px;
     color: #555;
-    line-height: 1.5;
+    line-height: 1.6;
     font-style: italic;
 }
 
@@ -216,7 +224,7 @@ body {
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    gap: 15px;
+    gap: 25px;
 }
 
 /* ============================================
@@ -225,8 +233,8 @@ body {
 
 .trophy-container {
     position: relative;
-    width: 120px;
-    height: 130px;
+    width: 180px;
+    height: 200px;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -235,7 +243,7 @@ body {
 .trophy {
     position: relative;
     z-index: 2;
-    transform: scale(0.6);
+    transform: scale(0.85);
 }
 
 /* Parte superior del trofeo */
@@ -253,7 +261,7 @@ body {
 }
 
 .star-trophy {
-    font-size: 32px;
+    font-size: 36px;
     color: #fff;
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
 }
@@ -295,9 +303,9 @@ body {
 /* Base del trofeo */
 .trophy-base {
     width: 120px;
-    height: 15px;
+    height: 18px;
     background: linear-gradient(135deg, #ffd700 0%, #d4af37 100%);
-    margin: 5px auto;
+    margin: 8px auto;
     border-radius: 5px;
     box-shadow: 0 4px 15px rgba(212, 175, 55, 0.5);
     border: 2px solid #d4af37;
@@ -307,21 +315,21 @@ body {
 .laurel-left,
 .laurel-right {
     position: absolute;
-    width: 60px;
-    height: 120px;
+    width: 70px;
+    height: 140px;
     top: 50%;
     transform: translateY(-50%);
     opacity: 0.3;
 }
 
 .laurel-left {
-    left: -10px;
+    left: -15px;
     background: linear-gradient(90deg, transparent 0%, #2d5016 50%, transparent 100%);
     border-radius: 50% 0 0 50%;
 }
 
 .laurel-right {
-    right: -10px;
+    right: -15px;
     background: linear-gradient(90deg, transparent 0%, #2d5016 50%, transparent 100%);
     border-radius: 0 50% 50% 0;
 }
@@ -332,7 +340,7 @@ body {
 
 .certificate-details {
     width: 100%;
-    padding: 12px 15px;
+    padding: 18px 20px;
     background: rgba(255, 255, 255, 0.6);
     border: 2px solid #d4af37;
     border-radius: 8px;
@@ -342,8 +350,8 @@ body {
 .detail-item {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 8px;
-    padding-bottom: 6px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
     border-bottom: 1px dashed #ddd;
 }
 
@@ -353,13 +361,13 @@ body {
 }
 
 .detail-label {
-    font-size: 11px;
+    font-size: 13px;
     color: #555;
     font-weight: 600;
 }
 
 .detail-value {
-    font-size: 11px;
+    font-size: 13px;
     color: #1e3c72;
     font-weight: 700;
 }
@@ -370,29 +378,28 @@ body {
 
 @media (max-width: 1100px) {
     .certificate {
-        width: 100%;
-        height: auto;
-        aspect-ratio: 1.414 / 1;
+        max-width: 95vw;
+        max-height: 95vh;
     }
     
     .content {
-        padding: 30px;
-        gap: 30px;
-    }
-    
-    .certificate-title {
-        font-size: 42px;
-    }
-    
-    .recipient-name {
-        font-size: 28px;
+        padding: 30px 35px;
     }
 }
 
 @media (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+
+    .certificate {
+        border-width: 10px;
+    }
+
     .content {
         grid-template-columns: 1fr;
-        padding: 20px;
+        padding: 25px;
+        gap: 25px;
     }
     
     .left-section {
@@ -400,17 +407,25 @@ body {
     }
     
     .certificate-title {
-        font-size: 36px;
-        letter-spacing: 4px;
+        font-size: 40px;
+        letter-spacing: 5px;
+    }
+
+    .certificate-subtitle {
+        font-size: 18px;
     }
     
     .recipient-name {
-        font-size: 24px;
+        font-size: 28px;
+    }
+
+    .course-name {
+        font-size: 20px;
     }
     
     .trophy-container {
-        width: 150px;
-        height: 170px;
+        width: 160px;
+        height: 180px;
     }
 }
 
@@ -419,6 +434,16 @@ body {
    ============================================ */
 
 @media print {
+    @page {
+        size: letter landscape;
+        margin: 0;
+    }
+
+    html, body {
+        width: 100%;
+        height: 100%;
+    }
+
     body {
         background: white;
         padding: 0;
@@ -427,8 +452,11 @@ body {
     .certificate {
         width: 100%;
         height: 100%;
+        max-width: none;
+        max-height: none;
         box-shadow: none;
         border-width: 15px;
+        page-break-inside: avoid;
     }
     
     .star {
@@ -438,22 +466,4 @@ body {
     .bg-decoration {
         opacity: 0.05;
     }
-}
-
-/* ============================================
-   PÁGINA PARA PDF (WeasyPrint)
-   ============================================ */
-
-@page {
-    size: letter landscape;  /* Carta horizontal */
-    margin: 0;
-}
-
-@page :first {
-    margin: 0;
-}
-
-/* Ajuste específico para media carta */
-.certificate {
-    page-break-inside: avoid;
 }

@@ -5,12 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Certificado de Asistencia</title>
     <link rel="stylesheet" href="css/attendance_certificate.css">
-    <style>
-        @page {
-            size: A4 landscape;
-            margin: 1cm;
-        }
-    </style>
 </head>
 <body>
     <div class="certificate-container">
@@ -35,11 +29,9 @@
 
         <!-- Información del curso -->
         <div class="course-info">
-            <!-- Fecha arriba a la derecha -->
             <div class="course-date-badge">{{ attendance.session_date_formatted }}</div>
             <div class="course-details">
                 <h3>INFORMACIÓN DEL CURSO</h3>
-                <!-- Título del curso grande y centrado -->
                 <div class="course-title">{{ attendance.course_name }}</div>
             </div>
         </div>
@@ -69,8 +61,18 @@
                 </div>
             </div>
         </div>
+
         <!-- Footer -->
         <div class="footer">
+            <!-- Sección de firmas -->
+            <div class="signature-section">
+                <div class="signature-box">
+                    <div class="signature-name">Bernardino de Aguas</div>
+                    <div class="signature-line"></div>
+                    <div class="signature-title">Coordinador SST</div>
+                </div>
+            </div>
+            
             <div class="footer-info">
                 <p><strong>Fecha de Generación:</strong> {{ generation_date }} - {{ generation_time }}</p>
                 <p><strong>Sistema SST</strong> - Gestión de Capacitaciones y Asistencia</p>
@@ -84,11 +86,11 @@
 
         <!-- Decorative elements -->
         <div class="decorative-border"></div>
-        {% if logo_base64 %}
         <div class="watermark">
+            {% if logo_base64 %}
             <img src="data:image/png;base64,{{ logo_base64 }}" alt="Marca de agua">
+            {% endif %}
         </div>
-        {% endif %}
     </div>
 </body>
 </html>

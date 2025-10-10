@@ -1,6 +1,7 @@
 import os
 import io
 import base64
+import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
@@ -11,6 +12,8 @@ from app.models.course import Course
 from app.utils.storage import StorageManager
 from app.config import settings
 from app.services.html_to_pdf import HTMLToPDFConverter
+
+logger = logging.getLogger(__name__)
 
 
 class CertificateGenerator:
@@ -33,10 +36,16 @@ class CertificateGenerator:
             raise ValueError("Certificate not found")
         
         user = self.db.query(User).filter(User.id == certificate.user_id).first()
-        course = self.db.query(Course).filter(Course.id == certificate.course_id).first()
+        course = None
+        if certificate.course_id:
+            course = self.db.query(Course).filter(Course.id == certificate.course_id).first()
         
-        if not user or not course:
-            raise ValueError("User or course not found")
+        if not user:
+            raise ValueError("User not found")
+        
+        # Para certificados con curso, verificar que el curso exista
+        if certificate.course_id and not course:
+            raise ValueError("Course not found")
         
         # Generar nombre del archivo
         filename = f"certificate_{certificate.certificate_number}.pdf"
@@ -45,20 +54,18 @@ class CertificateGenerator:
         # Crear el PDF localmente usando WeasyPrint
         self._create_certificate_pdf_with_weasyprint(local_filepath, certificate, user, course)
         
-        # Subir a Firebase Storage si está habilitado
+        # Si Firebase Storage está habilitado, subir el archivo
         if settings.use_firebase_storage:
+            # Subir a Firebase Storage
             firebase_path = f"{settings.firebase_certificates_path}/{filename}"
-            # Usar el método copy_local_to_firebase para subir el archivo local
-            success = await self.storage_manager.copy_local_to_firebase(
-                local_filepath, 
-                firebase_path
-            )
-            
+            success = await self.storage_manager.copy_local_to_firebase(local_filepath, firebase_path)
             if success:
-                # Construir URL pública de Firebase
                 file_url = f"https://storage.googleapis.com/{settings.firebase_storage_bucket}/{firebase_path}"
+                logger.info(f"Certificado subido a Firebase: {file_url}")
             else:
-                raise Exception("Error al subir certificado a Firebase Storage")
+                logger.error("Error al subir certificado a Firebase Storage")
+                # Usar archivo local como fallback
+                file_url = f"/certificates/{filename}"
             
             # Limpiar archivo local después de subir
             try:
@@ -115,13 +122,52 @@ class CertificateGenerator:
                 print(f"Error al cargar el logo: {str(e)}")
                 template_data["logo_base64"] = ""
             
+            # Determinar qué plantilla usar según el tipo de certificado
+            if certificate.template_used == "attendance":
+                # Usar plantilla de certificado de asistencia
+                template_name = 'attendance_certificate.html'
+                css_files = ['attendance_certificate.css']
+                
+                # Preparar datos específicos para certificado de asistencia
+                # Buscar datos de asistencia si están disponibles
+                attendance_data = {
+                    "course_name": course.title if course else certificate.title.replace("Certificado de Asistencia - ", ""),
+                    "session_date_formatted": certificate.completion_date.strftime("%d/%m/%Y"),
+                    "status": "present",
+                    "status_display": "PRESENTE",
+                    "completion_percentage": 100,
+                    "notes": certificate.description or ""
+                }
+                
+                participant_data = {
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "full_name": user.full_name,
+                    "document": user.document_number,
+                    "phone": getattr(user, 'phone', ''),
+                    "position": getattr(user, 'position', ''),
+                    "area": getattr(user, 'area', '')
+                }
+                
+                template_data = {
+                    "attendance": attendance_data,
+                    "participant": participant_data,
+                    "generation_date": certificate.issue_date.strftime("%d/%m/%Y"),
+                    "generation_time": certificate.issue_date.strftime("%H:%M:%S"),
+                    "logo_base64": template_data.get("logo_base64", "")
+                }
+            else:
+                # Usar plantilla de certificado de curso (por defecto para "default" y otros tipos)
+                template_name = 'certificate.html'
+                css_files = ['certificate.css']
+            
             # Renderizar la plantilla HTML
-            html_content = converter.render_template('certificate.html', template_data)
+            html_content = converter.render_template(template_name, template_data)
             
             # Generar el PDF usando archivo CSS externo
             pdf_content = converter.generate_pdf(
                 html_content=html_content,
-                css_files=['certificate.css'],
+                css_files=css_files,
                 output_path=filepath
             )
             
