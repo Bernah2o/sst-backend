@@ -406,6 +406,7 @@ async def get_attendance_records(
     course_id: int = None,
     session_date: date = None,
     status: AttendanceStatus = None,
+    search: str = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ) -> Any:
@@ -413,6 +414,12 @@ async def get_attendance_records(
     Get attendance records with optional filtering
     """
     query = db.query(Attendance)
+
+    # Apply search filter by user name
+    if search:
+        query = query.join(User, Attendance.user_id == User.id).filter(
+            User.full_name.ilike(f"%{search}%")
+        )
 
     # Apply filters
     if user_id:
@@ -713,7 +720,6 @@ async def generate_attendance_list_pdf(
             "title": f"Lista de Asistencia - {course_name}",
             "session_date": session_date_obj.strftime("%d/%m/%Y"),
             "course_title": course_name,
-            "instructor_name": course.instructor_name if course else "No asignado",
             "location": course.location if course else "No especificado",
             "duration": f"{first_attendance.duration_minutes or 0} min",
             "attendance_percentage": 100,
@@ -1401,11 +1407,6 @@ async def generate_attendance_list_pdf(
             "title": session.title,
             "session_date": session.session_date.strftime("%d/%m/%Y"),
             "course_title": course.title,
-            "instructor_name": getattr(
-                session,
-                "instructor_name",
-                f"{current_user.first_name} {current_user.last_name}",
-            ),
             "location": session.location or "",
             "duration": f"{getattr(session, 'duration_minutes', 0) or 0} min",
             "attendance_percentage": 100,  # Puedes calcularlo si tienes datos
@@ -1522,7 +1523,6 @@ async def generate_attendance_certificate(
         attendance_data = {
             'course_name': course_title,
             'session_date': attendance.session_date,  # Pasar objeto datetime
-            'instructor_name': course.instructor_name if course else 'No asignado',
             'location': course.location if course else 'No especificado',
             'duration_minutes': attendance.duration_minutes or 0,
             'status': attendance.status.value if hasattr(attendance.status, 'value') else attendance.status,
@@ -1534,6 +1534,7 @@ async def generate_attendance_certificate(
         participant_data = {
             'first_name': user.first_name,
             'last_name': user.last_name,
+            'full_name': user.full_name,  # Agregar nombre completo para mostrar todos los nombres y apellidos
             'document': user.document_number or '',
             'phone': user.phone or '',
             'position': user.position or '',
@@ -1657,11 +1658,6 @@ async def generate_participants_list_pdf(
             "title": session.title,
             "session_date": session.session_date.strftime("%d/%m/%Y"),
             "course_title": course.title,
-            "instructor_name": getattr(
-                session,
-                "instructor_name",
-                f"{current_user.first_name} {current_user.last_name}",
-            ),
             "location": session.location or "",
             "duration": f"{getattr(session, 'duration_minutes', 0) or 0} min",
             "attendance_percentage": 100,  # Puedes calcularlo si tienes datos
