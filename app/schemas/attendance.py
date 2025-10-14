@@ -3,6 +3,8 @@ from typing import Optional
 from pydantic import BaseModel, Field
 from enum import Enum
 
+# Schemas actualizados para Pydantic V2
+
 
 class AttendanceStatus(str, Enum):
     PRESENT = "present"
@@ -40,7 +42,7 @@ class AttendanceBase(BaseModel):
 
 
 class AttendanceCreate(AttendanceBase):
-    pass
+    send_notifications: bool = False
 
 
 class AttendanceUpdate(BaseModel):
