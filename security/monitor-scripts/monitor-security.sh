@@ -75,11 +75,44 @@ analyze_postgres_logs() {
         # Buscar intentos de autenticación fallidos en las últimas 24 horas
         FAILED_AUTHS=$(find "$LOG_PATH" -name "*.log" -mtime -1 -exec grep -c "authentication failed\|password authentication failed" {} + 2>/dev/null | awk '{sum+=$1} END {print sum+0}')
         
+        # Buscar intentos específicos con usuarios comunes de ataques
+        POSTGRES_ATTACKS=$(find "$LOG_PATH" -name "*.log" -mtime -1 -exec grep -c "password authentication failed for user \"postgres\"" {} + 2>/dev/null | awk '{sum+=$1} END {print sum+0}')
+        ADMIN_ATTACKS=$(find "$LOG_PATH" -name "*.log" -mtime -1 -exec grep -c "password authentication failed for user \"admin\"" {} + 2>/dev/null | awk '{sum+=$1} END {print sum+0}')
+        ROOT_ATTACKS=$(find "$LOG_PATH" -name "*.log" -mtime -1 -exec grep -c "password authentication failed for user \"root\"" {} + 2>/dev/null | awk '{sum+=$1} END {print sum+0}')
+        
+        # Buscar intentos con usuarios inexistentes
+        ROLE_NOT_EXIST=$(find "$LOG_PATH" -name "*.log" -mtime -1 -exec grep -c "Role .* does not exist" {} + 2>/dev/null | awk '{sum+=$1} END {print sum+0}')
+        
         log "📊 Intentos de autenticación fallidos (24h): $FAILED_AUTHS"
+        log "🚨 Intentos con usuario 'postgres' (24h): $POSTGRES_ATTACKS"
+        log "🚨 Intentos con usuario 'admin' (24h): $ADMIN_ATTACKS"
+        log "🚨 Intentos con usuario 'root' (24h): $ROOT_ATTACKS"
+        log "🚨 Intentos con usuarios inexistentes (24h): $ROLE_NOT_EXIST"
+        
+        # Generar alertas específicas
+        if [ "$POSTGRES_ATTACKS" -gt 0 ]; then
+            log "🔥 ALERTA CRÍTICA: Detectados $POSTGRES_ATTACKS intentos de conexión con usuario 'postgres'"
+        fi
+        
+        if [ "$ADMIN_ATTACKS" -gt 0 ]; then
+            log "🔥 ALERTA CRÍTICA: Detectados $ADMIN_ATTACKS intentos de conexión con usuario 'admin'"
+        fi
+        
+        if [ "$ROOT_ATTACKS" -gt 0 ]; then
+            log "🔥 ALERTA CRÍTICA: Detectados $ROOT_ATTACKS intentos de conexión con usuario 'root'"
+        fi
         
         if [ "$FAILED_AUTHS" -gt 10 ]; then
-            log "⚠️  ALERTA: Muchos intentos de autenticación fallidos detectados"
+            log "⚠️  ALERTA: Muchos intentos de autenticación fallidos detectados ($FAILED_AUTHS)"
         fi
+        
+        # Mostrar las últimas IPs que intentaron conectarse
+        log "🔍 Últimas IPs sospechosas:"
+        find "$LOG_PATH" -name "*.log" -mtime -1 -exec grep -h "password authentication failed\|Role .* does not exist" {} + 2>/dev/null | \
+        grep -o "Connection matched.*" | head -10 | while read line; do
+            log "   $line"
+        done
+        
     else
         log "⚠️  Directorio de logs de PostgreSQL no encontrado"
     fi

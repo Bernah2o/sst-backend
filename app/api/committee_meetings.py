@@ -106,7 +106,7 @@ async def create_committee_meeting(
         attendance = MeetingAttendance(
             meeting_id=db_meeting.id,
             user_id=member.user_id,
-            status=AttendanceStatusEnum.pending
+            status=AttendanceStatusEnum.ABSENT
         )
         db.add(attendance)
     
