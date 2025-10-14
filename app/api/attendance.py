@@ -616,10 +616,75 @@ async def create_attendance_record(
                 * 100,
             )
 
+    # Remover send_notifications del dict antes de crear el modelo
+    send_notifications = attendance_dict.pop("send_notifications", False)
+    
     attendance = Attendance(**attendance_dict)
     db.add(attendance)
     db.commit()
     db.refresh(attendance)
+    
+    # Enviar notificación por email si está habilitado
+    if send_notifications:
+        try:
+            # Obtener información del usuario
+            user = db.query(User).filter(User.id == attendance.user_id).first()
+            if user and user.email:
+                # Preparar datos para la notificación
+                notification_data = {
+                    "user_name": user.full_name or f"{user.first_name} {user.last_name}",
+                    "course_name": attendance.course_name or "Curso",
+                    "session_date": attendance.session_date.strftime("%d/%m/%Y"),
+                    "status": attendance.status.value,
+                    "attendance_type": attendance.attendance_type.value,
+                    "location": attendance.location or "No especificada",
+                    "notes": attendance.notes or "",
+                }
+                
+                # Enviar email
+                from app.utils.email import send_email
+                subject = f"Confirmación de Asistencia - {notification_data['course_name']}"
+                
+                # Template básico para el email
+                email_content = f"""
+                <h2>Confirmación de Registro de Asistencia</h2>
+                <p>Estimado/a {notification_data['user_name']},</p>
+                <p>Se ha registrado su asistencia con los siguientes detalles:</p>
+                <ul>
+                    <li><strong>Curso:</strong> {notification_data['course_name']}</li>
+                    <li><strong>Fecha:</strong> {notification_data['session_date']}</li>
+                    <li><strong>Estado:</strong> {notification_data['status']}</li>
+                    <li><strong>Tipo:</strong> {notification_data['attendance_type']}</li>
+                    <li><strong>Ubicación:</strong> {notification_data['location']}</li>
+                </ul>
+                {f"<p><strong>Notas:</strong> {notification_data['notes']}</p>" if notification_data['notes'] else ""}
+                <p>Gracias por su participación.</p>
+                """
+                
+                send_email(
+                    recipient=user.email,
+                    subject=subject,
+                    body=email_content,
+                )
+                
+                # Crear registro de notificación en la base de datos
+                from app.models.notification import Notification
+                notification = Notification(
+                    user_id=user.id,
+                    type="attendance_confirmation",
+                    title=subject,
+                    message=f"Asistencia registrada para {notification_data['course_name']} el {notification_data['session_date']}",
+                    is_read=False,
+                    email_sent=True,
+                    email_sent_at=datetime.utcnow(),
+                )
+                db.add(notification)
+                db.commit()
+                
+        except Exception as e:
+            # Log el error pero no fallar la creación de asistencia
+            print(f"Error sending attendance notification: {str(e)}")
+    
     return attendance
 
 

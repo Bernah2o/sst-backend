@@ -243,7 +243,7 @@ async def delete_certificate(
     db: Session = Depends(get_db)
 ) -> Any:
     """
-    Revoke certificate (admin only) - Changes status to REVOKED instead of physical deletion
+    Delete certificate physically (admin only) - Removes the certificate from database and storage
     """
     if current_user.role.value not in ["admin", "capacitador"]:
         raise HTTPException(
@@ -259,20 +259,7 @@ async def delete_certificate(
             detail="Certificado no encontrado"
         )
     
-    # Check if certificate is already revoked
-    if certificate.status == CertificateStatus.REVOKED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El certificado ya está revocado"
-        )
-    
-    # Revoke the certificate instead of deleting it
-    certificate.status = CertificateStatus.REVOKED
-    certificate.revoked_by = current_user.id
-    certificate.revoked_at = datetime.utcnow()
-    certificate.revocation_reason = "Revocado por administrador"
-    
-    # Optionally delete the physical file but keep the database record
+    # Delete the physical file first
     try:
         storage_manager = StorageManager()
         
@@ -292,16 +279,15 @@ async def delete_certificate(
         generator = CertificateGenerator(db)
         generator.delete_certificate_file(certificate_id)
         
-        # Clear the file path since the file has been deleted
-        certificate.file_path = None
-        
     except Exception as e:
-        # Continue with revocation even if file deletion fails
-        pass
+        # Continue with deletion even if file deletion fails
+        print(f"Warning: Could not delete certificate file: {e}")
     
+    # Delete the certificate record from database
+    db.delete(certificate)
     db.commit()
     
-    return MessageResponse(message="Certificado revocado exitosamente")
+    return MessageResponse(message="Certificado eliminado exitosamente")
 
 
 @router.post("/generate", response_model=CertificateResponse)
