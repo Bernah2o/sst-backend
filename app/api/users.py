@@ -1,7 +1,8 @@
 import os
 from typing import Any, List
+import json
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy import or_
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session, joinedload
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.dependencies import get_current_active_user
 from app.models.user import User
+from app.models.audit import AuditLog, AuditAction
 from app.schemas.user import UserResponse, UserRegister, UserUpdate, UserProfile, PasswordChange, UserCreate, UserCreateByAdmin
 from app.schemas.common import MessageResponse, PaginatedResponse
 from app.services.auth import AuthService
@@ -147,6 +149,7 @@ async def get_users(
 @router.post("", response_model=UserResponse)
 async def create_user(
     user_data: UserCreateByAdmin,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ) -> Any:
@@ -227,6 +230,30 @@ async def create_user(
     worker.user_id = user.id
     db.commit()
     
+    # Create audit log for user creation
+    audit_log = AuditLog.log_action(
+        user_id=current_user.id,
+        action=AuditAction.CREATE,
+        resource_type="user",
+        resource_id=user.id,
+        resource_name=f"{user.first_name} {user.last_name}",
+        new_values={
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "document_type": user.document_type,
+            "document_number": user.document_number,
+            "role": user.role.value,
+            "department": user.department,
+            "position": user.position
+        },
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        details=f"Usuario creado por administrador: {current_user.email}"
+    )
+    db.add(audit_log)
+    db.commit()
+    
     return user
 
 
@@ -249,6 +276,7 @@ async def get_users_list(
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
     user_id: int,
+    request: Request,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:
@@ -268,12 +296,28 @@ async def get_user(
             detail="Usuario no encontrado"
         )
     
+    # Create audit log for user read (only if accessing another user's data)
+    if current_user.id != user_id:
+        audit_log = AuditLog.log_action(
+            user_id=current_user.id,
+            action=AuditAction.READ,
+            resource_type="user",
+            resource_id=user.id,
+            resource_name=f"{user.first_name} {user.last_name}",
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            details=f"Usuario consultado por: {current_user.email}"
+        )
+        db.add(audit_log)
+        db.commit()
+    
     return user
 
 
 @router.delete("/{user_id}", response_model=MessageResponse)
 async def delete_user(
     user_id: int,
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ) -> Any:
@@ -313,11 +357,15 @@ async def delete_user(
                 detail="Permisos insuficientes"
             )
         
-        # Check if target user exists using raw SQL
-        result = db.execute(text("SELECT id FROM users WHERE id = :user_id"), {"user_id": user_id})
-        user_exists = result.fetchone()
+        # Get user information for audit before deletion
+        result = db.execute(text("""
+            SELECT id, email, first_name, last_name, document_type, document_number, 
+                   phone, department, position, role, is_active 
+            FROM users WHERE id = :user_id
+        """), {"user_id": user_id})
+        user_data = result.fetchone()
         
-        if not user_exists:
+        if not user_data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Usuario no encontrado"
@@ -394,8 +442,35 @@ async def delete_user(
         result = db.execute(text("DELETE FROM notifications WHERE user_id = :user_id"), {"user_id": user_id})
         print(f"Deleted {result.rowcount} notifications")
         
-        # Delete audit_logs
-        result = db.execute(text("DELETE FROM audit_logs WHERE user_id = :user_id"), {"user_id": user_id})
+        # Create audit log before deleting user data
+        audit_log = AuditLog.log_action(
+            user_id=current_user_id,
+            action=AuditAction.DELETE,
+            resource_type="user",
+            resource_id=user_data.id,
+            resource_name=f"{user_data.first_name} {user_data.last_name}",
+            old_values={
+                "email": user_data.email,
+                "first_name": user_data.first_name,
+                "last_name": user_data.last_name,
+                "document_type": user_data.document_type,
+                "document_number": user_data.document_number,
+                "phone": user_data.phone,
+                "department": user_data.department,
+                "position": user_data.position,
+                "role": user_data.role,
+                "is_active": user_data.is_active
+            },
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            details=f"Usuario eliminado por administrador con ID: {current_user_id}"
+        )
+        db.add(audit_log)
+        db.commit()
+        
+        # Delete audit_logs (except the one we just created)
+        result = db.execute(text("DELETE FROM audit_logs WHERE user_id = :user_id AND id != :audit_id"), 
+                          {"user_id": user_id, "audit_id": audit_log.id})
         print(f"Deleted {result.rowcount} audit logs")
         
         # Finally delete the user using raw SQL to avoid ORM relationship issues
@@ -431,6 +506,7 @@ async def delete_user(
 async def update_user(
     user_id: int,
     user_update: UserUpdate,
+    request: Request,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:
@@ -450,6 +526,20 @@ async def update_user(
             detail="Usuario no encontrado"
         )
     
+    # Capture old values for audit
+    old_values = {
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "document_type": user.document_type,
+        "document_number": user.document_number,
+        "phone": user.phone,
+        "department": user.department,
+        "position": user.position,
+        "role": user.role.value if user.role else None,
+        "is_active": user.is_active
+    }
+    
     # Update user fields
     update_data = user_update.dict(exclude_unset=True)
     for field, value in update_data.items():
@@ -457,5 +547,35 @@ async def update_user(
     
     db.commit()
     db.refresh(user)
+    
+    # Capture new values for audit
+    new_values = {
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "document_type": user.document_type,
+        "document_number": user.document_number,
+        "phone": user.phone,
+        "department": user.department,
+        "position": user.position,
+        "role": user.role.value if user.role else None,
+        "is_active": user.is_active
+    }
+    
+    # Create audit log for user update
+    audit_log = AuditLog.log_action(
+        user_id=current_user.id,
+        action=AuditAction.UPDATE,
+        resource_type="user",
+        resource_id=user.id,
+        resource_name=f"{user.first_name} {user.last_name}",
+        old_values=old_values,
+        new_values=new_values,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        details=f"Usuario actualizado por administrador: {current_user.email}"
+    )
+    db.add(audit_log)
+    db.commit()
     
     return user
