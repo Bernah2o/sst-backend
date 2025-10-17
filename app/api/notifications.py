@@ -756,32 +756,42 @@ async def send_notifications_to_all(
             detail="Permisos insuficientes"
         )
     
-    # Get all active users
-    all_users = db.query(User).filter(User.is_active == True).all()
+    # Get total count of active users first
+    total_users = db.query(User).filter(User.is_active == True).count()
     
-    if not all_users:
+    if total_users == 0:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No se encontraron usuarios activos"
         )
     
-    # Create notifications for all users
-    notifications = []
-    for user in all_users:
-        notification = Notification(
-            user_id=user.id,
-            title=title,
-            message=message,
-            notification_type=notification_type,
-            priority=priority
-        )
-        notifications.append(notification)
+    # Process users in batches to avoid memory issues
+    batch_size = 100
+    total_notifications = 0
     
-    db.add_all(notifications)
-    db.commit()
+    for offset in range(0, total_users, batch_size):
+        # Get users in batches
+        users_batch = db.query(User.id).filter(User.is_active == True).offset(offset).limit(batch_size).all()
+        
+        # Create notifications for this batch
+        notifications = []
+        for user in users_batch:
+            notification = Notification(
+                user_id=user.id,
+                title=title,
+                message=message,
+                notification_type=notification_type,
+                priority=priority
+            )
+            notifications.append(notification)
+        
+        # Insert batch
+        db.add_all(notifications)
+        db.commit()
+        total_notifications += len(notifications)
     
     return MessageResponse(
-        message=f"Se enviaron {len(notifications)} notificaciones a todos los usuarios activos"
+        message=f"Se enviaron {total_notifications} notificaciones a todos los usuarios activos"
     )
 
 

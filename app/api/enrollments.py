@@ -4,7 +4,7 @@ import secrets
 import string
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import and_, func
 
 from app.database import get_db
@@ -556,12 +556,12 @@ async def get_user_enrollments(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
 
-    # Get user enrollments
-    enrollments = db.query(Enrollment).filter(Enrollment.user_id == user_id).all()
+    # Get user enrollments with eager loading
+    enrollments = db.query(Enrollment).options(joinedload(Enrollment.course)).filter(Enrollment.user_id == user_id).all()
 
     enrollment_details = []
     for enrollment in enrollments:
-        course = db.query(Course).filter(Course.id == enrollment.course_id).first()
+        course = enrollment.course
         enrollment_details.append(
             {
                 "enrollment_id": enrollment.id,
@@ -829,18 +829,20 @@ async def get_course_workers(
             status_code=status.HTTP_404_NOT_FOUND, detail="Curso no encontrado"
         )
 
-    # Get all enrollments for this course
-    enrollments = db.query(Enrollment).filter(Enrollment.course_id == course_id).all()
+    # Get all enrollments for this course with eager loading
+    enrollments = db.query(Enrollment).options(
+        joinedload(Enrollment.user).selectinload(User.worker)
+    ).filter(Enrollment.course_id == course_id).all()
 
     # Get user details for each enrollment
     enrolled_workers = []
     for enrollment in enrollments:
-        user = db.query(User).filter(User.id == enrollment.user_id).first()
+        user = enrollment.user
         if not user:
             continue
 
         # Check if user is associated with a worker
-        worker = db.query(Worker).filter(Worker.user_id == user.id).first()
+        worker = user.worker[0] if user.worker else None
 
         worker_data = {
             "enrollment_id": enrollment.id,
