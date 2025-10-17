@@ -226,8 +226,15 @@ async def get_available_surveys(
     
     enrolled_course_ids = [enrollment.course_id for enrollment in enrollments]
     
-    # Build query for available surveys
-    query = db.query(Survey).options(joinedload(Survey.course)).filter(
+    # Build optimized query using LEFT JOIN to filter completed surveys
+    query = db.query(Survey).options(joinedload(Survey.course)).outerjoin(
+        UserSurvey,
+        and_(
+            UserSurvey.survey_id == Survey.id,
+            UserSurvey.user_id == current_user.id,
+            UserSurvey.status == UserSurveyStatus.COMPLETED
+        )
+    ).filter(
         and_(
             Survey.status == SurveyStatus.PUBLISHED,
             or_(
@@ -235,19 +242,11 @@ async def get_available_surveys(
                 Survey.course_id.is_(None),
                 # Course-specific surveys for enrolled courses
                 Survey.course_id.in_(enrolled_course_ids)
-            )
+            ),
+            # Exclude completed surveys
+            UserSurvey.id.is_(None)
         )
     )
-    
-    # Filter out surveys already completed by the user
-    completed_survey_ids = db.query(UserSurvey.survey_id).filter(
-        and_(
-            UserSurvey.user_id == current_user.id,
-            UserSurvey.status == UserSurveyStatus.COMPLETED
-        )
-    ).subquery()
-    
-    query = query.filter(~Survey.id.in_(completed_survey_ids))
     
     # Get total count
     total = query.count()
@@ -727,6 +726,7 @@ async def get_survey(
 async def update_survey(
     survey_id: int,
     survey_data: SurveyUpdate,
+    force_update: bool = False,  # New parameter to force update even with responses
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:
@@ -747,6 +747,10 @@ async def update_survey(
             detail="Encuesta no encontrada"
         )
     
+    # Check if survey has responses
+    user_surveys_count = db.query(UserSurvey).filter(UserSurvey.survey_id == survey_id).count()
+    has_responses = user_surveys_count > 0
+    
     # Update survey fields (excluding questions)
     update_data = survey_data.dict(exclude_unset=True, exclude={'questions'})
     for field, value in update_data.items():
@@ -754,26 +758,84 @@ async def update_survey(
     
     # Handle questions update if provided
     if survey_data.questions is not None:
-        # Delete existing questions
-        db.query(SurveyQuestion).filter(SurveyQuestion.survey_id == survey_id).delete()
-        
-        # Create new questions
-        for i, question_data in enumerate(survey_data.questions):
-            question = SurveyQuestion(
-                survey_id=survey.id,
-                question_text=question_data.question_text,
-                question_type=question_data.question_type,
-                options=question_data.options,
-                is_required=question_data.is_required,
-                order_index=i,
-                min_value=question_data.min_value,
-                max_value=question_data.max_value,
-                placeholder_text=question_data.placeholder_text
+        if has_responses and not force_update:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"No se pueden modificar las preguntas porque la encuesta ya tiene {user_surveys_count} respuestas. Use 'force_update=true' para forzar la actualización (esto puede afectar la integridad de las respuestas existentes)."
             )
-            db.add(question)
+        
+        if force_update and has_responses:
+            # When forcing update with existing responses, we need to handle this carefully
+            # First, get existing questions with their IDs
+            existing_questions = {q.id: q for q in survey.questions}
+            
+            # Track which questions to keep, update, or delete
+            questions_to_keep = set()
+            
+            # Process each question in the update
+            for i, question_data in enumerate(survey_data.questions):
+                if hasattr(question_data, 'id') and question_data.id and question_data.id in existing_questions:
+                    # Update existing question
+                    existing_question = existing_questions[question_data.id]
+                    update_question_data = question_data.dict(exclude_unset=True, exclude={'id'})
+                    update_question_data['order_index'] = i
+                    
+                    for field, value in update_question_data.items():
+                        setattr(existing_question, field, value)
+                    
+                    questions_to_keep.add(question_data.id)
+                else:
+                    # Create new question
+                    new_question = SurveyQuestion(
+                        survey_id=survey.id,
+                        question_text=question_data.question_text,
+                        question_type=question_data.question_type,
+                        options=question_data.options,
+                        is_required=question_data.is_required,
+                        order_index=i,
+                        min_value=question_data.min_value,
+                        max_value=question_data.max_value,
+                        placeholder_text=question_data.placeholder_text
+                    )
+                    db.add(new_question)
+            
+            # Delete questions that are no longer in the update (and their associated answers)
+            questions_to_delete = set(existing_questions.keys()) - questions_to_keep
+            if questions_to_delete:
+                # Delete associated answers first
+                for question_id in questions_to_delete:
+                    db.query(UserSurveyAnswer).filter(UserSurveyAnswer.question_id == question_id).delete()
+                
+                # Delete the questions
+                db.query(SurveyQuestion).filter(SurveyQuestion.id.in_(questions_to_delete)).delete()
+        else:
+            # No responses or not forcing - safe to delete and recreate all questions
+            db.query(SurveyQuestion).filter(SurveyQuestion.survey_id == survey_id).delete()
+            
+            # Create new questions
+            for i, question_data in enumerate(survey_data.questions):
+                question = SurveyQuestion(
+                    survey_id=survey.id,
+                    question_text=question_data.question_text,
+                    question_type=question_data.question_type,
+                    options=question_data.options,
+                    is_required=question_data.is_required,
+                    order_index=i,
+                    min_value=question_data.min_value,
+                    max_value=question_data.max_value,
+                    placeholder_text=question_data.placeholder_text
+                )
+                db.add(question)
     
-    db.commit()
-    db.refresh(survey)
+    try:
+        db.commit()
+        db.refresh(survey)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al actualizar la encuesta: {str(e)}"
+        )
     
     # Transform to include course information
     survey_dict = {
@@ -816,6 +878,7 @@ async def update_survey(
 @router.delete("/{survey_id}", response_model=MessageResponse)
 async def delete_survey(
     survey_id: int,
+    force: bool = False,  # New parameter to force deletion with cascade
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:
@@ -836,31 +899,56 @@ async def delete_survey(
             detail="Survey not found"
         )
     
-    # Check if survey has responses
-    user_surveys_count = db.query(UserSurvey).filter(UserSurvey.survey_id == survey_id).count()
-    
-    if user_surveys_count > 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No se puede eliminar la encuesta porque ya tiene respuestas asociadas. Para eliminarla, primero debe eliminar todas las respuestas."
-        )
-    
     try:
+        # Check if survey has responses
+        user_surveys = db.query(UserSurvey).filter(UserSurvey.survey_id == survey_id).all()
+        user_surveys_count = len(user_surveys)
+        
+        if user_surveys_count > 0 and not force:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"No se puede eliminar la encuesta porque ya tiene {user_surveys_count} respuestas asociadas. Use el parámetro 'force=true' para eliminar en cascada o elimine primero las respuestas."
+            )
+        
+        # If force is True, delete all related data in the correct order
+        if force and user_surveys_count > 0:
+            total_answers_deleted = 0
+            
+            # Delete all user survey answers for each user survey
+            for user_survey in user_surveys:
+                answers_count = db.query(UserSurveyAnswer).filter(UserSurveyAnswer.user_survey_id == user_survey.id).count()
+                db.query(UserSurveyAnswer).filter(UserSurveyAnswer.user_survey_id == user_survey.id).delete()
+                total_answers_deleted += answers_count
+            
+            # Delete all user surveys
+            db.query(UserSurvey).filter(UserSurvey.survey_id == survey_id).delete()
+            db.flush()  # Ensure the deletes are executed
+        
+        # Delete the survey (questions will be deleted automatically due to cascade="all, delete-orphan")
         db.delete(survey)
         db.commit()
-        return MessageResponse(message="Encuesta eliminada exitosamente")
+        
+        message = "Encuesta eliminada exitosamente"
+        if force and user_surveys_count > 0:
+            message += f" (se eliminaron {user_surveys_count} respuestas de usuarios y {total_answers_deleted} respuestas individuales)"
+        
+        return MessageResponse(message=message)
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
         db.rollback()
         # Handle any other integrity constraint violations
         if "foreign key" in str(e).lower() or "viola la llave foránea" in str(e).lower():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No se puede eliminar la encuesta porque tiene datos relacionados. Elimine primero las respuestas asociadas."
+                detail="No se puede eliminar la encuesta porque tiene datos relacionados. Use el parámetro 'force=true' para eliminar en cascada."
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error interno del servidor al eliminar la encuesta"
+                detail=f"Error interno del servidor al eliminar la encuesta: {str(e)}"
             )
 
 
@@ -937,6 +1025,7 @@ async def create_survey_question(
 async def update_survey_question(
     question_id: int,
     question_data: SurveyQuestionUpdate,
+    force_update: bool = False,  # New parameter to force update even with responses
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:
@@ -957,15 +1046,37 @@ async def update_survey_question(
             detail="Pregunta no encontrada"
         )
     
-    # Update question fields
+    # Check if question has answers
+    answers_count = db.query(UserSurveyAnswer).filter(UserSurveyAnswer.question_id == question_id).count()
+    has_answers = answers_count > 0
+    
+    # Check if the update involves critical fields that could affect existing answers
     update_data = question_data.dict(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(question, field, value)
+    critical_fields = {'question_type', 'options', 'min_value', 'max_value'}
+    has_critical_changes = any(field in update_data for field in critical_fields)
     
-    db.commit()
-    db.refresh(question)
+    if has_answers and has_critical_changes and not force_update:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No se puede modificar la pregunta porque ya tiene {answers_count} respuestas y los cambios afectan campos críticos (tipo, opciones, valores min/max). Use 'force_update=true' para forzar la actualización (esto puede afectar la validez de las respuestas existentes)."
+        )
     
-    return question
+    try:
+        # Update question fields
+        for field, value in update_data.items():
+            setattr(question, field, value)
+        
+        db.commit()
+        db.refresh(question)
+        
+        return question
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al actualizar la pregunta: {str(e)}"
+        )
 
 
 @router.delete("/questions/{question_id}", response_model=MessageResponse)
@@ -991,10 +1102,38 @@ async def delete_survey_question(
             detail="Pregunta no encontrada"
         )
     
-    db.delete(question)
-    db.commit()
-    
-    return MessageResponse(message="Pregunta eliminada exitosamente")
+    try:
+        # First, delete all answers associated with this question
+        answers_count = db.query(UserSurveyAnswer).filter(UserSurveyAnswer.question_id == question_id).count()
+        
+        if answers_count > 0:
+            # Delete all user survey answers for this question
+            db.query(UserSurveyAnswer).filter(UserSurveyAnswer.question_id == question_id).delete()
+            db.flush()  # Ensure the deletes are executed before deleting the question
+        
+        # Now delete the question
+        db.delete(question)
+        db.commit()
+        
+        message = f"Pregunta eliminada exitosamente"
+        if answers_count > 0:
+            message += f" (se eliminaron {answers_count} respuestas asociadas)"
+        
+        return MessageResponse(message=message)
+        
+    except Exception as e:
+        db.rollback()
+        # Handle any other integrity constraint violations
+        if "foreign key" in str(e).lower() or "viola la llave foránea" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se puede eliminar la pregunta porque tiene datos relacionados. Contacte al administrador del sistema."
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error interno del servidor al eliminar la pregunta: {str(e)}"
+            )
 
 
 # User Survey endpoints
@@ -1549,3 +1688,227 @@ async def get_survey_detailed_results(
         questions=survey.questions,
         employee_responses=employee_responses
     )
+
+
+@router.post("/cleanup/orphaned-answers", response_model=MessageResponse)
+async def cleanup_orphaned_answers(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Clean up orphaned survey answers (admin only)
+    This endpoint removes UserSurveyAnswer records that reference non-existent SurveyQuestion records
+    """
+    if current_user.role.value != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los administradores pueden ejecutar la limpieza de datos"
+        )
+    
+    try:
+        # Find orphaned answers - answers that reference questions that don't exist
+        orphaned_answers = db.query(UserSurveyAnswer).filter(
+            ~UserSurveyAnswer.question_id.in_(
+                db.query(SurveyQuestion.id)
+            )
+        ).all()
+        
+        orphaned_count = len(orphaned_answers)
+        
+        if orphaned_count == 0:
+            return MessageResponse(message="No se encontraron respuestas huérfanas para limpiar")
+        
+        # Delete orphaned answers
+        for answer in orphaned_answers:
+            db.delete(answer)
+        
+        db.commit()
+        
+        return MessageResponse(
+            message=f"Limpieza completada exitosamente. Se eliminaron {orphaned_count} respuestas huérfanas"
+        )
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error durante la limpieza de datos: {str(e)}"
+        )
+
+
+@router.get("/cleanup/check-integrity", response_model=dict)
+async def check_data_integrity(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Check data integrity for surveys (admin only)
+    Returns information about potential data integrity issues
+    """
+    if current_user.role.value != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo los administradores pueden verificar la integridad de datos"
+        )
+    
+    try:
+        # Check for orphaned answers
+        orphaned_answers = db.query(UserSurveyAnswer).filter(
+            ~UserSurveyAnswer.question_id.in_(
+                db.query(SurveyQuestion.id)
+            )
+        ).all()
+        
+        # Check for orphaned user surveys
+        orphaned_user_surveys = db.query(UserSurvey).filter(
+            ~UserSurvey.survey_id.in_(
+                db.query(Survey.id)
+            )
+        ).all()
+        
+        # Check for orphaned questions
+        orphaned_questions = db.query(SurveyQuestion).filter(
+            ~SurveyQuestion.survey_id.in_(
+                db.query(Survey.id)
+            )
+        ).all()
+        
+        # Get specific problematic question IDs
+        problematic_question_ids = [answer.question_id for answer in orphaned_answers]
+        unique_problematic_question_ids = list(set(problematic_question_ids))
+        
+        return {
+            "orphaned_answers": {
+                "count": len(orphaned_answers),
+                "question_ids": unique_problematic_question_ids
+            },
+            "orphaned_user_surveys": {
+                "count": len(orphaned_user_surveys),
+                "survey_ids": [us.survey_id for us in orphaned_user_surveys]
+            },
+            "orphaned_questions": {
+                "count": len(orphaned_questions),
+                "question_ids": [q.id for q in orphaned_questions]
+            },
+            "total_issues": len(orphaned_answers) + len(orphaned_user_surveys) + len(orphaned_questions)
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+             detail=f"Error al verificar la integridad de datos: {str(e)}"
+         )
+
+
+@router.get("/{survey_id}/edit-impact", response_model=dict)
+async def get_survey_edit_impact(
+    survey_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get information about the impact of editing a survey (admin and capacitador roles only)
+    Returns details about existing responses that would be affected
+    """
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permisos insuficientes"
+        )
+    
+    survey = db.query(Survey).filter(Survey.id == survey_id).first()
+    
+    if not survey:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Encuesta no encontrada"
+        )
+    
+    try:
+        # Get user surveys and their responses
+        user_surveys = db.query(UserSurvey).filter(UserSurvey.survey_id == survey_id).all()
+        
+        # Get question-level response counts
+        question_response_counts = {}
+        for question in survey.questions:
+            answer_count = db.query(UserSurveyAnswer).filter(UserSurveyAnswer.question_id == question.id).count()
+            question_response_counts[question.id] = {
+                "question_text": question.question_text,
+                "question_type": question.question_type,
+                "answer_count": answer_count
+            }
+        
+        return {
+            "survey_id": survey_id,
+            "survey_title": survey.title,
+            "total_user_surveys": len(user_surveys),
+            "completed_surveys": len([us for us in user_surveys if us.status == UserSurveyStatus.COMPLETED]),
+            "in_progress_surveys": len([us for us in user_surveys if us.status == UserSurveyStatus.IN_PROGRESS]),
+            "question_response_counts": question_response_counts,
+            "can_edit_safely": len(user_surveys) == 0,
+            "requires_force_update": len(user_surveys) > 0,
+            "warning_message": f"Esta encuesta tiene {len(user_surveys)} respuestas de usuarios. Editarla puede afectar la integridad de los datos existentes." if len(user_surveys) > 0 else None
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener información de impacto: {str(e)}"
+        )
+
+
+@router.get("/questions/{question_id}/edit-impact", response_model=dict)
+async def get_question_edit_impact(
+    question_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Get information about the impact of editing a question (admin and capacitador roles only)
+    Returns details about existing answers that would be affected
+    """
+    if current_user.role.value not in ["admin", "capacitador"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permisos insuficientes"
+        )
+    
+    question = db.query(SurveyQuestion).filter(SurveyQuestion.id == question_id).first()
+    
+    if not question:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pregunta no encontrada"
+        )
+    
+    try:
+        # Get answers for this question
+        answers = db.query(UserSurveyAnswer).filter(UserSurveyAnswer.question_id == question_id).all()
+        
+        # Analyze answer distribution
+        answer_distribution = {}
+        for answer in answers:
+            answer_value = answer.answer_value
+            if answer_value in answer_distribution:
+                answer_distribution[answer_value] += 1
+            else:
+                answer_distribution[answer_value] = 1
+        
+        return {
+            "question_id": question_id,
+            "question_text": question.question_text,
+            "question_type": question.question_type,
+            "current_options": question.options,
+            "total_answers": len(answers),
+            "answer_distribution": answer_distribution,
+            "can_edit_safely": len(answers) == 0,
+            "requires_force_update": len(answers) > 0,
+            "critical_fields": ["question_type", "options", "min_value", "max_value"],
+            "warning_message": f"Esta pregunta tiene {len(answers)} respuestas. Cambiar el tipo, opciones o valores min/max puede afectar la validez de las respuestas existentes." if len(answers) > 0 else None
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener información de impacto: {str(e)}"
+        )
