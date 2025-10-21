@@ -1,6 +1,6 @@
 from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, UploadFile, File
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from datetime import date, timedelta
@@ -8,6 +8,8 @@ import os
 import uuid
 from pathlib import Path
 import requests
+import io
+import httpx
 
 from app.database import get_db
 from app.services.s3_storage import s3_service
@@ -842,3 +844,107 @@ async def get_exam_pdf(
         status_code=status.HTTP_404_NOT_FOUND,
         detail="Archivo no encontrado"
     )
+
+
+@router.get("/{exam_id}/medical-recommendation-report")
+async def generate_medical_recommendation_report(
+    exam_id: int,
+    download: bool = Query(True, description="Set to true to download the file with a custom filename"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> FileResponse:
+    """
+    Generar y descargar PDF de notificación de recomendaciones médicas para un examen ocupacional
+    """
+    # Verificar que el examen existe
+    exam = db.query(OccupationalExam).filter(OccupationalExam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Examen ocupacional no encontrado")
+    
+    # Verificar que el trabajador existe
+    worker = db.query(Worker).filter(Worker.id == exam.worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+    
+    try:
+        # Importar el generador de reportes médicos
+        from app.services.medical_recommendation_generator import MedicalRecommendationGenerator
+        
+        # Crear un seguimiento temporal para usar con el generador existente
+        # Esto es necesario porque el generador actual espera un seguimiento
+        from app.models.seguimiento import Seguimiento
+        
+        # Buscar si existe un seguimiento para este trabajador
+        seguimiento = db.query(Seguimiento).filter(Seguimiento.worker_id == exam.worker_id).first()
+        
+        if not seguimiento:
+            # Crear un seguimiento temporal si no existe
+            seguimiento = Seguimiento(
+                worker_id=exam.worker_id,
+                fecha_seguimiento=exam.exam_date,
+                observaciones=f"Seguimiento generado automáticamente para examen ocupacional {exam_id}",
+                valoracion_riesgo="medio",
+                recomendaciones=exam.general_recommendations or "Sin recomendaciones específicas"
+            )
+            db.add(seguimiento)
+            db.commit()
+            db.refresh(seguimiento)
+        
+        # Generar el PDF usando el servicio existente
+        generator = MedicalRecommendationGenerator(db)
+        filepath = await generator.generate_medical_recommendation_pdf(seguimiento.id)
+        
+        # Si el archivo se guardó localmente, devolverlo como FileResponse
+        if filepath.startswith("/medical_reports/"):
+            # Es una ruta local
+            local_filepath = filepath.replace("/medical_reports/", "medical_reports/")
+            if not os.path.exists(local_filepath):
+                raise HTTPException(status_code=404, detail="Archivo PDF no encontrado")
+            
+            # Preparar parámetros de respuesta
+            response_params = {
+                "path": local_filepath,
+                "media_type": "application/pdf"
+            }
+            
+            # Si se solicita descarga, agregar un nombre de archivo personalizado
+            if download:
+                filename = f"notificacion_medica_{worker.document_number}_{exam_id}.pdf"
+                response_params["filename"] = filename
+            
+            return FileResponse(**response_params)
+        else:
+            # Es una URL de Firebase/S3, redirigir o descargar
+            if filepath.startswith("http"):
+                # Descargar el archivo desde la URL y devolverlo
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(filepath)
+                    response.raise_for_status()
+                    
+                    # Crear un stream de bytes
+                    pdf_content = io.BytesIO(response.content)
+                    
+                    # Configurar headers para la respuesta
+                    headers = {
+                        "Content-Type": "application/pdf",
+                    }
+                    
+                    if download:
+                        filename = f"notificacion_medica_{worker.document_number}_{exam_id}.pdf"
+                        headers["Content-Disposition"] = f"attachment; filename={filename}"
+                    else:
+                        headers["Content-Disposition"] = "inline"
+                    
+                    return StreamingResponse(
+                        io.BytesIO(response.content),
+                        media_type="application/pdf",
+                        headers=headers
+                    )
+            else:
+                raise HTTPException(status_code=500, detail="Error procesando la URL del archivo")
+                
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generando el reporte médico: {str(e)}"
+        )
