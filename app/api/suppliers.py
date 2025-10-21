@@ -1,6 +1,6 @@
 from typing import Any, List, Dict
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import or_, func
 
 from app.database import get_db
