@@ -1036,10 +1036,14 @@ async def generate_medical_recommendation_report(
             # Crear un seguimiento temporal si no existe
             seguimiento = Seguimiento(
                 worker_id=exam.worker_id,
-                fecha_seguimiento=exam.exam_date,
-                observaciones=f"Seguimiento generado automáticamente para examen ocupacional {exam_id}",
+                programa="examen_ocupacional",
+                nombre_trabajador=f"{worker.first_name} {worker.last_name}",
+                cedula=worker.document_number,
+                cargo=worker.position or "No especificado",
+                fecha_inicio=exam.exam_date,
+                observacion=f"Seguimiento generado automáticamente para examen ocupacional {exam_id}",
                 valoracion_riesgo="medio",
-                recomendaciones=exam.general_recommendations or "Sin recomendaciones específicas"
+                recomendaciones_generales=exam.general_recommendations or "Sin recomendaciones específicas"
             )
             db.add(seguimiento)
             db.commit()
