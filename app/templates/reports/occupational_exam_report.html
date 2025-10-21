@@ -28,19 +28,43 @@
         </div>
 
         <div class="section">
-            <h2 class="section-title">Estadísticas</h2>
+            <h2 class="section-title">Resumen Ejecutivo</h2>
             <div class="stats-container">
                 <div class="stat-box">
                     <h3>Total Trabajadores</h3>
                     <p>{{ statistics.total_workers }}</p>
+                    <span class="stat-label">Activos en el sistema</span>
                 </div>
-                <div class="stat-box">
+                <div class="stat-box warning-box">
                     <h3>Exámenes Pendientes</h3>
                     <p>{{ total_pending }}</p>
+                    <span class="stat-label">Próximos 15 días</span>
                 </div>
-                <div class="stat-box">
+                <div class="stat-box danger-box">
                     <h3>Exámenes Vencidos</h3>
                     <p>{{ total_overdue }}</p>
+                    <span class="stat-label">Requieren atención inmediata</span>
+                </div>
+                <div class="stat-box">
+                    <h3>Total Exámenes</h3>
+                    <p>{{ statistics.total_exams }}</p>
+                    <span class="stat-label">Registrados en el sistema</span>
+                </div>
+            </div>
+            
+            <!-- Indicadores de cumplimiento -->
+            <div class="compliance-indicators">
+                <h3>Indicadores de Cumplimiento</h3>
+                <div class="indicator-row">
+                    <span class="indicator-label">Cumplimiento General:</span>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: {{ ((statistics.total_workers - total_overdue) / statistics.total_workers * 100) if statistics.total_workers > 0 else 0 }}%"></div>
+                    </div>
+                    <span class="percentage">{{ "%.1f"|format(((statistics.total_workers - total_overdue) / statistics.total_workers * 100) if statistics.total_workers > 0 else 0) }}%</span>
+                </div>
+                <div class="indicator-row">
+                    <span class="indicator-label">Trabajadores al día:</span>
+                    <span class="indicator-value">{{ statistics.total_workers - total_overdue - total_pending }}</span>
                 </div>
             </div>
         </div>
@@ -54,7 +78,7 @@
                         <th>Trabajador</th>
                         <th>Documento</th>
                         <th>Cargo</th>
-                        <th>Último Examen</th>
+                        <th>Fecha del Examen</th>
                         <th>Próximo Examen</th>
                         <th>Días Restantes</th>
                         <th>Tipo</th>
@@ -88,7 +112,7 @@
                         <th>Trabajador</th>
                         <th>Documento</th>
                         <th>Cargo</th>
-                        <th>Último Examen</th>
+                        <th>Fecha del Examen</th>
                         <th>Fecha Vencimiento</th>
                         <th>Días Vencido</th>
                         <th>Tipo</th>
@@ -113,8 +137,39 @@
             {% endif %}
         </div>
 
+        <!-- Sección de Recomendaciones -->
+        <div class="section">
+            <h2 class="section-title">Recomendaciones</h2>
+            <div class="recommendations">
+                {% if total_overdue > 0 %}
+                <div class="recommendation urgent">
+                    <h4>🚨 Acción Inmediata Requerida</h4>
+                    <p>Se han identificado <strong>{{ total_overdue }}</strong> trabajadores con exámenes ocupacionales vencidos. Es necesario programar estos exámenes de manera prioritaria para cumplir con la normatividad vigente.</p>
+                </div>
+                {% endif %}
+                
+                {% if total_pending > 0 %}
+                <div class="recommendation warning">
+                    <h4>⚠️ Programación Próxima</h4>
+                    <p>Hay <strong>{{ total_pending }}</strong> trabajadores que requieren exámenes ocupacionales en los próximos 15 días. Se recomienda coordinar con el proveedor de salud ocupacional para programar estas citas.</p>
+                </div>
+                {% endif %}
+                
+                <div class="recommendation info">
+                    <h4>📋 Seguimiento Continuo</h4>
+                    <p>Mantener un seguimiento mensual de los vencimientos de exámenes ocupacionales para garantizar el cumplimiento normativo y la salud de los trabajadores.</p>
+                </div>
+                
+                <div class="recommendation info">
+                    <h4>📊 Indicadores de Gestión</h4>
+                    <p>Se recomienda mantener un indicador de cumplimiento superior al 95% en exámenes ocupacionales al día para demostrar una gestión efectiva del programa de salud ocupacional.</p>
+                </div>
+            </div>
+        </div>
+
         <div class="footer">
-            <p>Este reporte fue generado automáticamente por el Sistema de Gestión de SST.</p>
+            <p>Este reporte fue generado automáticamente por el Sistema de Gestión de SST el {{ generated_at }}.</p>
+            <p><strong>Nota:</strong> Este documento es confidencial y debe ser manejado según las políticas de protección de datos personales de la organización.</p>
         </div>
     </div>
 </body>

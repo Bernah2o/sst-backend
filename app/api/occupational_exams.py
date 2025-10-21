@@ -2,17 +2,19 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, UploadFile, File
 from fastapi.responses import RedirectResponse, FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
-from datetime import date, timedelta
+from sqlalchemy import and_, or_, func
+from datetime import date, timedelta, datetime
 import os
 import uuid
 from pathlib import Path
 import requests
 import io
 import httpx
+import tempfile
 
 from app.database import get_db
 from app.services.s3_storage import s3_service
+from app.services.html_to_pdf import HTMLToPDFConverter
 from app.dependencies import get_current_user, require_admin, require_supervisor_or_admin
 from app.models.user import User
 from app.models.worker import Worker
@@ -36,7 +38,6 @@ async def get_occupational_exams(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     exam_type: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
     result: Optional[str] = Query(None),
     worker_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
@@ -55,6 +56,17 @@ async def get_occupational_exams(
     # Apply filters
     if exam_type:
         query = query.filter(OccupationalExam.exam_type == exam_type)
+    
+    if result:
+        # Map result filter to medical_aptitude_concept values
+        result_mapping = {
+            "apto": "apto",
+            "apto_con_restricciones": "apto_con_recomendaciones",
+            "no_apto": "no_apto"
+        }
+        medical_aptitude = result_mapping.get(result)
+        if medical_aptitude:
+            query = query.filter(OccupationalExam.medical_aptitude_concept == medical_aptitude)
     
     if worker_id:
         query = query.filter(OccupationalExam.worker_id == worker_id)
@@ -280,6 +292,149 @@ async def create_occupational_exam(
     }
     
     return exam_dict
+
+
+@router.get("/report/pdf")
+async def generate_occupational_exam_report_pdf(
+    worker_id: Optional[int] = Query(None, description="ID del trabajador específico"),
+    exam_type: Optional[str] = Query(None, description="Tipo de examen"),
+    start_date: Optional[date] = Query(None, description="Fecha de inicio del rango"),
+    end_date: Optional[date] = Query(None, description="Fecha de fin del rango"),
+    include_overdue: bool = Query(True, description="Incluir exámenes vencidos"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> StreamingResponse:
+    """
+    Generar reporte PDF de exámenes ocupacionales con estadísticas y listados
+    """
+    try:
+        # Obtener todos los trabajadores activos
+        workers_query = db.query(Worker).filter(Worker.is_active == True)
+        if worker_id:
+            workers_query = workers_query.filter(Worker.id == worker_id)
+        
+        workers = workers_query.all()
+        total_workers = len(workers)
+        
+        # Obtener exámenes ocupacionales con filtros
+        exams_query = db.query(OccupationalExam).join(Worker)
+        
+        if worker_id:
+            exams_query = exams_query.filter(OccupationalExam.worker_id == worker_id)
+        
+        if exam_type:
+            exams_query = exams_query.filter(OccupationalExam.exam_type == exam_type)
+        
+        if start_date:
+            exams_query = exams_query.filter(OccupationalExam.exam_date >= start_date)
+        
+        if end_date:
+            exams_query = exams_query.filter(OccupationalExam.exam_date <= end_date)
+        
+        exams = exams_query.order_by(OccupationalExam.exam_date.desc()).all()
+        
+        # Calcular próximos exámenes y vencidos
+        today = date.today()
+        pending_exams = []
+        overdue_exams = []
+        
+        for worker in workers:
+            # Obtener el último examen del trabajador
+            last_exam = db.query(OccupationalExam).filter(
+                OccupationalExam.worker_id == worker.id
+            ).order_by(OccupationalExam.exam_date.desc()).first()
+            
+            if last_exam:
+                # Calcular fecha del próximo examen basado en la periodicidad del cargo
+                cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
+                periodicidad = cargo.periodicidad_emo if cargo else "anual"
+                
+                if periodicidad == "semestral":
+                    next_exam_date = last_exam.exam_date + timedelta(days=180)  # 6 meses
+                elif periodicidad == "bianual":
+                    next_exam_date = last_exam.exam_date + timedelta(days=730)  # 2 años
+                else:  # anual por defecto
+                    next_exam_date = last_exam.exam_date + timedelta(days=365)  # 1 año
+                
+                days_difference = (next_exam_date - today).days
+                
+                exam_data = {
+                    "worker_name": f"{worker.first_name} {worker.last_name}",
+                    "worker_document": worker.document_number,
+                    "cargo": worker.position or "No especificado",
+                    "last_exam_date": last_exam.exam_date.strftime("%d/%m/%Y"),
+                    "next_exam_date": next_exam_date.strftime("%d/%m/%Y"),
+                    "exam_type": last_exam.exam_type.replace("_", " ").title()
+                }
+                
+                if days_difference < 0:
+                    # Examen vencido
+                    exam_data["days_overdue"] = abs(days_difference)
+                    overdue_exams.append(exam_data)
+                elif days_difference <= 15:
+                    # Examen próximo (próximos 15 días)
+                    exam_data["days_until_exam"] = days_difference
+                    pending_exams.append(exam_data)
+            else:
+                # Trabajador sin exámenes - necesita examen de ingreso
+                exam_data = {
+                    "worker_name": f"{worker.first_name} {worker.last_name}",
+                    "worker_document": worker.document_number,
+                    "cargo": worker.position or "No especificado",
+                    "last_exam_date": "Sin examen",
+                    "next_exam_date": "Inmediato",
+                    "days_until_exam": 0,
+                    "exam_type": "Examen de Ingreso"
+                }
+                pending_exams.append(exam_data)
+        
+        # Preparar estadísticas
+        statistics = {
+            "total_workers": total_workers,
+            "total_exams": len(exams),
+            "pending_exams": len(pending_exams),
+            "overdue_exams": len(overdue_exams)
+        }
+        
+        # Preparar contexto para la plantilla
+        context = {
+            "generated_at": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+            "statistics": statistics,
+            "total_pending": len(pending_exams),
+            "total_overdue": len(overdue_exams),
+            "pending_exams": pending_exams,
+            "overdue_exams": overdue_exams if include_overdue else [],
+            "logo_base64": None  # Se puede agregar el logo más tarde
+        }
+        
+        # Generar PDF usando HTMLToPDFConverter
+        converter = HTMLToPDFConverter()
+        pdf_content = await converter.generate_pdf_from_template(
+            "occupational_exam_report.html",
+            context
+        )
+        
+        # Crear nombre del archivo
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"reporte_examenes_ocupacionales_{timestamp}.pdf"
+        
+        # Configurar headers para la respuesta
+        headers = {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": f"attachment; filename={filename}"
+        }
+        
+        return StreamingResponse(
+            io.BytesIO(pdf_content),
+            media_type="application/pdf",
+            headers=headers
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generando el reporte de exámenes ocupacionales: {str(e)}"
+        )
 
 
 @router.get("/{exam_id}", response_model=OccupationalExamResponse)
