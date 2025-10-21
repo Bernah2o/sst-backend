@@ -198,7 +198,7 @@ def auto_create_seguimiento(
 
 
 @router.post("/{seguimiento_id}/generate-medical-recommendation", response_model=MessageResponse)
-def generate_medical_recommendation_pdf(
+async def generate_medical_recommendation_pdf(
     seguimiento_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_supervisor_or_admin)
@@ -214,7 +214,7 @@ def generate_medical_recommendation_pdf(
     try:
         # Generar el PDF
         generator = MedicalRecommendationGenerator(db)
-        filepath = generator.generate_medical_recommendation_pdf(seguimiento_id)
+        filepath = await generator.generate_medical_recommendation_pdf(seguimiento_id)
         
         return {
             "message": "PDF de recomendaciones médicas generado exitosamente",
@@ -228,7 +228,7 @@ def generate_medical_recommendation_pdf(
 
 
 @router.get("/{seguimiento_id}/download-medical-recommendation")
-def download_medical_recommendation_pdf(
+async def download_medical_recommendation_pdf(
     seguimiento_id: int,
     download: bool = Query(True, description="Set to true to download the file with a custom filename"),
     db: Session = Depends(get_db),
@@ -243,28 +243,42 @@ def download_medical_recommendation_pdf(
         raise HTTPException(status_code=404, detail="Seguimiento no encontrado")
     
     try:
+        from app.config import settings
+        
         # Generar el PDF si no existe
         generator = MedicalRecommendationGenerator(db)
-        filepath = generator.generate_medical_recommendation_pdf(seguimiento_id)
+        result = await generator.generate_medical_recommendation_pdf(seguimiento_id)
         
-        if not os.path.exists(filepath):
-            raise HTTPException(status_code=404, detail="Archivo PDF no encontrado")
+        # Obtener información del trabajador para el nombre del archivo
+        worker = db.query(Worker).filter(Worker.id == seguimiento.worker_id).first()
+        filename = f"recomendaciones_medicas_{worker.document_number if worker else seguimiento_id}.pdf"
         
-        # Preparar parámetros de respuesta
-        response_params = {
-            "path": filepath,
-            "media_type": "application/pdf"
-        }
-        
-        # Si se solicita descarga, agregar un nombre de archivo personalizado
-        if download:
-            # Obtener información del trabajador para el nombre del archivo
-            worker = db.query(Worker).filter(Worker.id == seguimiento.worker_id).first()
-            filename = f"recomendaciones_medicas_{worker.document_number if worker else seguimiento_id}.pdf"
-            response_params["filename"] = filename
-        
-        # Devolver respuesta de archivo con los parámetros apropiados
-        return FileResponse(**response_params)
+        if settings.use_firebase_storage:
+            # Si Firebase Storage está habilitado, result es una URL de Firebase
+            # Redirigir al usuario a la URL de Firebase para descarga
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=result)
+        else:
+            # Si no usa Firebase Storage, result es una ruta relativa
+            # Construir la ruta absoluta del archivo local
+            local_filepath = os.path.join(generator.reports_dir, os.path.basename(result))
+            
+            if not os.path.exists(local_filepath):
+                raise HTTPException(status_code=404, detail="Archivo PDF no encontrado")
+            
+            # Preparar parámetros de respuesta
+            response_params = {
+                "path": local_filepath,
+                "media_type": "application/pdf"
+            }
+            
+            # Si se solicita descarga, agregar un nombre de archivo personalizado
+            if download:
+                response_params["filename"] = filename
+            
+            # Devolver respuesta de archivo con los parámetros apropiados
+            return FileResponse(**response_params)
+            
     except Exception as e:
         raise HTTPException(
             status_code=500,
