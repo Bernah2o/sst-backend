@@ -1,4 +1,3 @@
-
 import smtplib
 import ssl
 import logging
