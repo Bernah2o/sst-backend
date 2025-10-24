@@ -35,7 +35,6 @@ class HTMLToPDFConverter:
             "title",
             "session_date",
             "course_title",
-            "instructor_name",
             "location",
             "duration",
             "attendance_percentage",
