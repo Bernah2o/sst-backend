@@ -17,6 +17,7 @@ class OccupationalExamBase(BaseModel):
     examining_doctor: Optional[str] = Field(None, description="Médico que realizó el examen")
     medical_center: Optional[str] = Field(None, description="Centro médico donde se realizó")
     pdf_file_path: Optional[str] = Field(None, description="Ruta del archivo PDF del examen")
+    requires_follow_up: Optional[bool] = Field(False, description="Indica si el examen requiere seguimiento")
     supplier_id: Optional[int] = Field(None, description="ID del centro médico/proveedor")
     doctor_id: Optional[int] = Field(None, description="ID del médico examinador")
 
@@ -37,6 +38,7 @@ class OccupationalExamUpdate(BaseModel):
     examining_doctor: Optional[str] = Field(None, description="Médico que realizó el examen")
     medical_center: Optional[str] = Field(None, description="Centro médico donde se realizó")
     pdf_file_path: Optional[str] = Field(None, description="Ruta del archivo PDF del examen")
+    requires_follow_up: Optional[bool] = Field(None, description="Indica si el examen requiere seguimiento")
     supplier_id: Optional[int] = Field(None, description="ID del centro médico/proveedor")
     doctor_id: Optional[int] = Field(None, description="ID del médico examinador")
 
