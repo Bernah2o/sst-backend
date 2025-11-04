@@ -59,6 +59,7 @@ class User(Base):
     notifications = relationship("Notification", back_populates="user")
     audit_logs = relationship("AuditLog", back_populates="user")
     enrollments = relationship("Enrollment", back_populates="user")
+    created_virtual_sessions = relationship("VirtualSession", back_populates="creator")
     
     # Progress relationships
     material_progress = relationship("UserMaterialProgress", back_populates="user")

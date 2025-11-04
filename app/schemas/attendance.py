@@ -38,6 +38,22 @@ class AttendanceBase(BaseModel):
     location: Optional[str] = Field(None, max_length=255)
     ip_address: Optional[str] = Field(None, max_length=45)
     device_info: Optional[str] = Field(None, max_length=255)
+    
+    # Virtual attendance specific fields
+    session_code: Optional[str] = Field(None, max_length=20)
+    virtual_session_link: Optional[str] = Field(None, max_length=500)
+    device_fingerprint: Optional[str] = Field(None, max_length=255)
+    connection_quality: Optional[str] = Field(None, max_length=50)
+    minimum_duration_met: bool = False
+    facilitator_confirmed: bool = False
+    virtual_evidence: Optional[str] = None
+    browser_info: Optional[str] = Field(None, max_length=255)
+    
+    # Employee system time fields
+    employee_system_time: Optional[datetime] = None
+    employee_local_time: Optional[str] = Field(None, max_length=50)
+    employee_timezone: Optional[str] = Field(None, max_length=100)
+    
     notes: Optional[str] = None
 
 
@@ -56,6 +72,17 @@ class AttendanceUpdate(BaseModel):
     location: Optional[str] = Field(None, max_length=255)
     ip_address: Optional[str] = Field(None, max_length=45)
     device_info: Optional[str] = Field(None, max_length=255)
+    
+    # Virtual attendance specific fields
+    session_code: Optional[str] = Field(None, max_length=20)
+    virtual_session_link: Optional[str] = Field(None, max_length=500)
+    device_fingerprint: Optional[str] = Field(None, max_length=255)
+    connection_quality: Optional[str] = Field(None, max_length=50)
+    minimum_duration_met: Optional[bool] = None
+    facilitator_confirmed: Optional[bool] = None
+    virtual_evidence: Optional[str] = None
+    browser_info: Optional[str] = Field(None, max_length=255)
+    
     notes: Optional[str] = None
     verified_by: Optional[int] = None
     verified_at: Optional[datetime] = None
@@ -163,3 +190,113 @@ class AttendanceNotificationData(BaseModel):
     session_time: str
     location: Optional[str] = None
     status: str
+
+
+# Virtual Attendance Specific Schemas
+
+class VirtualAttendanceCheckIn(BaseModel):
+    user_id: int
+    course_name: str
+    session_date: datetime
+    session_code: Optional[str] = None
+    virtual_session_link: Optional[str] = None
+    device_fingerprint: Optional[str] = None
+    browser_info: Optional[str] = None
+    ip_address: Optional[str] = None
+    # Employee system time fields
+    employee_system_time: Optional[datetime] = None
+    employee_local_time: Optional[str] = None
+    employee_timezone: Optional[str] = None
+
+
+class VirtualAttendanceCheckOut(BaseModel):
+    attendance_id: int
+    connection_quality: Optional[str] = None
+    virtual_evidence: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class SessionCodeGenerate(BaseModel):
+    course_name: str
+    session_date: datetime
+    valid_duration_minutes: int = 15
+    facilitator_id: int
+
+
+class SessionCodeValidate(BaseModel):
+    session_code: str
+    user_id: int
+    course_name: str
+    session_date: datetime
+
+
+class VirtualAttendanceResponse(BaseModel):
+    id: int
+    status: str
+    message: str
+    session_code: Optional[str] = None
+    check_in_time: Optional[datetime] = None
+    check_out_time: Optional[datetime] = None
+    duration_minutes: Optional[int] = None
+    minimum_duration_met: bool = False
+
+
+# Virtual Session Schemas
+
+class VirtualSessionBase(BaseModel):
+    course_name: str
+    session_date: datetime
+    end_date: datetime  # Nueva fecha y hora final de la sesión
+    virtual_session_link: str
+    session_code: str
+    valid_until: datetime
+    max_participants: Optional[int] = None
+    description: Optional[str] = None
+    is_active: bool = True
+
+
+class VirtualSessionCreate(VirtualSessionBase):
+    creator_id: int
+
+
+class VirtualSessionUpdate(BaseModel):
+    course_name: Optional[str] = None
+    session_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None  # Nueva fecha y hora final de la sesión
+    virtual_session_link: Optional[str] = None
+    valid_until: Optional[datetime] = None
+    max_participants: Optional[int] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class VirtualSessionResponse(VirtualSessionBase):
+    id: int
+    creator_id: int
+    created_at: datetime
+    updated_at: datetime
+    participants_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class VirtualSessionListResponse(BaseModel):
+    id: int
+    course_name: str
+    session_date: datetime
+    end_date: datetime  # Nueva fecha y hora final de la sesión
+    virtual_session_link: str
+    session_code: str
+    valid_until: datetime
+    max_participants: Optional[int] = None
+    description: Optional[str] = None
+    is_active: bool
+    creator_id: int
+    created_at: datetime
+    updated_at: datetime
+    participants_count: int = 0
+    creator_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
