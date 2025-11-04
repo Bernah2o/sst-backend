@@ -29,6 +29,7 @@ from app.schemas.contractor import (
     ContractorContractResponse
 )
 from app.schemas.common import MessageResponse
+from migrate import logger
 
 router = APIRouter()
 

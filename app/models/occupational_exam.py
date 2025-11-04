@@ -46,6 +46,9 @@ class OccupationalExam(Base):
     # Archivo PDF del examen
     pdf_file_path = Column(String(500), nullable=True)  # Ruta del archivo PDF del examen
     
+    # Control de seguimiento
+    requires_follow_up = Column(Boolean, default=False, nullable=False)  # Indica si el examen requiere seguimiento
+    
     # Relaciones con Supplier y Doctor (nuevos campos)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
     doctor_id = Column(Integer, ForeignKey("doctors.id"), nullable=True)
@@ -62,6 +65,7 @@ class OccupationalExam(Base):
     worker = relationship("Worker", back_populates="occupational_exams")
     supplier = relationship("Supplier", back_populates="occupational_exams")
     doctor = relationship("Doctor", back_populates="occupational_exams")
+    seguimientos = relationship("Seguimiento", back_populates="occupational_exam")
     
     def __repr__(self):
         return f"<OccupationalExam(id={self.id}, worker_id={self.worker_id}, type='{self.exam_type}', date='{self.exam_date}')>"

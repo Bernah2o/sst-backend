@@ -19,6 +19,7 @@ class Seguimiento(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     worker_id = Column(Integer, ForeignKey("workers.id"), nullable=False)
+    occupational_exam_id = Column(Integer, ForeignKey("occupational_exams.id"), nullable=True)
     programa = Column(String(200), nullable=False)
     
     # Información del trabajador (campos calculados/copiados)
@@ -50,4 +51,5 @@ class Seguimiento(Base):
     
     # Relaciones
     worker = relationship("Worker", back_populates="seguimientos")
+    occupational_exam = relationship("OccupationalExam", back_populates="seguimientos")
     actividades = relationship("SeguimientoActividad", back_populates="seguimiento", cascade="all, delete-orphan")

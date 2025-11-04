@@ -1,6 +1,8 @@
 from typing import Any, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import uuid
+import secrets
+import string
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
@@ -14,7 +16,7 @@ from starlette.background import BackgroundTask
 from app.dependencies import get_current_active_user
 from app.database import get_db
 from app.models.user import User
-from app.models.attendance import Attendance, AttendanceStatus, AttendanceType
+from app.models.attendance import Attendance, AttendanceStatus, AttendanceType, VirtualSession
 from app.models.course import Course
 from app.models.session import Session as SessionModel
 from app.models.certificate import Certificate, CertificateStatus
@@ -28,6 +30,11 @@ from app.schemas.attendance import (
     BulkAttendanceCreate,
     BulkAttendanceResponse,
     AttendanceNotificationData,
+    VirtualAttendanceCheckIn,
+    VirtualAttendanceCheckOut,
+    SessionCodeGenerate,
+    SessionCodeValidate,
+    VirtualAttendanceResponse,
 )
 from app.schemas.certificate import CertificateResponse
 from app.schemas.session import (
@@ -910,6 +917,371 @@ async def get_courses_for_certificate(
         }
         for course in courses
     ]
+
+
+# Virtual Session Management Endpoints
+
+@router.post("/virtual-sessions", response_model=dict)
+async def create_virtual_session(
+    session_data: dict,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """
+    Create a new virtual session (Admin only)
+    """
+    # Check if user is admin
+    if current_user.role not in ["admin", "trainer", "supervisor"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para crear sesiones virtuales"
+        )
+    
+    # Generate a unique session code
+    session_code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+    
+    # Ensure the session code is unique
+    while db.query(VirtualSession).filter(VirtualSession.session_code == session_code).first():
+        session_code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+    
+    # Parse session_date if it's a string
+    session_date = session_data.get("session_date")
+    if isinstance(session_date, str):
+        session_date = datetime.fromisoformat(session_date.replace('Z', '+00:00'))
+    
+    # Parse end_date if it's a string
+    end_date = session_data.get("end_date")
+    if isinstance(end_date, str):
+        end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+    elif end_date is None:
+        # Default to 2 hours after session_date if not provided
+        end_date = session_date + timedelta(hours=2)
+    
+    # Validate that end_date is after session_date
+    if end_date <= session_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La fecha de finalización debe ser posterior a la fecha de inicio"
+        )
+    
+    # Set valid_until to end_date (código expira cuando termina la sesión)
+    valid_until = end_date
+    
+    # Create virtual session
+    virtual_session = VirtualSession(
+        course_name=session_data.get("course_name"),
+        session_date=session_date,
+        end_date=end_date,
+        virtual_session_link=session_data.get("virtual_session_link"),
+        session_code=session_code,
+        valid_until=valid_until,
+        max_participants=session_data.get("max_participants"),
+        description=session_data.get("description"),
+        created_by=current_user.id,
+        is_active=True
+    )
+    
+    db.add(virtual_session)
+    db.commit()
+    db.refresh(virtual_session)
+    
+    return {
+        "success": True,
+        "message": "Sesión virtual creada exitosamente",
+        "session_code": session_code,
+        "virtual_session": {
+            "id": virtual_session.id,
+            "course_name": virtual_session.course_name,
+            "session_date": virtual_session.session_date,
+            "end_date": virtual_session.end_date,
+            "virtual_session_link": virtual_session.virtual_session_link,
+            "session_code": virtual_session.session_code,
+            "valid_until": virtual_session.valid_until,
+            "max_participants": virtual_session.max_participants,
+            "description": virtual_session.description,
+            "is_active": virtual_session.is_active,
+            "duration_minutes": virtual_session.duration_minutes
+        }
+    }
+
+
+@router.get("/virtual-sessions", response_model=dict)
+async def list_virtual_sessions(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """
+    List virtual sessions (Admin only)
+    """
+    # Check if user is admin
+    if current_user.role not in ["admin", "trainer", "supervisor"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para ver las sesiones virtuales"
+        )
+    
+    # Get virtual sessions
+    virtual_sessions = db.query(VirtualSession).offset(skip).limit(limit).all()
+    total = db.query(VirtualSession).count()
+    
+    # Get participants count for each session
+    sessions_data = []
+    for session in virtual_sessions:
+        participants_count = db.query(Attendance).filter(
+            and_(
+                Attendance.session_code == session.session_code,
+                Attendance.check_in_time.isnot(None)
+            )
+        ).count()
+        
+        # Get creator name
+        creator = db.query(User).filter(User.id == session.created_by).first()
+        creator_name = f"{creator.first_name} {creator.last_name}" if creator else "Desconocido"
+        
+        sessions_data.append({
+            "id": session.id,
+            "course_name": session.course_name,
+            "session_date": session.session_date,
+            "end_date": session.end_date,
+            "virtual_session_link": session.virtual_session_link,
+            "session_code": session.session_code,
+            "valid_until": session.valid_until,
+            "max_participants": session.max_participants,
+            "description": session.description,
+            "is_active": session.is_active,
+            "creator_id": session.created_by,
+            "creator_name": creator_name,
+            "participants_count": participants_count,
+            "created_at": session.created_at,
+            "updated_at": session.updated_at,
+            "duration_minutes": session.duration_minutes,
+            "is_session_active": session.is_session_active,
+            "is_session_expired": session.is_session_expired
+        })
+    
+    return {
+        "items": sessions_data,
+        "total": total,
+        "skip": skip,
+        "limit": limit
+    }
+
+
+@router.get("/virtual-sessions/{session_id}/participants", response_model=dict)
+async def get_virtual_session_participants(
+    session_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """
+    Get real-time participants for a virtual session (Admin only)
+    """
+    # Check if user is admin
+    if current_user.role not in ["admin", "trainer", "supervisor"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para ver los participantes"
+        )
+    
+    # Get virtual session
+    virtual_session = db.query(VirtualSession).filter(VirtualSession.id == session_id).first()
+    if not virtual_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sesión virtual no encontrada"
+        )
+    
+    # Get participants (attendances with this session code)
+    participants = db.query(Attendance, User).join(
+        User, Attendance.user_id == User.id
+    ).filter(
+        Attendance.session_code == virtual_session.session_code
+    ).all()
+    
+    participants_data = []
+    for attendance, user in participants:
+        participants_data.append({
+            "user_id": user.id,
+            "user_name": f"{user.first_name} {user.last_name}",
+            "user_email": user.email,
+            "check_in_time": attendance.check_in_time,
+            "check_out_time": attendance.check_out_time,
+            "duration_minutes": attendance.duration_minutes,
+            "connection_quality": attendance.connection_quality,
+            "device_info": attendance.device_info,
+            "browser_info": attendance.browser_info,
+            "status": attendance.status,
+            "completion_percentage": attendance.completion_percentage,
+            "is_online": attendance.check_in_time is not None and attendance.check_out_time is None
+        })
+    
+    return {
+        "virtual_session": {
+            "id": virtual_session.id,
+            "course_name": virtual_session.course_name,
+            "session_date": virtual_session.session_date,
+            "session_code": virtual_session.session_code,
+            "max_participants": virtual_session.max_participants
+        },
+        "participants": participants_data,
+        "total_participants": len(participants_data),
+        "online_participants": len([p for p in participants_data if p["is_online"]])
+    }
+
+
+@router.put("/virtual-sessions/{session_id}", response_model=dict)
+async def update_virtual_session(
+    session_id: int,
+    session_data: dict,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """
+    Update a virtual session (Admin only)
+    """
+    # Check if user is admin
+    if current_user.role not in ["admin", "trainer", "supervisor"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para actualizar sesiones virtuales"
+        )
+    
+    # Get virtual session
+    virtual_session = db.query(VirtualSession).filter(VirtualSession.id == session_id).first()
+    if not virtual_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sesión virtual no encontrada"
+        )
+    
+    # Parse session_date if it's a string
+    session_date = session_data.get("session_date")
+    if isinstance(session_date, str):
+        session_date = datetime.fromisoformat(session_date.replace('Z', '+00:00'))
+    
+    # Parse end_date if it's a string
+    end_date = session_data.get("end_date")
+    if isinstance(end_date, str):
+        end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+    
+    # Validate dates if both are provided
+    if session_date and end_date and end_date <= session_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La fecha de finalización debe ser posterior a la fecha de inicio"
+        )
+    elif session_date and not end_date:
+        # If only session_date is updated, keep existing end_date or calculate new one
+        if virtual_session.end_date:
+            # Maintain the same duration
+            current_duration = virtual_session.end_date - virtual_session.session_date
+            end_date = session_date + current_duration
+        else:
+            # Default to 2 hours after session_date
+            end_date = session_date + timedelta(hours=2)
+    elif end_date and not session_date:
+        # If only end_date is updated, validate against existing session_date
+        if end_date <= virtual_session.session_date:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La fecha de finalización debe ser posterior a la fecha de inicio"
+            )
+    
+    # Calculate valid_until based on end_date
+    valid_until = end_date if end_date else virtual_session.valid_until
+    
+    # Update virtual session fields
+    if session_data.get("course_name") is not None:
+        virtual_session.course_name = session_data.get("course_name")
+    if session_date is not None:
+        virtual_session.session_date = session_date
+    if end_date is not None:
+        virtual_session.end_date = end_date
+        virtual_session.valid_until = valid_until
+    if session_data.get("virtual_session_link") is not None:
+        virtual_session.virtual_session_link = session_data.get("virtual_session_link")
+    if session_data.get("max_participants") is not None:
+        virtual_session.max_participants = session_data.get("max_participants")
+    if session_data.get("description") is not None:
+        virtual_session.description = session_data.get("description")
+    
+    virtual_session.updated_at = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(virtual_session)
+    
+    return {
+        "success": True,
+        "message": "Sesión virtual actualizada exitosamente",
+        "virtual_session": {
+            "id": virtual_session.id,
+            "course_name": virtual_session.course_name,
+            "session_date": virtual_session.session_date,
+            "end_date": virtual_session.end_date,
+            "virtual_session_link": virtual_session.virtual_session_link,
+            "session_code": virtual_session.session_code,
+            "valid_until": virtual_session.valid_until,
+            "max_participants": virtual_session.max_participants,
+            "description": virtual_session.description,
+            "is_active": virtual_session.is_active,
+            "updated_at": virtual_session.updated_at,
+            "duration_minutes": virtual_session.duration_minutes
+        }
+    }
+
+
+@router.delete("/virtual-sessions/{session_id}", response_model=dict)
+async def delete_virtual_session(
+    session_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """
+    Delete a virtual session (Admin only)
+    """
+    # Check if user is admin
+    if current_user.role not in ["admin", "trainer", "supervisor"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para eliminar sesiones virtuales"
+        )
+    
+    # Get virtual session
+    virtual_session = db.query(VirtualSession).filter(VirtualSession.id == session_id).first()
+    if not virtual_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sesión virtual no encontrada"
+        )
+    
+    # Check if there are any attendance records associated with this session
+    attendance_count = db.query(Attendance).filter(
+        Attendance.session_code == virtual_session.session_code
+    ).count()
+    
+    if attendance_count > 0:
+        # Instead of deleting, mark as inactive to preserve attendance records
+        virtual_session.is_active = False
+        virtual_session.updated_at = datetime.utcnow()
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": f"Sesión virtual desactivada exitosamente. Se preservaron {attendance_count} registros de asistencia.",
+            "attendance_records_preserved": attendance_count
+        }
+    else:
+        # No attendance records, safe to delete
+        db.delete(virtual_session)
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": "Sesión virtual eliminada exitosamente",
+            "attendance_records_preserved": 0
+        }
 
 
 @router.get("/{attendance_id}", response_model=AttendanceResponse)
@@ -1899,3 +2271,297 @@ async def send_attendance_certificate(
         print(f"Error generando PDF del certificado {certificate.id}: {str(e)}")
 
     return certificate
+
+
+# ==================== VIRTUAL ATTENDANCE ENDPOINTS ====================
+
+def generate_session_code(length: int = 8) -> str:
+    """Generate a random session code for virtual attendance"""
+    alphabet = string.ascii_uppercase + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+
+@router.post("/virtual/generate-code", response_model=dict)
+async def generate_virtual_session_code(
+    request: SessionCodeGenerate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """
+    Generate a session code for virtual attendance
+    Only facilitators/admins can generate codes
+    """
+    # Check if user has permission to generate codes
+    if current_user.role not in ["admin", "trainer", "supervisor"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para generar códigos de sesión"
+        )
+    
+    # Generate unique session code
+    session_code = generate_session_code()
+    
+    # Store the session code with expiration (you might want to create a separate table for this)
+    # For now, we'll return the code and let the frontend handle validation timing
+    
+    return {
+        "session_code": session_code,
+        "course_name": request.course_name,
+        "session_date": request.session_date,
+        "valid_until": datetime.utcnow() + timedelta(minutes=request.valid_duration_minutes),
+        "generated_by": current_user.id,
+        "message": f"Código de sesión generado: {session_code}"
+    }
+
+
+@router.post("/virtual/check-in", response_model=VirtualAttendanceResponse)
+async def virtual_attendance_check_in(
+    request: VirtualAttendanceCheckIn,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """
+    Check-in for virtual attendance
+    """
+    # Verify user can check-in (either for themselves or if they're admin)
+    if current_user.id != request.user_id and current_user.role not in ["admin", "trainer", "supervisor"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No puedes registrar asistencia para otro usuario"
+        )
+    
+    # Check if user already has attendance for this session
+    existing_attendance = db.query(Attendance).filter(
+        and_(
+            Attendance.user_id == request.user_id,
+            Attendance.course_name == request.course_name,
+            func.date(Attendance.session_date) == func.date(request.session_date)
+        )
+    ).first()
+    
+    if existing_attendance:
+        # If already checked in, update check-in time
+        if existing_attendance.check_in_time:
+            return VirtualAttendanceResponse(
+                id=existing_attendance.id,
+                status="already_checked_in",
+                message="Ya tienes registro de entrada para esta sesión",
+                check_in_time=existing_attendance.check_in_time,
+                check_out_time=existing_attendance.check_out_time,
+                duration_minutes=existing_attendance.duration_minutes,
+                minimum_duration_met=existing_attendance.minimum_duration_met or False
+            )
+        else:
+            # Update existing record with check-in
+            existing_attendance.check_in_time = datetime.utcnow()
+            existing_attendance.attendance_type = AttendanceType.VIRTUAL
+            existing_attendance.status = AttendanceStatus.PRESENT
+            existing_attendance.session_code = request.session_code
+            existing_attendance.virtual_session_link = request.virtual_session_link
+            existing_attendance.device_fingerprint = request.device_fingerprint
+            existing_attendance.browser_info = request.browser_info
+            existing_attendance.ip_address = request.ip_address
+            existing_attendance.session_code_used_at = datetime.utcnow()
+            
+            db.commit()
+            db.refresh(existing_attendance)
+            
+            return VirtualAttendanceResponse(
+                id=existing_attendance.id,
+                status="checked_in",
+                message="Entrada registrada exitosamente",
+                check_in_time=existing_attendance.check_in_time,
+                session_code=request.session_code
+            )
+    
+    # Create new attendance record
+    new_attendance = Attendance(
+        user_id=request.user_id,
+        course_name=request.course_name,
+        session_date=request.session_date,
+        status=AttendanceStatus.PRESENT,
+        attendance_type=AttendanceType.VIRTUAL,
+        check_in_time=datetime.utcnow(),
+        session_code=request.session_code,
+        virtual_session_link=request.virtual_session_link,
+        device_fingerprint=request.device_fingerprint,
+        browser_info=request.browser_info,
+        ip_address=request.ip_address,
+        session_code_used_at=datetime.utcnow(),
+        completion_percentage=0.0
+    )
+    
+    db.add(new_attendance)
+    db.commit()
+    db.refresh(new_attendance)
+    
+    return VirtualAttendanceResponse(
+        id=new_attendance.id,
+        status="checked_in",
+        message="Entrada registrada exitosamente",
+        check_in_time=new_attendance.check_in_time,
+        session_code=request.session_code
+    )
+
+
+@router.post("/virtual/check-out", response_model=VirtualAttendanceResponse)
+async def virtual_attendance_check_out(
+    request: VirtualAttendanceCheckOut,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """
+    Check-out for virtual attendance
+    """
+    # Get attendance record
+    attendance = db.query(Attendance).filter(Attendance.id == request.attendance_id).first()
+    
+    if not attendance:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Registro de asistencia no encontrado"
+        )
+    
+    # Verify user can check-out (either for themselves or if they're admin)
+    if current_user.id != attendance.user_id and current_user.role not in ["admin", "trainer", "supervisor"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No puedes modificar la asistencia de otro usuario"
+        )
+    
+    # Check if already checked out
+    if attendance.check_out_time:
+        return VirtualAttendanceResponse(
+            id=attendance.id,
+            status="already_checked_out",
+            message="Ya tienes registro de salida para esta sesión",
+            check_in_time=attendance.check_in_time,
+            check_out_time=attendance.check_out_time,
+            duration_minutes=attendance.duration_minutes,
+            minimum_duration_met=attendance.minimum_duration_met or False
+        )
+    
+    # Update attendance with check-out
+    check_out_time = datetime.utcnow()
+    attendance.check_out_time = check_out_time
+    attendance.connection_quality = request.connection_quality
+    attendance.virtual_evidence = request.virtual_evidence
+    if request.notes:
+        attendance.notes = request.notes
+    
+    # Calculate duration
+    if attendance.check_in_time:
+        duration = check_out_time - attendance.check_in_time
+        attendance.duration_minutes = int(duration.total_seconds() / 60)
+        
+        # Check if minimum duration was met (assume 80% of scheduled time or at least 30 minutes)
+        minimum_required = max(30, int((attendance.scheduled_duration_minutes or 60) * 0.8))
+        attendance.minimum_duration_met = attendance.duration_minutes >= minimum_required
+        
+        # Update completion percentage based on duration
+        if attendance.scheduled_duration_minutes:
+            attendance.completion_percentage = min(
+                100.0, 
+                (attendance.duration_minutes / attendance.scheduled_duration_minutes) * 100
+            )
+        else:
+            attendance.completion_percentage = 100.0 if attendance.minimum_duration_met else 50.0
+    
+    db.commit()
+    db.refresh(attendance)
+    
+    return VirtualAttendanceResponse(
+        id=attendance.id,
+        status="checked_out",
+        message="Salida registrada exitosamente",
+        check_in_time=attendance.check_in_time,
+        check_out_time=attendance.check_out_time,
+        duration_minutes=attendance.duration_minutes,
+        minimum_duration_met=attendance.minimum_duration_met or False
+    )
+
+
+@router.post("/virtual/validate-code", response_model=dict)
+async def validate_session_code(
+    request: SessionCodeValidate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """
+    Validate a session code for virtual attendance
+    """
+    # Check if the session code exists in VirtualSession table and is still valid
+    virtual_session = db.query(VirtualSession).filter(
+        and_(
+            VirtualSession.session_code == request.session_code,
+            VirtualSession.is_active == True,
+            VirtualSession.valid_until >= datetime.utcnow()
+        )
+    ).first()
+    
+    if virtual_session:
+        return {
+            "valid": True,
+            "message": "Código de sesión válido",
+            "course_name": virtual_session.course_name,
+            "session_date": virtual_session.session_date,
+            "end_date": virtual_session.end_date,
+            "virtual_session_link": virtual_session.virtual_session_link,
+            "duration_minutes": virtual_session.duration_minutes,
+            "is_session_active": virtual_session.is_session_active,
+            "is_session_expired": virtual_session.is_session_expired
+        }
+    
+    return {
+        "valid": False,
+        "message": "Código de sesión inválido o expirado"
+    }
+
+
+@router.get("/virtual/status/{user_id}", response_model=dict)
+async def get_virtual_attendance_status(
+    user_id: int,
+    course_name: str = Query(..., description="Nombre del curso"),
+    session_date: date = Query(..., description="Fecha de la sesión"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """
+    Get virtual attendance status for a user and session
+    """
+    # Verify user can check status (either for themselves or if they're admin)
+    if current_user.id != user_id and current_user.role not in ["admin", "trainer", "supervisor"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No puedes consultar la asistencia de otro usuario"
+        )
+    
+    # Get attendance record
+    attendance = db.query(Attendance).filter(
+        and_(
+            Attendance.user_id == user_id,
+            Attendance.course_name == course_name,
+            func.date(Attendance.session_date) == session_date
+        )
+    ).first()
+    
+    if not attendance:
+        return {
+            "status": "not_registered",
+            "message": "No hay registro de asistencia para esta sesión",
+            "checked_in": False,
+            "checked_out": False
+        }
+    
+    return {
+        "status": "registered",
+        "attendance_id": attendance.id,
+        "checked_in": attendance.check_in_time is not None,
+        "checked_out": attendance.check_out_time is not None,
+        "check_in_time": attendance.check_in_time,
+        "check_out_time": attendance.check_out_time,
+        "duration_minutes": attendance.duration_minutes,
+        "minimum_duration_met": attendance.minimum_duration_met or False,
+        "attendance_type": attendance.attendance_type,
+        "completion_percentage": attendance.completion_percentage
+    }
