@@ -1,5 +1,6 @@
 from typing import Any, Optional
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
+from zoneinfo import ZoneInfo
 import uuid
 import secrets
 import string
@@ -944,16 +945,31 @@ async def create_virtual_session(
     while db.query(VirtualSession).filter(VirtualSession.session_code == session_code).first():
         session_code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
     
-    # Parse session_date if it's a string
+    # Helper to normalize any incoming datetime to UTC naive for consistent storage
+    def _to_utc_naive(dt: datetime | None) -> datetime | None:
+        if dt is None:
+            return None
+        # If timezone-aware, convert to UTC and drop tzinfo
+        if getattr(dt, "tzinfo", None) is not None:
+            try:
+                return dt.astimezone(timezone.utc).replace(tzinfo=None)
+            except Exception:
+                pass
+        # If string was parsed as naive, assume it's already in desired timezone (backend previously stored naive)
+        return dt
+
+    # Parse session_date if it's a string and normalize to UTC naive
     session_date = session_data.get("session_date")
     if isinstance(session_date, str):
         session_date = datetime.fromisoformat(session_date.replace('Z', '+00:00'))
+    session_date = _to_utc_naive(session_date)
     
-    # Parse end_date if it's a string
+    # Parse end_date if it's a string and normalize to UTC naive
     end_date = session_data.get("end_date")
     if isinstance(end_date, str):
         end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
-    elif end_date is None:
+    end_date = _to_utc_naive(end_date)
+    if end_date is None:
         # Default to 2 hours after session_date if not provided
         end_date = session_date + timedelta(hours=2)
     
@@ -1156,15 +1172,28 @@ async def update_virtual_session(
             detail="Sesión virtual no encontrada"
         )
     
-    # Parse session_date if it's a string
+    # Helper to normalize any incoming datetime to UTC naive for consistent storage
+    def _to_utc_naive(dt: datetime | None) -> datetime | None:
+        if dt is None:
+            return None
+        if getattr(dt, "tzinfo", None) is not None:
+            try:
+                return dt.astimezone(timezone.utc).replace(tzinfo=None)
+            except Exception:
+                pass
+        return dt
+
+    # Parse session_date if it's a string and normalize to UTC naive
     session_date = session_data.get("session_date")
     if isinstance(session_date, str):
         session_date = datetime.fromisoformat(session_date.replace('Z', '+00:00'))
+    session_date = _to_utc_naive(session_date)
     
-    # Parse end_date if it's a string
+    # Parse end_date if it's a string and normalize to UTC naive
     end_date = session_data.get("end_date")
     if isinstance(end_date, str):
         end_date = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+    end_date = _to_utc_naive(end_date)
     
     # Validate dates if both are provided
     if session_date and end_date and end_date <= session_date:
@@ -2490,31 +2519,84 @@ async def validate_session_code(
     """
     Validate a session code for virtual attendance
     """
-    # Check if the session code exists in VirtualSession table and is still valid
+    # Buscar la sesión por código y estado activo (sin filtrar por vencimiento en la consulta)
     virtual_session = db.query(VirtualSession).filter(
         and_(
             VirtualSession.session_code == request.session_code,
             VirtualSession.is_active == True,
-            VirtualSession.valid_until >= datetime.utcnow()
         )
     ).first()
-    
-    if virtual_session:
+
+    if virtual_session is None:
         return {
-            "valid": True,
-            "message": "Código de sesión válido",
+            "valid": False,
+            "message": "Código de sesión inválido",
+        }
+
+    # Verificar vencimiento utilizando tiempo actual en UTC
+    now = datetime.utcnow()
+    is_expired = now > virtual_session.valid_until
+
+    # Conversión de fechas a hora de Colombia (America/Bogota)
+    bogota_tz = ZoneInfo("America/Bogota")
+
+    def to_bogota_iso(dt: Any) -> Optional[str]:
+        if dt is None:
+            return None
+        # Si es datetime
+        if isinstance(dt, datetime):
+            # Convertir a aware UTC si es naive
+            aware_utc = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+            return aware_utc.astimezone(bogota_tz).isoformat()
+        # Si es date (sin tiempo), asumir 00:00 en UTC y convertir
+        if isinstance(dt, date):
+            base_dt = datetime.combine(dt, datetime.min.time())
+            aware_utc = base_dt.replace(tzinfo=timezone.utc)
+            return aware_utc.astimezone(bogota_tz).isoformat()
+        # Fallback: representar como string
+        try:
+            return str(dt)
+        except Exception:
+            return None
+
+    now_colombia = now.replace(tzinfo=timezone.utc).astimezone(bogota_tz).isoformat()
+
+    if is_expired:
+        return {
+            "valid": False,
+            "message": "Código de sesión expirado",
             "course_name": virtual_session.course_name,
             "session_date": virtual_session.session_date,
             "end_date": virtual_session.end_date,
-            "virtual_session_link": virtual_session.virtual_session_link,
-            "duration_minutes": virtual_session.duration_minutes,
+            "valid_until": virtual_session.valid_until,
             "is_session_active": virtual_session.is_session_active,
-            "is_session_expired": virtual_session.is_session_expired
+            "is_session_expired": True,
+            # Campos adicionales en hora local de Colombia
+            "timezone": "America/Bogota",
+            "now_utc": now.replace(tzinfo=timezone.utc).isoformat(),
+            "now_colombia": now_colombia,
+            "session_date_colombia": to_bogota_iso(virtual_session.session_date),
+            "end_date_colombia": to_bogota_iso(virtual_session.end_date),
+            "valid_until_colombia": to_bogota_iso(virtual_session.valid_until),
         }
-    
+
     return {
-        "valid": False,
-        "message": "Código de sesión inválido o expirado"
+        "valid": True,
+        "message": "Código de sesión válido",
+        "course_name": virtual_session.course_name,
+        "session_date": virtual_session.session_date,
+        "end_date": virtual_session.end_date,
+        "virtual_session_link": virtual_session.virtual_session_link,
+        "duration_minutes": virtual_session.duration_minutes,
+        "is_session_active": virtual_session.is_session_active,
+        "is_session_expired": False,
+        # Campos adicionales en hora local de Colombia
+        "timezone": "America/Bogota",
+        "now_utc": now.replace(tzinfo=timezone.utc).isoformat(),
+        "now_colombia": now_colombia,
+        "session_date_colombia": to_bogota_iso(virtual_session.session_date),
+        "end_date_colombia": to_bogota_iso(virtual_session.end_date),
+        "valid_until_colombia": to_bogota_iso(virtual_session.valid_until),
     }
 
 

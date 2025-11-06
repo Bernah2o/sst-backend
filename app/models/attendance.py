@@ -113,7 +113,18 @@ class VirtualSession(Base):
     def duration_minutes(self) -> int:
         """Calculate session duration in minutes"""
         if self.session_date and self.end_date:
-            delta = self.end_date - self.session_date
+            # Asegurarse que ambos sean datetime
+            start = self.session_date
+            end = self.end_date
+            if isinstance(start, datetime) and isinstance(end, datetime):
+                delta = end - start
+                return int(delta.total_seconds() / 60)
+            # Si alguno es date, convertir a datetime
+            if not isinstance(start, datetime):
+                start = datetime.combine(start, datetime.min.time())
+            if not isinstance(end, datetime):
+                end = datetime.combine(end, datetime.min.time())
+            delta = end - start
             return int(delta.total_seconds() / 60)
         return 0
 
@@ -121,7 +132,14 @@ class VirtualSession(Base):
     def is_session_active(self) -> bool:
         """Check if session is currently active based on current time"""
         now = datetime.utcnow()
-        return self.session_date <= now <= self.end_date and self.is_active
+        start = self.session_date
+        end = self.end_date
+        # Convert to datetime if needed
+        if not isinstance(start, datetime):
+            start = datetime.combine(start, datetime.min.time())
+        if not isinstance(end, datetime):
+            end = datetime.combine(end, datetime.min.time())
+        return start <= now <= end and self.is_active
 
     @property
     def is_session_expired(self) -> bool:
