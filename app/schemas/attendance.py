@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 
 # Schemas actualizados para Pydantic V2
@@ -226,8 +226,37 @@ class SessionCodeGenerate(BaseModel):
 class SessionCodeValidate(BaseModel):
     session_code: str
     user_id: int
-    course_name: str
-    session_date: datetime
+    # Opcionales: el backend puede derivarlos desde session_code
+    course_name: Optional[str] = None
+    session_date: Optional[datetime] = None
+
+    # Normaliza cadenas vacías a None para course_name
+    @field_validator("course_name", mode="before")
+    def normalize_course_name(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
+
+    # Acepta fecha como ISO 8601 o YYYY-MM-DD; convierte vacíos a None
+    @field_validator("session_date", mode="before")
+    def parse_session_date(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, str):
+            s = v.strip()
+            if s == "":
+                return None
+            from datetime import datetime as _dt
+            try:
+                return _dt.fromisoformat(s)
+            except Exception:
+                try:
+                    return _dt.strptime(s, "%Y-%m-%d")
+                except Exception:
+                    raise ValueError("session_date debe ser ISO 8601 o YYYY-MM-DD")
+        return v
 
 
 class VirtualAttendanceResponse(BaseModel):
