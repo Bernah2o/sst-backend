@@ -2,7 +2,7 @@ from typing import Any, List, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from io import BytesIO
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
@@ -3420,3 +3420,59 @@ async def export_vacations_to_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+# ==================== ESTADÍSTICAS DE TRABAJADORES ====================
+
+@router.get("/stats", response_model=Dict[str, Any])
+@router.get("/stats{trailing_slash:path}", response_model=Dict[str, Any])
+async def get_worker_stats(
+    trailing_slash: str = "",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> Any:
+    """
+    Obtener estadísticas generales de trabajadores:
+    - Totales activos e inactivos
+    - Distribución por modalidad de trabajo
+    """
+
+    total_workers = db.query(func.count(Worker.id)).scalar() or 0
+    active_workers = db.query(func.count(Worker.id)).filter(Worker.is_active == True).scalar() or 0
+    inactive_workers = db.query(func.count(Worker.id)).filter(Worker.is_active == False).scalar() or 0
+
+    modality_rows = (
+        db.query(Worker.work_modality, func.count(Worker.id))
+        .group_by(Worker.work_modality)
+        .all()
+    )
+
+    by_modality: Dict[str, int] = {}
+    for modality, count in modality_rows:
+        key = modality.value if hasattr(modality, "value") and modality is not None else (modality or "UNKNOWN")
+        by_modality[str(key)] = count
+
+    # Asegurar claves presentes aunque no existan registros
+    default_modalities = [
+        "ON_SITE",
+        "REMOTE",
+        "TELEWORK",
+        "HOME_OFFICE",
+        "MOBILE",
+        "UNKNOWN",
+    ]
+    for m in default_modalities:
+        by_modality.setdefault(m, 0)
+
+    # Porcentajes por modalidad (basado en total_workers)
+    percent_by_modality: Dict[str, float] = {}
+    denom = total_workers if total_workers > 0 else 1
+    for m, c in by_modality.items():
+        percent_by_modality[m] = round((c / denom) * 100, 2)
+
+    return {
+        "total_workers": total_workers,
+        "active_workers": active_workers,
+        "inactive_workers": inactive_workers,
+        "by_modality": by_modality,
+        "percent_by_modality": percent_by_modality,
+    }
