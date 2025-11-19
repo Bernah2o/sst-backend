@@ -69,7 +69,8 @@ class WorkerNovedadCreate(WorkerNovedadBase):
                 NovedadType.INCAPACIDAD_MEDICA,
                 NovedadType.PERMISO_DIA_NO_REMUNERADO,
                 NovedadType.LICENCIA_MATERNIDAD,
-                NovedadType.CAPACITACION
+                NovedadType.CAPACITACION,
+                NovedadType.TRABAJO_EN_CASA
             ]
             
             if tipo in tipos_con_fechas and not v:
@@ -79,6 +80,15 @@ class WorkerNovedadCreate(WorkerNovedadBase):
             if tipo == NovedadType.PERMISO_DIA_FAMILIA and not v:
                 raise ValueError('La fecha es requerida para permiso día de la familia')
         
+        return v
+
+    @field_validator('fecha_fin')
+    @classmethod
+    def validate_fecha_fin_requerida_para_trabajo_en_casa(cls, v, info: ValidationInfo):
+        """Requiere fecha_fin cuando el tipo es trabajo en casa"""
+        if 'tipo' in info.data and info.data['tipo'] == NovedadType.TRABAJO_EN_CASA:
+            if not v:
+                raise ValueError('La fecha de fin es requerida para trabajo en casa')
         return v
 
     @field_validator('salario_anterior')

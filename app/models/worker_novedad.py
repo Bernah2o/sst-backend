@@ -19,6 +19,7 @@ class NovedadType(str, Enum):
     HORAS_EXTRAS = "horas_extras"
     RECARGOS = "recargos"
     CAPACITACION = "capacitacion"
+    TRABAJO_EN_CASA = "trabajo_en_casa"
 
 
 class NovedadStatus(str, Enum):
@@ -91,7 +92,8 @@ class WorkerNovedad(Base):
             NovedadType.INCAPACIDAD_MEDICA,
             NovedadType.PERMISO_DIA_NO_REMUNERADO,
             NovedadType.LICENCIA_MATERNIDAD,
-            NovedadType.CAPACITACION
+            NovedadType.CAPACITACION,
+            NovedadType.TRABAJO_EN_CASA
         ]
         return self.tipo in tipos_con_fechas
     
