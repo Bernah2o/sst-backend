@@ -22,8 +22,11 @@ from getpass import getpass
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Cargar variables de entorno
-load_dotenv('.env')
+# Cargar variables de entorno (preferir .env.production si existe)
+_env_dir = os.path.dirname(os.path.abspath(__file__))
+_env_production = os.path.join(_env_dir, '.env.production')
+_env_default = os.path.join(_env_dir, '.env')
+load_dotenv(_env_production if os.path.exists(_env_production) else _env_default)
 
 # Agregar el directorio raíz al path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -132,8 +135,8 @@ def create_default_admin():
     
     # Datos predefinidos del administrador
     admin_data = {
-        "email": "bernardino.deaguas@gmail.com",
-        "password": "Admin123!",
+        "email": "sst@admin.com",
+        "password": "admin123",
         "first_name": "Administrador",
         "last_name": "Sistema",
         "document_number": "15172967",
