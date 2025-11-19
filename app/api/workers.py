@@ -2500,7 +2500,9 @@ async def export_worker_novedades_to_excel(
         "aumento_salario": "Aumento de Salario",
         "licencia_maternidad": "Licencia de Maternidad",
         "horas_extras": "Horas Extras",
-        "recargos": "Recargos"
+        "recargos": "Recargos",
+        "capacitacion": "Capacitación",
+        "trabajo_en_casa": "Trabajo en casa",
     }
     
     # Mapeo de estados
