@@ -2503,6 +2503,7 @@ async def export_worker_novedades_to_excel(
         "recargos": "Recargos",
         "capacitacion": "Capacitación",
         "trabajo_en_casa": "Trabajo en casa",
+        "cobertura_en_el_exterior": "Cobertura en el exterior",
     }
     
     # Mapeo de estados
