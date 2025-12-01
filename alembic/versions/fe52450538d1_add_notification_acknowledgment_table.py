@@ -33,11 +33,11 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_notification_acknowledgments_id'), 'notification_acknowledgments', ['id'], unique=False)
-    op.drop_index(op.f('ix_admin_config_category'), table_name='admin_config')
-    op.drop_index(op.f('ix_admin_config_id'), table_name='admin_config')
-    op.drop_table('admin_config')
-    op.drop_index(op.f('ix_programas_id'), table_name='programas')
-    op.drop_table('programas')
+    op.execute('DROP INDEX IF EXISTS ix_admin_config_category')
+    op.execute('DROP INDEX IF EXISTS ix_admin_config_id')
+    op.execute('DROP TABLE IF EXISTS admin_config')
+    op.execute('DROP INDEX IF EXISTS ix_programas_id')
+    op.execute('DROP TABLE IF EXISTS programas')
     # ### end Alembic commands ###
 
 
