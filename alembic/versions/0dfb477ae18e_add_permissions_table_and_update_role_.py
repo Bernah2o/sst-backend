@@ -32,11 +32,11 @@ def upgrade() -> None:
     op.create_index(op.f('ix_permissions_action'), 'permissions', ['action'], unique=False)
     op.create_index(op.f('ix_permissions_id'), 'permissions', ['id'], unique=False)
     op.create_index(op.f('ix_permissions_resource_type'), 'permissions', ['resource_type'], unique=False)
-    op.drop_index(op.f('ix_admin_config_category'), table_name='admin_config')
-    op.drop_index(op.f('ix_admin_config_id'), table_name='admin_config')
-    op.drop_table('admin_config')
-    op.drop_index(op.f('ix_programas_id'), table_name='programas')
-    op.drop_table('programas')
+    op.execute('DROP INDEX IF EXISTS ix_admin_config_category')
+    op.execute('DROP INDEX IF EXISTS ix_admin_config_id')
+    op.execute('DROP TABLE IF EXISTS admin_config')
+    op.execute('DROP INDEX IF EXISTS ix_programas_id')
+    op.execute('DROP TABLE IF EXISTS programas')
     
     # Clear existing role_permissions data before adding foreign key
     op.execute("DELETE FROM role_permissions")
