@@ -37,7 +37,6 @@ class WorkerVacationBase(BaseModel):
     start_date: date
     end_date: date
     comments: Optional[str] = None
-    allow_past_dates: Optional[bool] = False  # Administrative override
 
     @field_validator('end_date')
     @classmethod
@@ -47,34 +46,6 @@ class WorkerVacationBase(BaseModel):
             if v <= info.data['start_date']:
                 raise ValueError('La fecha de fin debe ser posterior a la fecha de inicio')
         return v
-
-    @model_validator(mode='after')
-    def validate_start_date_with_override(self):
-        """Valida que la fecha de inicio no sea anterior a hoy, con override administrativo"""
-        from datetime import date, timedelta
-        import logging
-        
-        # Check if administrative override is enabled
-        if getattr(self, 'allow_past_dates', False):
-            logging.info(f"Administrative override enabled - allowing past date: {self.start_date}")
-            return self
-        
-        # Skip validation if this is data being read from database (has id field)
-        if hasattr(self, 'id') and getattr(self, 'id', None) is not None:
-            logging.info(f"Skipping date validation for existing record with id: {self.id}")
-            return self
-        
-        # Permitir fechas desde ayer para dar flexibilidad con zonas horarias
-        today = date.today()
-        min_date = today - timedelta(days=1)
-        
-        # Log para debugging
-        logging.info(f"Validating start_date: {self.start_date}, today: {today}, min_date: {min_date}")
-        
-        if self.start_date and self.start_date < min_date:
-            logging.warning(f"Date validation failed: {self.start_date} < {min_date}")
-            raise ValueError('La fecha de inicio no puede ser anterior a ayer')
-        return self
 
     @field_validator('comments')
     @classmethod
@@ -87,7 +58,27 @@ class WorkerVacationBase(BaseModel):
 
 class WorkerVacationCreate(WorkerVacationBase):
     # worker_id se obtiene del parámetro de la URL, no del body
-    pass
+    allow_past_dates: Optional[bool] = False  # Administrative override
+    @model_validator(mode='after')
+    def validate_start_date_with_override(self):
+        """Valida que la fecha de inicio no sea anterior a ayer, con override administrativo."""
+        from datetime import date, timedelta
+        import logging
+        
+        # Override administrativo permite fechas pasadas
+        if getattr(self, 'allow_past_dates', False):
+            logging.debug(f"Administrative override enabled - allowing past start_date: {self.start_date}")
+            return self
+        
+        # Permitir fechas desde ayer para flexibilidad de zonas horarias
+        today = date.today()
+        min_date = today - timedelta(days=1)
+        logging.debug(f"Validating create start_date: {self.start_date}, today: {today}, min_date: {min_date}")
+        
+        if self.start_date and self.start_date < min_date:
+            logging.warning(f"Create date validation failed: {self.start_date} < {min_date}")
+            raise ValueError('La fecha de inicio no puede ser anterior a ayer')
+        return self
 
 
 class WorkerVacationUpdate(BaseModel):
@@ -95,10 +86,11 @@ class WorkerVacationUpdate(BaseModel):
     end_date: Optional[date] = None
     comments: Optional[str] = None
     status: Optional[VacationStatus] = None
+    allow_past_dates: Optional[bool] = False
 
     @field_validator('start_date')
     @classmethod
-    def validate_start_date(cls, v):
+    def validate_start_date(cls, v, info: ValidationInfo):
         """Valida que la fecha de inicio no sea anterior a hoy"""
         if v is None:  # Skip validation if no start_date is provided
             return v
@@ -106,13 +98,22 @@ class WorkerVacationUpdate(BaseModel):
         from datetime import date, timedelta
         import logging
         
+        # Override administrativo permite fechas pasadas en actualización
+        allow_override = False
+        try:
+            allow_override = bool(info.data.get('allow_past_dates', False)) if info and info.data else False
+        except Exception:
+            allow_override = False
+        if allow_override:
+            logging.debug("Administrative override enabled on update - allowing past start_date")
+            return v
+        logging.debug(f"Validating update start_date: {v}")
+        
         # Permitir fechas desde ayer para dar flexibilidad con zonas horarias
         today = date.today()
         min_date = today - timedelta(days=1)
-        
-        # Log para debugging
-        logging.info(f"Validating update start_date: {v}, today: {today}, min_date: {min_date}")
-        
+
+        logging.debug(f"Update start_date check: today={today}, min_date={min_date}")
         if v < min_date:
             logging.warning(f"Update date validation failed: {v} < {min_date}")
             raise ValueError('La fecha de inicio no puede ser anterior a ayer')

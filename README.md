@@ -220,6 +220,41 @@ gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 - Usar `python migrate.py` para control manual
 - Consultar [DEPLOYMENT.md](DEPLOYMENT.md) para proceso completo
 
+## 🔎 Logging
+
+El backend ajusta el nivel de logging según el entorno:
+
+- Producción: silencioso por defecto (`root` en `ERROR`), `uvicorn.access` deshabilitado.
+- Desarrollo: `DEBUG` habilitado para depuración.
+
+Variables de entorno relevantes:
+
+```env
+# Entorno (local|development|dev|production)
+ENVIRONMENT=production
+
+# Forzar modo debug en desarrollo
+DEBUG=false
+
+# Nivel explícito de logging (opcional). Si no se define en producción, se usa ERROR.
+LOG_LEVEL=INFO
+```
+
+Ejemplos:
+
+- Ver logs de depuración en desarrollo:
+```env
+ENVIRONMENT=development
+DEBUG=true
+```
+
+- Mantener producción silenciosa (solo errores):
+```env
+ENVIRONMENT=production
+DEBUG=false
+# LOG_LEVEL sin definir (usa ERROR por defecto)
+```
+
 ## 📚 Uso de la Aplicación
 
 ### Acceso a la Aplicación
