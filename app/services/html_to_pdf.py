@@ -13,8 +13,6 @@ from typing import Optional, Dict, Any, List
 
 import weasyprint
 
-# Configurar logging para debug
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
