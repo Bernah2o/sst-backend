@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🎉 ¡Feliz Cumpleaños!</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; background: #f7f9fc; color: #2c3e50; margin: 0; padding: 0; }
+    .container { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); overflow: hidden; }
+    .header { background: linear-gradient(135deg, #1e90ff 0%, #00c6ff 100%); color: #fff; text-align: center; padding: 28px 20px; }
+    .header h1 { margin: 0; font-size: 26px; }
+    .content { padding: 24px; }
+    .hero { text-align: center; margin: 8px 0 18px; }
+    .hero-emoji { font-size: 42px; }
+    .name { font-weight: 700; color: #1e3a8a; }
+    .card { background: #f0f7ff; border: 1px solid #dbeafe; border-radius: 8px; padding: 16px; margin: 16px 0; }
+    .cta { text-align: center; margin-top: 22px; }
+    .button { background-color: #2563eb; color: #fff; padding: 12px 22px; border-radius: 8px; text-decoration: none; display: inline-block; }
+    .footer { font-size: 12px; color: #64748b; padding: 18px 24px; text-align: center; }
+    .divider { border: none; border-top: 1px solid #e5e7eb; margin: 20px 0; }
+    .signature { margin-top: 10px; font-weight: 600; color: #334155; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎉 ¡Feliz Cumpleaños!</h1>
+    </div>
+    <div class="content">
+      <div class="hero">
+        <div class="hero-emoji">🎂✨🎈</div>
+      </div>
+      <p>
+        Hola <span class="name">{{ worker_name }}</span>,
+      </p>
+      <p>
+        En este día especial queremos desearte un <strong>muy feliz cumpleaños</strong> 🥳.
+        Gracias por tu compromiso y por aportar tu energía y talento a nuestra organización.
+      </p>
+      <div class="card">
+        <p style="margin: 0 0 12px 0;">
+          Que este nuevo año de vida esté lleno de salud, logros y momentos memorables.
+        </p>
+        <p style="margin: 0;">Cuenta siempre con nosotros para seguir construyendo juntos un entorno seguro y saludable.</p>
+      </div>
+      <p>
+        Este mensaje es emitido desde el <strong>área de SST de Bernardino de Aguas</strong> 💧,
+        con aprecio y gratitud por tu trabajo.
+      </p>
+
+      {% if system_url %}
+      <div class="cta">
+        <a class="button" href="{{ system_url }}" target="_blank" rel="noopener noreferrer">Ir al Sistema SST</a>
+      </div>
+      {% endif %}
+
+      <hr class="divider" />
+      <div class="footer">
+        <div>Este es un mensaje automático del Sistema SST. Por favor, no respondas a este correo.</div>
+        {% if contact_email %}
+        <div style="margin-top: 6px;">Soporte: <a href="mailto:{{ contact_email }}">{{ contact_email }}</a></div>
+        {% endif %}
+        <div class="signature">Área de Seguridad y Salud en el Trabajo (SST) – Bernardino de Aguas</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
