@@ -3,13 +3,13 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, or_
 
 from app.database import get_db
 from app.dependencies import get_current_active_user
 from app.models.user import User, UserRole
 from app.models.worker import Worker
-from app.models.course import Course, CourseStatus, CourseModule
+from app.models.course import Course, CourseStatus, CourseModule, CourseType
 from app.models.enrollment import Enrollment, EnrollmentStatus
 from app.models.user_progress import UserMaterialProgress, UserModuleProgress, MaterialProgressStatus
 from app.models.survey import Survey, UserSurvey, SurveyStatus, UserSurveyStatus
@@ -48,6 +48,8 @@ async def get_user_progress(
     user_id: Optional[int] = Query(None),
     course_id: Optional[int] = Query(None),
     status: Optional[UserProgressStatus] = Query(None),
+    search: Optional[str] = Query(None),
+    course_type: Optional[str] = Query(None),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> UserProgressListResponse:
@@ -56,7 +58,7 @@ async def get_user_progress(
     Admin and capacitador can view all progress, employees can only view their own
     """
     # Build query based on user role
-    query = db.query(Enrollment).join(User, Enrollment.user_id == User.id).join(Course, Enrollment.course_id == Course.id)
+    query = db.query(Enrollment).join(User, Enrollment.user_id == User.id).join(Course, Enrollment.course_id == Course.id).outerjoin(Worker, Worker.user_id == User.id)
     
     # Role-based filtering
     if current_user.role.value not in ["admin", "trainer", "supervisor"]:
@@ -69,6 +71,24 @@ async def get_user_progress(
     # Additional filters
     if course_id:
         query = query.filter(Enrollment.course_id == course_id)
+    
+    if course_type:
+        query = query.filter(Course.course_type == course_type)
+
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            or_(
+                User.first_name.ilike(search_term),
+                User.last_name.ilike(search_term),
+                User.email.ilike(search_term),
+                func.concat(User.first_name, ' ', User.last_name).ilike(search_term),
+                Worker.first_name.ilike(search_term),
+                Worker.last_name.ilike(search_term),
+                Worker.document_number.ilike(search_term),
+                func.concat(Worker.first_name, ' ', Worker.last_name).ilike(search_term)
+            )
+        )
     
     # Exclude cancelled enrollments
     query = query.filter(Enrollment.status != EnrollmentStatus.CANCELLED)
