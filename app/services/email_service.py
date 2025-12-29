@@ -11,10 +11,16 @@ class EmailService:
         """Prueba la conexión y autenticación con el servidor SMTP."""
         try:
             context = ssl.create_default_context()
-            with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
-                # server.set_debuglevel(1) # Debug disabled for production
-                server.starttls(context=context)
-                server.login(settings.smtp_username, settings.smtp_password)
+            if settings.email_use_ssl:
+                with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, context=context) as server:
+                    # server.set_debuglevel(1) # Debug disabled for production
+                    server.login(settings.smtp_username, settings.smtp_password)
+            else:
+                with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
+                    # server.set_debuglevel(1) # Debug disabled for production
+                    if settings.email_use_tls:
+                        server.starttls(context=context)
+                    server.login(settings.smtp_username, settings.smtp_password)
             return True
         except Exception as e:
             logging.error(f"Error en conexión SMTP: {e}")
@@ -37,13 +43,22 @@ class EmailService:
 
         try:
             context = ssl.create_default_context()
-            with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
-                server.starttls(context=context)
-                server.login(settings.smtp_username, settings.smtp_password)
-                recipients = [to_email]
-                if cc:
-                    recipients.extend(cc)
-                server.sendmail(settings.email_from, recipients, msg.as_string())
+            if settings.email_use_ssl:
+                with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, context=context) as server:
+                    server.login(settings.smtp_username, settings.smtp_password)
+                    recipients = [to_email]
+                    if cc:
+                        recipients.extend(cc)
+                    server.sendmail(settings.email_from, recipients, msg.as_string())
+            else:
+                with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
+                    if settings.email_use_tls:
+                        server.starttls(context=context)
+                    server.login(settings.smtp_username, settings.smtp_password)
+                    recipients = [to_email]
+                    if cc:
+                        recipients.extend(cc)
+                    server.sendmail(settings.email_from, recipients, msg.as_string())
             return True
         except Exception as e:
             logging.error(f"Error al enviar correo: {e}")

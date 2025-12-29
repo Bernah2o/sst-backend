@@ -23,6 +23,10 @@ from app.scheduler.occupational_exam_scheduler import (
     start_occupational_exam_scheduler,
     stop_occupational_exam_scheduler,
 )
+from app.scheduler.course_reminder_scheduler import (
+    start_course_reminder_scheduler,
+    stop_course_reminder_scheduler,
+)
 
 # Configurar logging con helper central
 applied_level = configure_logging(
@@ -97,6 +101,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         pass
 
+    # Start course reminder scheduler
+    try:
+        start_course_reminder_scheduler()
+    except Exception as e:
+        pass
+
     yield
 
     # Shutdown
@@ -109,6 +119,12 @@ async def lifespan(app: FastAPI):
     # Stop occupational exam scheduler
     try:
         stop_occupational_exam_scheduler()
+    except Exception as e:
+        pass
+
+    # Stop course reminder scheduler
+    try:
+        stop_course_reminder_scheduler()
     except Exception as e:
         pass
 
