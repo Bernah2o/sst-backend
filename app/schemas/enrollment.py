@@ -118,12 +118,21 @@ class CourseProgressDetail(BaseModel):
 
 
 class UserProgress(BaseModel):
+    id: int  # Enrollment ID
+    enrollment_id: int  # Explicit Enrollment ID
     user_id: int
     course_id: int
-    user_name: str  # Added to match frontend expectation
-    course_name: str  # Added to match frontend expectation
+    user_name: str
+    user_document: Optional[str] = None
+    user_position: Optional[str] = None
+    user_area: Optional[str] = None
+    course_name: str
+    course_type: Optional[str] = None
     status: UserProgressStatus
     progress_percentage: float = Field(0.0, ge=0.0, le=100.0)
+    time_spent_minutes: int = 0
+    modules_completed: int = 0
+    total_modules: int = 0
     enrolled_at: Optional[datetime] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None

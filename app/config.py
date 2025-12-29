@@ -51,6 +51,8 @@ class Settings:
         self.smtp_username = os.getenv("SMTP_USERNAME")
         self.smtp_password = os.getenv("SMTP_PASSWORD")
         self.email_from = os.getenv("EMAIL_FROM")
+        self.email_use_tls = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
+        self.email_use_ssl = os.getenv("EMAIL_USE_SSL", "False").lower() == "true"
         
         # Configuración de logging
         self.log_level = os.getenv("LOG_LEVEL", "INFO")
