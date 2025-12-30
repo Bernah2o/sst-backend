@@ -1,6 +1,6 @@
 from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, contains_eager
 from sqlalchemy import desc, and_, or_
 
 from app.dependencies import get_current_active_user, require_supervisor_or_admin
@@ -13,6 +13,38 @@ from app.schemas.common import MessageResponse
 router = APIRouter()
 
 
+def format_audit_log(log: AuditLog) -> AuditLogResponse:
+    """Helper to format audit log with user info"""
+    log_dict = {
+        "id": log.id,
+        "user_id": log.user_id,
+        "action": log.action,
+        "resource_type": log.resource_type,
+        "resource_id": log.resource_id,
+        "resource_name": log.resource_name,
+        "old_values": log.old_values,
+        "new_values": log.new_values,
+        "ip_address": log.ip_address,
+        "user_agent": log.user_agent,
+        "session_id": log.session_id,
+        "request_id": log.request_id,
+        "details": log.details,
+        "success": log.success,
+        "error_message": log.error_message,
+        "duration_ms": log.duration_ms,
+        "created_at": log.created_at,
+        "user_name": None,
+        "user_email": None
+    }
+    
+    # Add user information if available
+    if log.user:
+        log_dict["user_name"] = f"{log.user.first_name} {log.user.last_name}".strip()
+        log_dict["user_email"] = log.user.email
+    
+    return AuditLogResponse(**log_dict)
+
+
 @router.get("/", response_model=AuditLogListResponse)
 async def get_audit_logs(
     page: int = Query(1, ge=1, description="Page number"),
@@ -22,7 +54,7 @@ async def get_audit_logs(
     user_id: Optional[int] = Query(None, description="Filter by user ID"),
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
-    search: Optional[str] = Query(None, description="Search in resource name or details"),
+    search: Optional[str] = Query(None, description="Search in resource name, details, IP or user info"),
     current_user: User = Depends(require_supervisor_or_admin),
     db: Session = Depends(get_db)
 ) -> Any:
@@ -31,8 +63,9 @@ async def get_audit_logs(
     Only accessible by supervisors and admins.
     """
     # Build query with user information
-    query = db.query(AuditLog).options(
-        joinedload(AuditLog.user)
+    # Use outerjoin + contains_eager to allow filtering by user fields while keeping logs without users
+    query = db.query(AuditLog).outerjoin(AuditLog.user).options(
+        contains_eager(AuditLog.user)
     )
     
     # Apply filters
@@ -72,7 +105,12 @@ async def get_audit_logs(
         query = query.filter(
             or_(
                 AuditLog.resource_name.ilike(search_term),
-                AuditLog.details.ilike(search_term)
+                AuditLog.details.ilike(search_term),
+                AuditLog.resource_type.ilike(search_term),
+                AuditLog.ip_address.ilike(search_term),
+                User.first_name.ilike(search_term),
+                User.last_name.ilike(search_term),
+                User.email.ilike(search_term)
             )
         )
     
@@ -90,36 +128,7 @@ async def get_audit_logs(
     total_pages = (total + limit - 1) // limit
     
     # Format response with user information
-    items = []
-    for log in audit_logs:
-        log_dict = {
-            "id": log.id,
-            "user_id": log.user_id,
-            "action": log.action,
-            "resource_type": log.resource_type,
-            "resource_id": log.resource_id,
-            "resource_name": log.resource_name,
-            "old_values": log.old_values,
-            "new_values": log.new_values,
-            "ip_address": log.ip_address,
-            "user_agent": log.user_agent,
-            "session_id": log.session_id,
-            "request_id": log.request_id,
-            "details": log.details,
-            "success": log.success,
-            "error_message": log.error_message,
-            "duration_ms": log.duration_ms,
-            "created_at": log.created_at,
-            "user_name": None,
-            "user_email": None
-        }
-        
-        # Add user information if available
-        if log.user:
-            log_dict["user_name"] = f"{log.user.first_name} {log.user.last_name}".strip()
-            log_dict["user_email"] = log.user.email
-        
-        items.append(AuditLogResponse(**log_dict))
+    items = [format_audit_log(log) for log in audit_logs]
     
     return AuditLogListResponse(
         items=items,
@@ -150,35 +159,7 @@ async def get_audit_log(
             detail="Registro de auditoría no encontrado"
         )
     
-    # Format response with user information
-    log_dict = {
-        "id": audit_log.id,
-        "user_id": audit_log.user_id,
-        "action": audit_log.action,
-        "resource_type": audit_log.resource_type,
-        "resource_id": audit_log.resource_id,
-        "resource_name": audit_log.resource_name,
-        "old_values": audit_log.old_values,
-        "new_values": audit_log.new_values,
-        "ip_address": audit_log.ip_address,
-        "user_agent": audit_log.user_agent,
-        "session_id": audit_log.session_id,
-        "request_id": audit_log.request_id,
-        "details": audit_log.details,
-        "success": audit_log.success,
-        "error_message": audit_log.error_message,
-        "duration_ms": audit_log.duration_ms,
-        "created_at": audit_log.created_at,
-        "user_name": None,
-        "user_email": None
-    }
-    
-    # Add user information if available
-    if audit_log.user:
-        log_dict["user_name"] = f"{audit_log.user.first_name} {audit_log.user.last_name}".strip()
-        log_dict["user_email"] = audit_log.user.email
-    
-    return AuditLogResponse(**log_dict)
+    return format_audit_log(audit_log)
 
 
 @router.get("/actions/list")

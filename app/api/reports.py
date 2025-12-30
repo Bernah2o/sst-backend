@@ -354,7 +354,7 @@ async def get_attendance_reports(
     # Build query with joins
     query = db.query(
         Attendance,
-        User.username,
+        User.email,
         User.first_name,
         User.last_name,
         Course.title.label('course_title')
