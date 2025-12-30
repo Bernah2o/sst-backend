@@ -69,6 +69,8 @@ COPY --chown=appuser:appuser migrate.py /app/
 COPY --chown=appuser:appuser admin.py /app/
 COPY --chown=appuser:appuser backup.py /app/
 COPY --chown=appuser:appuser database.py /app/
+COPY --chown=appuser:appuser entrypoint.sh /app/
+RUN chmod +x /app/entrypoint.sh
 
 # Create necessary directories with proper permissions
 RUN mkdir -p /app/uploads /app/logs /app/certificates /app/static /app/templates \
@@ -89,4 +91,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the application
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
