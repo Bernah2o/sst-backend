@@ -169,9 +169,9 @@ services:
     environment:
       - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@172.20.0.10:5432/${DB_NAME:-bd_sst}
       - ENVIRONMENT=${ENVIRONMENT:-production}
-      - LOG_LEVEL=${LOG_LEVEL:-WARNING}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - DEBUG=false
-    command: python migrate.py upgrade
+    command: alembic upgrade head
     volumes:
       - app_logs:/app/logs
     depends_on:
