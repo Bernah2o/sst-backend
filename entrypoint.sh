@@ -6,5 +6,5 @@ echo "Running database migrations..."
 alembic upgrade head
 
 # Start the application
-echo "Starting application..."
+echo "Starting application version: ${APP_VERSION:-unknown} (Built: ${BUILD_DATE:-unknown})"
 exec "$@"

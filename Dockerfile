@@ -53,6 +53,12 @@ RUN apt-get update && apt-get install -y \
 # Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
+# Versioning
+ARG APP_VERSION=unknown
+ARG BUILD_DATE=unknown
+ENV APP_VERSION=${APP_VERSION}
+ENV BUILD_DATE=${BUILD_DATE}
+
 # Set work directory
 WORKDIR /app
 
