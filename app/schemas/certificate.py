@@ -15,7 +15,7 @@ class CertificateStatus(str, Enum):
 # Certificate Schemas
 class CertificateBase(BaseModel):
     user_id: int
-    course_id: int
+    course_id: Optional[int] = None
     title: str = Field(..., max_length=255)
     description: Optional[str] = None
     score_achieved: Optional[float] = None
@@ -47,6 +47,7 @@ class CertificateResponse(CertificateBase):
     issue_date: datetime
     file_path: Optional[str] = None
     verification_code: Optional[str] = None
+    template_used: Optional[str] = None
     issued_by: Optional[int] = None
     revoked_by: Optional[int] = None
     revoked_at: Optional[datetime] = None
@@ -88,7 +89,7 @@ class CertificateListResponse(BaseModel):
     certificate_number: str
     title: str
     user_id: int
-    course_id: int
+    course_id: Optional[int] = None
     status: CertificateStatus
     issue_date: datetime
     issued_date: Optional[datetime] = Field(None, alias='issue_date')  # Alias for frontend compatibility
@@ -119,7 +120,7 @@ class CertificateVerificationResponse(BaseModel):
 # Certificate Generation Schema
 class CertificateGeneration(BaseModel):
     user_id: int
-    course_id: int
+    course_id: Optional[int] = None
     score_achieved: Optional[float] = None
     completion_date: Optional[datetime] = None
     expiry_date: Optional[datetime] = None
@@ -130,7 +131,7 @@ class CertificateGeneration(BaseModel):
 # Certificate PDF Generation Schema
 class CertificatePDFGeneration(BaseModel):
     user_id: int
-    course_id: int
+    course_id: Optional[int] = None
     template_name: Optional[str] = "default"
     include_score: bool = True
     custom_message: Optional[str] = None

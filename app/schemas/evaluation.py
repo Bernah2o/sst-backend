@@ -50,9 +50,8 @@ class AnswerResponse(AnswerBase):
     created_at: datetime
 
     class Config:
-        # Compatibilidad Pydantic v1/v2
+        # Compatibilidad Pydantic v2
         from_attributes = True
-        orm_mode = True
 
 
 # Question Schemas
@@ -101,9 +100,8 @@ class QuestionResponse(QuestionBase):
     updated_at: datetime
 
     class Config:
-        # Compatibilidad Pydantic v1/v2
+        # Compatibilidad Pydantic v2
         from_attributes = True
-        orm_mode = True
 
 
 # User Answer Schemas
@@ -126,9 +124,8 @@ class UserAnswerResponse(UserAnswerBase):
     answered_at: datetime
 
     class Config:
-        # Compatibilidad Pydantic v1/v2
+        # Compatibilidad Pydantic v2
         from_attributes = True
-        orm_mode = True
 
 
 # User Evaluation Schemas
@@ -174,9 +171,8 @@ class UserEvaluationResponse(BaseModel):
     updated_at: datetime
 
     class Config:
-        # Compatibilidad Pydantic v1/v2
+        # Compatibilidad Pydantic v2
         from_attributes = True
-        orm_mode = True
 
 
 # Evaluation Schemas
@@ -225,9 +221,8 @@ class EvaluationResponse(EvaluationBase):
     questions: List[QuestionResponse] = []
 
     class Config:
-        # Compatibilidad Pydantic v1/v2
+        # Compatibilidad Pydantic v2
         from_attributes = True
-        orm_mode = True
 
 
 class CourseInfo(BaseModel):
@@ -235,9 +230,8 @@ class CourseInfo(BaseModel):
     title: str
     
     class Config:
-        # Compatibilidad Pydantic v1/v2
+        # Compatibilidad Pydantic v2
         from_attributes = True
-        orm_mode = True
 
 
 class EvaluationListResponse(BaseModel):
@@ -254,9 +248,8 @@ class EvaluationListResponse(BaseModel):
     published_at: Optional[datetime] = None
 
     class Config:
-        # Compatibilidad Pydantic v1/v2
+        # Compatibilidad Pydantic v2
         from_attributes = True
-        orm_mode = True
 
 
 # Evaluation Submission Schema

@@ -1,16 +1,18 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="format-detection" content="telephone=no">
-    <meta name="format-detection" content="date=no">
-    <meta name="format-detection" content="address=no">
-    <meta name="format-detection" content="email=no">
-    <meta name="pdf-engine" content="WeasyPrint">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="format-detection" content="date=no" />
+    <meta name="format-detection" content="address=no" />
+    <meta name="format-detection" content="email=no" />
+    <meta name="pdf-engine" content="WeasyPrint" />
     <title>Certificado de Finalización</title>
-    <link rel="stylesheet" href="css/certificate.css">
+    <link rel="stylesheet" href="css/certificate.css" />
 </head>
+
 <body>
     <div class="certificate">
         <!-- Elementos decorativos de fondo -->
@@ -18,7 +20,7 @@
         <div class="bg-decoration top-right"></div>
         <div class="bg-decoration bottom-left"></div>
         <div class="bg-decoration bottom-right"></div>
-        
+
         <!-- Contenido principal -->
         <div class="content">
             <!-- Lado izquierdo con texto -->
@@ -30,24 +32,24 @@
                     <span class="star">★</span>
                     <span class="star">★</span>
                 </div>
-                
+
                 <h1 class="certificate-title">CERTIFICATE</h1>
                 <p class="certificate-subtitle">of Achievement</p>
-                
+
                 <h2 class="recipient-name">{{ user.full_name }}</h2>
-                
+
                 <div class="achievement-text">
                     <p class="for-text">For completing the</p>
                     <p class="course-name">"{{ course.title }}"</p>
                 </div>
-                
-                <div class="description">
-                    <p>In recognition of your exceptional talent, dedication, and outstanding performance, you have emerged as the winner of this prestigious course.</p>
-                </div>
-                
 
+                <div class="description">
+                    <p>
+                        In recognition of your exceptional talent, dedication, and outstanding performance, you have emerged as the winner of this prestigious course.
+                    </p>
+                </div>
             </div>
-            
+
             <!-- Lado derecho con trofeo -->
             <div class="right-section">
                 <div class="trophy-container">
@@ -61,30 +63,33 @@
                     <div class="laurel-left"></div>
                     <div class="laurel-right"></div>
                 </div>
-                
+
                 <!-- Información del certificado -->
                 <div class="certificate-details">
                     <div class="detail-item">
                         <span class="detail-label">Certificate Number:</span>
-                        <span class="detail-value">{{ certificate.certificate_number }}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Issue Date:</span>
+                        <span class="detail-value">{{ certificate.certificate_number }}</span
+              >
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Issue Date:</span>
                         <span class="detail-value">{{ issue_date }}</span>
                     </div>
                     <div class="detail-item">
                         <span class="detail-label">Verification Code:</span>
-                        <span class="detail-value">{{ certificate.verification_code }}</span>
-                    </div>
-                    {% if certificate.score_achieved %}
-                    <div class="detail-item">
-                        <span class="detail-label">Score:</span>
-                        <span class="detail-value">{{ certificate.score_achieved }}%</span>
-                    </div>
-                    {% endif %}
-                </div>
+                        <span class="detail-value">{{ certificate.verification_code }}</span
+              >
             </div>
+            {% if certificate.score_achieved %}
+            <div class="detail-item">
+              <span class="detail-label">Score:</span>
+                        <span class="detail-value">{{ certificate.score_achieved }}%</span
+              >
+            </div>
+            {% endif %}
+          </div>
         </div>
+      </div>
     </div>
-</body>
+  </body>
 </html>

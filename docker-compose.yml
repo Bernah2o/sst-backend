@@ -32,10 +32,23 @@ services:
       - "traefik.http.routers.traefik.tls.certresolver=letsencrypt"
       - "traefik.http.services.traefik.loadbalancer.server.port=8080"
 
-  # PostgreSQL Database
+  # PostgreSQL Database con Seguridad Mejorada
   db:
     image: postgres:17-alpine
     container_name: sst_postgres
+    command: >
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c hba_file=/etc/postgresql/pg_hba.conf
+      -c log_destination=stderr
+      -c logging_collector=on
+      -c log_directory=/var/log/postgresql
+      -c log_filename=postgresql-%Y-%m-%d_%H%M%S.log
+      -c log_statement=all
+      -c log_connections=on
+      -c log_disconnections=on
+      -c log_checkpoints=on
+      -c log_lock_waits=on
     environment:
       POSTGRES_DB: ${DB_NAME:-bd_sst}
       POSTGRES_USER: ${DB_USER:-sstuser}
@@ -43,10 +56,15 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - postgres_logs:/var/log/postgresql
+      - ./security/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./security/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./security/init-scripts:/docker-entrypoint-initdb.d:ro
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"  # Solo bind a localhost para mayor seguridad
     networks:
-      - sst_network
+      sst_network:
+        ipv4_address: 172.20.0.10  # IP fija para configuraciones de seguridad
     restart: unless-stopped
     healthcheck:
       test:
@@ -60,6 +78,85 @@ services:
           memory: 512M
         reservations:
           memory: 256M
+    labels:
+      - "traefik.enable=false"  # No exponer PostgreSQL externamente
+
+  # Servicio de Seguridad con Fail2ban
+  fail2ban:
+    image: crazymax/fail2ban:latest
+    container_name: sst_fail2ban
+    network_mode: "host"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TZ=America/Bogota
+      - F2B_LOG_LEVEL=INFO
+      - F2B_DB_PURGE_AGE=1d
+    volumes:
+      - postgres_logs:/var/log/postgresql:ro
+      - ./security/fail2ban:/data/jail.d:ro
+      - ./security/fail2ban-filters:/data/filter.d:ro
+      - fail2ban_data:/data
+    depends_on:
+      - db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "fail2ban-client", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.1"
+        reservations:
+          memory: 64M
+          cpus: "0.05"
+
+  # Servicio de Monitoreo de Seguridad
+  security_monitor:
+    image: alpine:latest
+    container_name: sst_security_monitor
+    environment:
+      - DB_HOST=172.20.0.10
+      - DB_PORT=5432
+      - ALERT_THRESHOLD=10
+      - CHECK_INTERVAL=60
+    volumes:
+      - postgres_logs:/var/log/postgresql:ro
+      - ./security/monitor-scripts:/scripts:ro
+      - security_reports:/reports
+    command: >
+      sh -c "
+        apk add --no-cache curl jq postgresql-client &&
+        chmod +x /scripts/*.sh &&
+        /scripts/monitor-security.sh --continuous
+      "
+    depends_on:
+      - db
+      - fail2ban
+    networks:
+      - sst_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "monitor-security.sh"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.05"
+        reservations:
+          memory: 32M
+          cpus: "0.02"
+    labels:
+      - "traefik.enable=false"
 
   # Redis removido - no se usa en la aplicación actual
 
@@ -70,7 +167,7 @@ services:
       dockerfile: Dockerfile
     container_name: sst_migrate
     environment:
-      - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME:-bd_sst}
+      - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@172.20.0.10:5432/${DB_NAME:-bd_sst}
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - LOG_LEVEL=${LOG_LEVEL:-WARNING}
       - DEBUG=false
@@ -95,7 +192,7 @@ services:
     env_file:
       - .env.production
     environment:
-      - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME:-bd_sst}
+      - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@172.20.0.10:5432/${DB_NAME:-bd_sst}
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - LOG_LEVEL=${LOG_LEVEL:-WARNING}
       - DEBUG=false
@@ -154,7 +251,7 @@ services:
     env_file:
       - .env.production
     environment:
-      - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME:-bd_sst}
+      - DATABASE_URL=postgresql://${DB_USER:-sstuser}:${DB_PASSWORD}@172.20.0.10:5432/${DB_NAME:-bd_sst}
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - LOG_LEVEL=${LOG_LEVEL:-WARNING}
       - DEBUG=false
@@ -206,6 +303,24 @@ volumes:
       type: none
       o: bind
       device: ./data/postgres
+  postgres_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/postgres_logs
+  fail2ban_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/fail2ban
+  security_reports:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/security_reports
   # redis_data removido - Redis no es necesario
   app_uploads:
     driver: local

@@ -51,6 +51,8 @@ class Settings:
         self.smtp_username = os.getenv("SMTP_USERNAME")
         self.smtp_password = os.getenv("SMTP_PASSWORD")
         self.email_from = os.getenv("EMAIL_FROM")
+        self.email_use_tls = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
+        self.email_use_ssl = os.getenv("EMAIL_USE_SSL", "False").lower() == "true"
         
         # Configuración de logging
         self.log_level = os.getenv("LOG_LEVEL", "INFO")
@@ -64,6 +66,7 @@ class Settings:
         self.firebase_certificates_path = os.getenv("FIREBASE_CERTIFICATES_PATH", "fastapi_project/certificates")
         self.firebase_medical_reports_path = os.getenv("FIREBASE_MEDICAL_REPORTS_PATH", "fastapi_project/medical_reports")
         self.firebase_attendance_lists_path = os.getenv("FIREBASE_ATTENDANCE_LISTS_PATH", "fastapi_project/attendance_lists")
+        # Firebase Storage configuration
         self.use_firebase_storage = os.getenv("USE_FIREBASE_STORAGE", "False").lower() == "true"
         self.firebase_credentials_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
         
@@ -78,5 +81,27 @@ class Settings:
         self.firebase_auth_provider_x509_cert_url = os.getenv("FIREBASE_AUTH_PROVIDER_X509_CERT_URL")
         self.firebase_client_x509_cert_url = os.getenv("FIREBASE_CLIENT_X509_CERT_URL")
         self.firebase_universe_domain = os.getenv("FIREBASE_UNIVERSE_DOMAIN")
+
+    def get_firebase_certificate_path(self, certificate_type: str = "general") -> str:
+        """
+        Genera dinámicamente la ruta de Firebase Storage para certificados basada en el tipo.
+        
+        Args:
+            certificate_type: Tipo de certificado ('attendance', 'course', 'general', etc.)
+            
+        Returns:
+            str: Ruta de Firebase Storage para el tipo de certificado especificado
+        """
+        base_path = self.firebase_certificates_path
+        
+        if certificate_type == "attendance":
+            return f"{base_path}/attendance"
+        elif certificate_type == "course":
+            return f"{base_path}/courses"
+        elif certificate_type == "completion":
+            return f"{base_path}/completion"
+        else:
+            # Para tipos no especificados, usar la ruta base
+            return base_path
 
 settings = Settings()

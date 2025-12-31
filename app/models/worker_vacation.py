@@ -2,7 +2,7 @@ from datetime import datetime, date
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, DateTime, Date, Enum as SQLEnum, Integer, String, Text, ForeignKey
+from sqlalchemy import Boolean, Column, DateTime, Date, Enum as SQLEnum, Integer, String, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.hybrid import hybrid_property
 
@@ -60,7 +60,7 @@ class VacationBalance(Base):
     __tablename__ = "vacation_balances"
 
     id = Column(Integer, primary_key=True, index=True)
-    worker_id = Column(Integer, ForeignKey("workers.id"), nullable=False, unique=True, index=True)
+    worker_id = Column(Integer, ForeignKey("workers.id"), nullable=False, index=True)
     year = Column(Integer, nullable=False, index=True)
     total_days = Column(Integer, default=15, nullable=False)  # Días totales por año
     used_days = Column(Integer, default=0, nullable=False)    # Días ya utilizados

@@ -37,8 +37,8 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_worker_documents_id'), 'worker_documents', ['id'], unique=False)
-    op.drop_index(op.f('ix_programas_id'), table_name='programas')
-    op.drop_table('programas')
+    op.execute('DROP INDEX IF EXISTS ix_programas_id')
+    op.execute('DROP TABLE IF EXISTS programas')
     # ### end Alembic commands ###
 
 

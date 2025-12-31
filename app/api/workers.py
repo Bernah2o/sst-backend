@@ -2,7 +2,7 @@ from typing import Any, List, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from io import BytesIO
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
@@ -65,6 +65,61 @@ from app.models.reinduction import ReinductionRecord
 
 router = APIRouter()
 
+
+# ==================== ESTADÍSTICAS DE TRABAJADORES ====================
+@router.get("/stats", response_model=Dict[str, Any])
+@router.get("/stats{trailing_slash:path}", response_model=Dict[str, Any])
+async def get_worker_stats(
+    trailing_slash: str = "",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> Any:
+    """
+    Obtener estadísticas generales de trabajadores:
+    - Totales activos e inactivos
+    - Distribución por modalidad de trabajo
+    """
+
+    total_workers = db.query(func.count(Worker.id)).scalar() or 0
+    active_workers = db.query(func.count(Worker.id)).filter(Worker.is_active == True).scalar() or 0
+    inactive_workers = db.query(func.count(Worker.id)).filter(Worker.is_active == False).scalar() or 0
+
+    modality_rows = (
+        db.query(Worker.work_modality, func.count(Worker.id))
+        .group_by(Worker.work_modality)
+        .all()
+    )
+
+    by_modality: Dict[str, int] = {}
+    for modality, count in modality_rows:
+        key = modality.value if hasattr(modality, "value") and modality is not None else (modality or "UNKNOWN")
+        by_modality[str(key)] = count
+
+    # Asegurar claves presentes aunque no existan registros
+    default_modalities = [
+        "ON_SITE",
+        "REMOTE",
+        "TELEWORK",
+        "HOME_OFFICE",
+        "MOBILE",
+        "UNKNOWN",
+    ]
+    for m in default_modalities:
+        by_modality.setdefault(m, 0)
+
+    # Porcentajes por modalidad (basado en total_workers)
+    percent_by_modality: Dict[str, float] = {}
+    denom = total_workers if total_workers > 0 else 1
+    for m, c in by_modality.items():
+        percent_by_modality[m] = round((c / denom) * 100, 2)
+
+    return {
+        "total_workers": total_workers,
+        "active_workers": active_workers,
+        "inactive_workers": inactive_workers,
+        "by_modality": by_modality,
+        "percent_by_modality": percent_by_modality,
+    }
 
 @router.get("/", response_model=List[WorkerList])
 @router.get("", response_model=List[WorkerList])
@@ -1332,13 +1387,13 @@ async def update_vacation_request(
     if vacation_data.end_date is not None:
         vacation.end_date = vacation_data.end_date
     
-    if vacation_data.reason is not None:
-        vacation.comments = vacation_data.reason
+    if vacation_data.comments is not None:
+        vacation.comments = vacation_data.comments
     
     # Recalcular días si se cambiaron las fechas
     if vacation_data.start_date is not None or vacation_data.end_date is not None:
         from datetime import timedelta
-        
+
         # Calcular días laborables (excluyendo fines de semana)
         current_date = vacation.start_date
         days = 0
@@ -1346,10 +1401,65 @@ async def update_vacation_request(
             if current_date.weekday() < 5:  # Lunes a Viernes
                 days += 1
             current_date += timedelta(days=1)
+
+        # Validación por aniversario: las nuevas fechas deben estar dentro del periodo anual
+        if not worker.fecha_de_ingreso:
+            raise HTTPException(
+                status_code=400,
+                detail="El trabajador no tiene registrada la fecha de ingreso. Actualice la ficha del trabajador antes de actualizar la solicitud."
+            )
+
+        from datetime import date as _date
+        def _add_years_safe(d: _date, years: int) -> _date:
+            try:
+                return d.replace(year=d.year + years)
+            except ValueError:
+                return d.replace(year=d.year + years, month=2, day=28)
+
+        hire_date = worker.fecha_de_ingreso
+        first_eligible = _add_years_safe(hire_date, 1)
+        if vacation.start_date < first_eligible:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Aún no cumple un (1) año desde el ingreso ({hire_date}). Puede solicitar vacaciones a partir de {first_eligible}."
+            )
+
+        years_since = vacation.start_date.year - hire_date.year
+        if (vacation.start_date.month, vacation.start_date.day) < (hire_date.month, hire_date.day):
+            years_since -= 1
+        period_start = _add_years_safe(hire_date, max(1, years_since))
+        period_end = _add_years_safe(period_start, 1) - timedelta(days=1)
+
+        if vacation.start_date < period_start or vacation.end_date > period_end:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Las fechas deben estar dentro del periodo anual de vacaciones por aniversario: "
+                    f"desde {period_start} hasta {period_end}."
+                )
+            )
+
+        # Validar conflictos de área (pendientes o aprobadas), excluyendo esta solicitud
+        from sqlalchemy import or_
+        conflicts = db.query(WorkerVacation).join(Worker, WorkerVacation.worker_id == Worker.id).filter(
+            WorkerVacation.id != vacation_id,
+            Worker.area_id == worker.area_id,
+            or_(
+                WorkerVacation.status == VacationStatus.PENDING,
+                WorkerVacation.status == VacationStatus.APPROVED
+            ),
+            WorkerVacation.start_date <= vacation.end_date,
+            WorkerVacation.end_date >= vacation.start_date
+        ).all()
+        if conflicts:
+            raise HTTPException(
+                status_code=400,
+                detail="Las nuevas fechas se solapan con otra solicitud en tu área"
+            )
         
         # Actualizar balance de vacaciones si cambió el número de días
-        old_days = vacation.days
-        vacation.days = days
+        old_days = vacation.days_requested
+        vacation.days_requested = days
         
         if old_days != days:
             vacation_balance = db.query(VacationBalance).filter(
@@ -1423,10 +1533,10 @@ async def delete_vacation_request(
     if vacation_balance:
         if vacation.status == VacationStatus.PENDING:
             # Devolver días pendientes
-            vacation_balance.pending_days -= vacation.days
+            vacation_balance.pending_days -= vacation.days_requested
         elif vacation.status == VacationStatus.APPROVED:
             # Devolver días usados
-            vacation_balance.used_days -= vacation.days
+            vacation_balance.used_days -= vacation.days_requested
     
     try:
         # Eliminar la solicitud de vacaciones
@@ -2445,7 +2555,10 @@ async def export_worker_novedades_to_excel(
         "aumento_salario": "Aumento de Salario",
         "licencia_maternidad": "Licencia de Maternidad",
         "horas_extras": "Horas Extras",
-        "recargos": "Recargos"
+        "recargos": "Recargos",
+        "capacitacion": "Capacitación",
+        "trabajo_en_casa": "Trabajo en casa",
+        "cobertura_en_el_exterior": "Cobertura en el exterior",
     }
     
     # Mapeo de estados
@@ -2532,60 +2645,106 @@ async def export_worker_novedades_to_excel(
 async def get_occupied_dates(
     start_date: str = Query(..., description="Fecha de inicio en formato YYYY-MM-DD"),
     end_date: str = Query(..., description="Fecha de fin en formato YYYY-MM-DD"),
+    worker_id: int | None = Query(None, description="Opcional: filtra por el área del trabajador indicado"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Any:
-    """Obtener fechas ocupadas por vacaciones aprobadas y pendientes activas en un rango de fechas"""
+    """Obtener fechas ocupadas por vacaciones aprobadas y pendientes activas en un rango de fechas.
+
+    Ahora filtra por área del trabajador:
+    - Si se envía `worker_id`, se usan las vacaciones de trabajadores en la misma `area_id`.
+    - Si no se envía, se infiere el trabajador a partir de `current_user` y se usa su `area_id`.
+    - Si no se puede determinar el `area_id`, se retorna lista vacía para evitar falsos positivos.
+    """
     from app.models.worker_vacation import WorkerVacation, VacationStatus
     from datetime import datetime, timedelta
+    from sqlalchemy.orm import joinedload
     
+    # Validar formato de fechas
     try:
-        # Validar formato de fechas
         start_dt = datetime.strptime(start_date, '%Y-%m-%d').date()
         end_dt = datetime.strptime(end_date, '%Y-%m-%d').date()
-        
-        if start_dt > end_dt:
-            raise HTTPException(status_code=400, detail="La fecha de inicio debe ser anterior a la fecha de fin")
-        
-        # Buscar todas las vacaciones aprobadas y pendientes que se solapen con el rango
-        occupied_vacations = db.query(WorkerVacation).filter(
-            WorkerVacation.status.in_([VacationStatus.APPROVED, VacationStatus.PENDING]),
-            WorkerVacation.start_date <= end_dt,
-            WorkerVacation.end_date >= start_dt
-        ).all()
-        
-        # Generar lista de fechas ocupadas
-        occupied_dates = []
-        for vacation in occupied_vacations:
-            # Obtener información del trabajador
-            worker = db.query(Worker).filter(Worker.id == vacation.worker_id).first()
-            worker_name = f"{worker.first_name} {worker.last_name}" if worker else "Trabajador desconocido"
-            
-            # Generar todas las fechas del período de vacaciones
-            current_date = vacation.start_date
-            while current_date <= vacation.end_date:
-                occupied_dates.append({
-                    "date": current_date.strftime('%Y-%m-%d'),
-                    "worker_name": worker_name,
-                    "vacation_id": vacation.id,
-                    "start_date": vacation.start_date.strftime('%Y-%m-%d'),
-                    "end_date": vacation.end_date.strftime('%Y-%m-%d')
-                })
-                current_date += timedelta(days=1)
-        
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Formato de fecha inválido. Use YYYY-MM-DD")
+
+    if start_dt > end_dt:
+        raise HTTPException(status_code=400, detail="La fecha de inicio debe ser anterior a la fecha de fin")
+
+    # Determinar área objetivo (usar area_id si existe, de lo contrario department)
+    target_area_id = None
+    target_department = None
+    target_worker = None
+
+    if worker_id is not None:
+        target_worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    else:
+        # Inferir worker desde el usuario autenticado
+        target_worker = db.query(Worker).filter(Worker.user_id == current_user.id).first()
+
+    if target_worker:
+        if target_worker.area_id is not None:
+            target_area_id = target_worker.area_id
+        if getattr(target_worker, "department", None):
+            target_department = target_worker.department
+
+    # Si no hay área ni departamento definida, no mostrar ocupados (respeta el requerimiento por área)
+    if target_area_id is None and not target_department:
         return {
-            "occupied_dates": occupied_dates,
-            "total_occupied_days": len(occupied_dates),
+            "occupied_dates": [],
+            "total_occupied_days": 0,
             "query_range": {
                 "start_date": start_date,
                 "end_date": end_date
             }
         }
-        
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Formato de fecha inválido. Use YYYY-MM-DD")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al obtener fechas ocupadas: {str(e)}")
+
+    # Buscar vacaciones aprobadas y pendientes en la misma área/departamento que se solapen con el rango
+    conflict_filters = [
+        WorkerVacation.status.in_([VacationStatus.APPROVED, VacationStatus.PENDING]),
+        WorkerVacation.start_date <= end_dt,
+        WorkerVacation.end_date >= start_dt,
+        Worker.is_active == True,
+    ]
+
+    if target_area_id is not None:
+        conflict_filters.append(Worker.area_id == target_area_id)
+    elif target_department:
+        conflict_filters.append(Worker.department == target_department)
+
+    occupied_vacations = (
+        db.query(WorkerVacation)
+        .join(Worker, WorkerVacation.worker_id == Worker.id)
+        .options(joinedload(WorkerVacation.worker))
+        .filter(*conflict_filters)
+        .all()
+    )
+
+    # Generar lista de fechas ocupadas
+    occupied_dates = []
+    for vacation in occupied_vacations:
+        worker = vacation.worker or db.query(Worker).filter(Worker.id == vacation.worker_id).first()
+        worker_name = f"{worker.first_name} {worker.last_name}" if worker else "Trabajador desconocido"
+
+        # Generar todas las fechas del período de vacaciones
+        current_date = vacation.start_date
+        while current_date <= vacation.end_date:
+            occupied_dates.append({
+                "date": current_date.strftime('%Y-%m-%d'),
+                "worker_name": worker_name,
+                "vacation_id": vacation.id,
+                "start_date": vacation.start_date.strftime('%Y-%m-%d'),
+                "end_date": vacation.end_date.strftime('%Y-%m-%d')
+            })
+            current_date += timedelta(days=1)
+
+    return {
+        "occupied_dates": occupied_dates,
+        "total_occupied_days": len(occupied_dates),
+        "query_range": {
+            "start_date": start_date,
+            "end_date": end_date
+        }
+    }
 
 
 @router.get("/novedades/stats/summary", response_model=WorkerNovedadStats)
@@ -2712,11 +2871,36 @@ async def check_vacation_availability(
             requested_days += 1
         current_date = current_date + timedelta(days=1)
     
-    # Buscar conflictos con otras vacaciones aprobadas (excluyendo canceladas y rechazadas)
-    conflicts = db.query(WorkerVacation).filter(
+    # Buscar conflictos con vacaciones aprobadas en el rango
+    # Si se especifica worker_id, limitar a trabajadores de la misma área
+    if worker_id is not None:
+        worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    else:
+        worker = None
+
+    from sqlalchemy.orm import joinedload
+    conflict_query = db.query(WorkerVacation)
+    if worker is not None:
+        conflict_query = conflict_query.join(Worker, WorkerVacation.worker_id == Worker.id)
+        # Filtrar por misma área o mismo departamento (fallback)
+        if worker.area_id is not None:
+            conflict_query = conflict_query.filter(Worker.area_id == worker.area_id)
+        elif getattr(worker, "department", None):
+            conflict_query = conflict_query.filter(Worker.department == worker.department)
+        else:
+            # Si el trabajador no tiene área ni departamento, no reportar conflictos
+            return VacationAvailability(
+                start_date=start_date,
+                end_date=end_date,
+                is_available=True,
+                conflicts=[],
+                requested_days=requested_days,
+                available_days=None
+            )
+        conflict_query = conflict_query.filter(WorkerVacation.worker_id != worker_id)
+
+    conflicts = conflict_query.filter(
         WorkerVacation.status == VacationStatus.APPROVED,
-        WorkerVacation.status != VacationStatus.REJECTED,
-        WorkerVacation.status != VacationStatus.CANCELLED,
         WorkerVacation.start_date <= end_date,
         WorkerVacation.end_date >= start_date
     ).all()
@@ -2835,14 +3019,47 @@ async def check_worker_vacation_availability(
             requested_days += 1
         current_date = current_date + timedelta(days=1)
     
-    # Buscar conflictos con otras vacaciones aprobadas (excluyendo al trabajador actual y las rechazadas/canceladas)
-    conflicts = db.query(WorkerVacation).filter(
+    # Buscar conflictos con vacaciones aprobadas de trabajadores de la misma área
+    # (excluyendo al trabajador actual)
+    # Conflictos por misma área o mismo departamento (fallback)
+    conflict_filters = [
         WorkerVacation.worker_id != worker_id,
         WorkerVacation.status == VacationStatus.APPROVED,
-        WorkerVacation.status != VacationStatus.REJECTED,
-        WorkerVacation.status != VacationStatus.CANCELLED,
         WorkerVacation.start_date <= end_date,
-        WorkerVacation.end_date >= start_date
+        WorkerVacation.end_date >= start_date,
+    ]
+    if worker.area_id is not None:
+        conflict_filters.append(Worker.area_id == worker.area_id)
+    elif getattr(worker, "department", None):
+        conflict_filters.append(Worker.department == worker.department)
+    else:
+        # Sin área ni departamento, asumimos sin conflictos
+        conflicts = []
+        conflict_list = []
+        requested_days = 0
+        current_date = start_date
+        while current_date <= end_date:
+            if current_date.weekday() < 5:
+                requested_days += 1
+            current_date = current_date + timedelta(days=1)
+        # Balance
+        vacation_balance = db.query(VacationBalance).filter(
+            VacationBalance.worker_id == worker_id,
+            VacationBalance.year == start_date.year
+        ).first()
+        available_days = vacation_balance.available_days if vacation_balance else 15
+        is_available = available_days >= requested_days
+        return VacationAvailability(
+            start_date=start_date,
+            end_date=end_date,
+            is_available=is_available,
+            conflicts=conflict_list,
+            requested_days=requested_days,
+            available_days=available_days
+        )
+
+    conflicts = db.query(WorkerVacation).join(Worker, WorkerVacation.worker_id == Worker.id).filter(
+        *conflict_filters
     ).all()
     
     conflict_list = []
@@ -2870,7 +3087,6 @@ async def check_worker_vacation_availability(
     ).first()
     
     if not vacation_balance:
-        # Crear balance por defecto si no existe
         vacation_balance = VacationBalance(
             worker_id=worker_id,
             year=start_date.year,
@@ -2878,9 +3094,20 @@ async def check_worker_vacation_availability(
             used_days=0,
             pending_days=0
         )
-        db.add(vacation_balance)
-        db.commit()
-        db.refresh(vacation_balance)
+        from sqlalchemy.exc import IntegrityError
+        try:
+            db.add(vacation_balance)
+            db.commit()
+            db.refresh(vacation_balance)
+        except IntegrityError:
+            db.rollback()
+            vacation_balance = db.query(VacationBalance).filter(
+                VacationBalance.worker_id == worker_id,
+                VacationBalance.year == start_date.year
+            ).first()
+            if not vacation_balance:
+                raise
+
     
     available_days = vacation_balance.available_days
     
@@ -2964,6 +3191,7 @@ async def create_vacation_request(
     from app.models.worker_vacation import WorkerVacation, VacationStatus, VacationBalance
     from app.schemas.worker_vacation import WorkerVacation as WorkerVacationSchema
     from datetime import timedelta
+    from sqlalchemy import or_
     
     # Verificar que el trabajador existe
     worker = db.query(Worker).filter(Worker.id == worker_id, Worker.is_active == True).first()
@@ -2988,6 +3216,49 @@ async def create_vacation_request(
     
     if days <= 0:
         raise HTTPException(status_code=400, detail="La solicitud debe incluir al menos un día laboral")
+
+    # Validación por aniversario de ingreso: las vacaciones solo se pueden tomar
+    # a partir del primer aniversario y dentro del periodo anual entre aniversarios.
+    if not worker.fecha_de_ingreso:
+        raise HTTPException(
+            status_code=400,
+            detail="El trabajador no tiene registrada la fecha de ingreso. Actualice la ficha del trabajador antes de solicitar vacaciones."
+        )
+
+    from datetime import date, timedelta as _timedelta
+
+    def _add_years_safe(d: date, years: int) -> date:
+        try:
+            return d.replace(year=d.year + years)
+        except ValueError:
+            # Ajuste para fechas como 29 de febrero en años no bisiestos
+            return d.replace(year=d.year + years, month=2, day=28)
+
+    hire_date = worker.fecha_de_ingreso
+    first_eligible = _add_years_safe(hire_date, 1)
+
+    if start_date < first_eligible:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Aún no cumple un (1) año desde el ingreso ({hire_date}). Puede solicitar vacaciones a partir de {first_eligible}."
+        )
+
+    # Calcular el periodo de aniversario correspondiente al rango solicitado
+    years_since = start_date.year - hire_date.year
+    if (start_date.month, start_date.day) < (hire_date.month, hire_date.day):
+        years_since -= 1
+    # El inicio del periodo es el aniversario alcanzado más reciente
+    period_start = _add_years_safe(hire_date, max(1, years_since))
+    period_end = _add_years_safe(period_start, 1) - _timedelta(days=1)
+
+    if start_date < period_start or end_date > period_end:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Las fechas deben estar dentro del periodo anual de vacaciones por aniversario: "
+                f"desde {period_start} hasta {period_end}."
+            )
+        )
     
     # Verificar balance de vacaciones
     current_year = start_date.year
@@ -3015,13 +3286,72 @@ async def create_vacation_request(
             detail=f"No tiene suficientes días disponibles. Disponibles: {vacation_balance.available_days}, Solicitados: {days}"
         )
     
-    # Verificar conflictos con otras solicitudes aprobadas
-    conflicts = db.query(WorkerVacation).filter(
-        WorkerVacation.worker_id != worker_id,
+    # Verificar conflictos con solicitudes del mismo trabajador (solo aprobadas)
+    self_conflicts = db.query(WorkerVacation).filter(
+        WorkerVacation.worker_id == worker_id,
         WorkerVacation.status == VacationStatus.APPROVED,
         WorkerVacation.start_date <= end_date,
         WorkerVacation.end_date >= start_date
     ).all()
+
+    # Validar traslape real en días hábiles (evita falsos positivos por límites contiguos)
+    def _business_overlap_days(a_start, a_end, b_start, b_end) -> int:
+        from datetime import timedelta as _td
+        start = max(a_start, b_start)
+        end = min(a_end, b_end)
+        # Contigüidad en el mismo día NO cuenta como solape
+        if start >= end:
+            return 0
+        days = 0
+        d = start
+        while d <= end:
+            if d.weekday() < 5:
+                days += 1
+            d += _td(days=1)
+        return days
+
+    for sc in self_conflicts:
+        overlap_days = _business_overlap_days(sc.start_date, sc.end_date, start_date, end_date)
+        if overlap_days > 0:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Las fechas seleccionadas se solapan con otra solicitud propia aprobada "
+                    f"({sc.start_date}–{sc.end_date}, traslape hábil: {overlap_days} días)"
+                )
+            )
+
+    # Verificar conflictos con otras solicitudes del mismo área (pendientes o aprobadas)
+    # Conflictos por misma área o mismo departamento (fallback)
+    area_or_dept_filters = [
+        WorkerVacation.worker_id != worker_id,
+        or_(
+            WorkerVacation.status == VacationStatus.PENDING,
+            WorkerVacation.status == VacationStatus.APPROVED
+        ),
+        WorkerVacation.start_date <= end_date,
+        WorkerVacation.end_date >= start_date
+    ]
+    if worker.area_id is not None:
+        area_or_dept_filters.append(Worker.area_id == worker.area_id)
+    elif getattr(worker, "department", None):
+        area_or_dept_filters.append(Worker.department == worker.department)
+    else:
+        area_or_dept_filters.append(True)  # sin área/departamento, no filtrar por área
+
+    conflicts = db.query(WorkerVacation).join(Worker, WorkerVacation.worker_id == Worker.id).filter(
+        *area_or_dept_filters
+    ).all()
+
+    if conflicts:
+        first = conflicts[0]
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Las fechas seleccionadas ya están ocupadas por un trabajador de tu área "
+                f"({first.start_date}–{first.end_date})"
+            )
+        )
     
     # Crear la solicitud
     vacation = WorkerVacation(
@@ -3029,7 +3359,7 @@ async def create_vacation_request(
         start_date=start_date,
         end_date=end_date,
         days_requested=days,
-        comments=vacation_data.reason,
+        comments=vacation_data.comments,
         status=VacationStatus.PENDING
     )
     
@@ -3076,6 +3406,20 @@ async def approve_vacation(
     worker = db.query(Worker).filter(Worker.id == vacation.worker_id).first()
     if not worker:
         raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+
+    # Validar conflictos de área con otras solicitudes aprobadas
+    conflicts = db.query(WorkerVacation).join(Worker, WorkerVacation.worker_id == Worker.id).filter(
+        WorkerVacation.worker_id != vacation.worker_id,
+        Worker.area_id == worker.area_id,
+        WorkerVacation.status == VacationStatus.APPROVED,
+        WorkerVacation.start_date <= vacation.end_date,
+        WorkerVacation.end_date >= vacation.start_date
+    ).all()
+    if conflicts:
+        raise HTTPException(
+            status_code=400,
+            detail="No se puede aprobar: las fechas se solapan con una solicitud aprobada en el área"
+        )
     
     # Actualizar la solicitud
     vacation.status = VacationStatus.APPROVED
@@ -3089,8 +3433,8 @@ async def approve_vacation(
     ).first()
     
     if vacation_balance:
-        vacation_balance.pending_days -= vacation.days
-        vacation_balance.used_days += vacation.days
+        vacation_balance.pending_days -= vacation.days_requested
+        vacation_balance.used_days += vacation.days_requested
     
     db.commit()
     db.refresh(vacation)
@@ -3128,8 +3472,8 @@ async def reject_vacation(
     if vacation.status != VacationStatus.PENDING:
         raise HTTPException(status_code=400, detail="Solo se pueden rechazar solicitudes pendientes")
     
-    if not rejection_data.reason:
-        raise HTTPException(status_code=400, detail="La razón de rechazo es requerida")
+    if not rejection_data.comments:
+        raise HTTPException(status_code=400, detail="El comentario de rechazo es requerido")
     
     # Obtener información del trabajador
     worker = db.query(Worker).filter(Worker.id == vacation.worker_id).first()
@@ -3140,7 +3484,7 @@ async def reject_vacation(
     vacation.status = VacationStatus.REJECTED
     vacation.approved_by = current_user.id
     vacation.approved_date = datetime.utcnow()
-    vacation.comments = rejection_data.reason
+    vacation.comments = rejection_data.comments
     
     # Liberar días pendientes en el balance
     vacation_balance = db.query(VacationBalance).filter(
@@ -3217,10 +3561,10 @@ async def cancel_vacation(
     if vacation_balance:
         if original_status == VacationStatus.PENDING:
             # Si estaba pendiente, liberar días pendientes
-            vacation_balance.pending_days -= vacation.days
+            vacation_balance.pending_days -= vacation.days_requested
         elif original_status == VacationStatus.APPROVED:
             # Si estaba aprobada, liberar días usados
-            vacation_balance.used_days -= vacation.days
+            vacation_balance.used_days -= vacation.days_requested
     
     db.commit()
     db.refresh(vacation)

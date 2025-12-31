@@ -5,12 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Certificado de Asistencia</title>
     <link rel="stylesheet" href="css/attendance_certificate.css">
-    <style>
-        @page {
-            size: A4 landscape;
-            margin: 1cm;
-        }
-    </style>
 </head>
 <body>
     <div class="certificate-container">
@@ -35,52 +29,21 @@
 
         <!-- Información del curso -->
         <div class="course-info">
+            <div class="course-date-badge">{{ attendance.session_date_formatted }}</div>
             <div class="course-details">
                 <h3>INFORMACIÓN DEL CURSO</h3>
-                <div class="info-grid">
-                    <div class="info-item">
-                        <span class="label">Nombre del Curso:</span>
-                        <span class="value">{{ attendance.course_name }}</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="label">Fecha:</span>
-                        <span class="value">{{ attendance.session_date_formatted }}</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="label">Hora:</span>
-                        <span class="value">{{ attendance.session_time }}</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="label">Duración:</span>
-                        <span class="value">{{ attendance.duration_formatted }}</span>
-                    </div>
-                </div>
+                <div class="course-title">{{ attendance.course_name }}</div>
             </div>
         </div>
 
         <!-- Información del participante -->
         <div class="participant-info">
             <h3>INFORMACIÓN DEL PARTICIPANTE</h3>
-            <div class="participant-grid">
-                <div class="participant-item">
-                    <span class="label">Nombre:</span>
-                    <span class="value">{{ participant.first_name }}</span>
-                </div>
-                <div class="participant-item">
-                    <span class="label">Apellido:</span>
-                    <span class="value">{{ participant.last_name }}</span>
-                </div>
-                <div class="participant-item">
+            <div class="full-name">{{ participant.full_name or (participant.first_name ~ ' ' ~ participant.last_name) }}</div>
+            <div class="participant-grid single">
+                <div class="participant-item document-centered">
                     <span class="label">Documento:</span>
                     <span class="value">{{ participant.document }}</span>
-                </div>
-                <div class="participant-item">
-                    <span class="label">Teléfono:</span>
-                    <span class="value">{{ participant.phone }}</span>
-                </div>
-                <div class="participant-item">
-                    <span class="label">Cargo:</span>
-                    <span class="value">{{ participant.position }}</span>
                 </div>
             </div>
         </div>
@@ -99,41 +62,30 @@
             </div>
         </div>
 
-        <!-- Sección de firma -->
-        <div class="signature-section">
-            <div class="signature-box">
-                <div class="signature-line"></div>
-                <div class="signature-label">
-                    <strong>FIRMA DEL PARTICIPANTE</strong>
-                    <br>
-                    <small>{{ participant.first_name }} {{ participant.last_name }}</small>
-                </div>
-            </div>
-            <div class="signature-box">
-                <div class="signature-line"></div>
-                <div class="signature-label">
-                    <strong>FIRMA DEL INSTRUCTOR</strong>
-                    <br>
-                    <small>{{ attendance.instructor_name | default("Instructor SST") }}</small>
-                </div>
-            </div>
-        </div>
-
         <!-- Footer -->
         <div class="footer">
+            <!-- Sección de firmas -->
+            <div class="signature-section">
+                <div class="signature-box">
+                    <div class="signature-name">Bernardino de Aguas</div>
+                    <div class="signature-line"></div>
+                    <div class="signature-title">Coordinador SST</div>
+                </div>
+            </div>
+            
             <div class="footer-info">
                 <p><strong>Fecha de Generación:</strong> {{ generation_date }} - {{ generation_time }}</p>
                 <p><strong>Sistema SST</strong> - Gestión de Capacitaciones y Asistencia</p>
             </div>
-            {% if attendance.notes %}
-            <div class="notes-section">
-                <p><strong>Observaciones:</strong> {{ attendance.notes }}</p>
-            </div>
-            {% endif %}
         </div>
 
         <!-- Decorative elements -->
         <div class="decorative-border"></div>
+        <div class="watermark">
+            {% if logo_base64 %}
+            <img src="data:image/png;base64,{{ logo_base64 }}" alt="Marca de agua">
+            {% endif %}
+        </div>
     </div>
 </body>
 </html>

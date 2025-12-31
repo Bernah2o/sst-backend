@@ -8,6 +8,7 @@ data/
 *.so
 
 # Database backup script and backups
+unlock_user_account.py
 backup_production.py
 backups/
 *.sql
@@ -181,6 +182,7 @@ app.db
 attendance_lists/*.pdf
 certificates/*.pdf
 medical_reports/*.pdf
+occupational_exam_reports/*.pdf
 *.jpg
 
 # Upload directories content (but keep directory structure)

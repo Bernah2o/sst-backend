@@ -13,8 +13,6 @@ from typing import Optional, Dict, Any, List
 
 import weasyprint
 
-# Configurar logging para debug
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -35,7 +33,6 @@ class HTMLToPDFConverter:
             "title",
             "session_date",
             "course_title",
-            "instructor_name",
             "location",
             "duration",
             "attendance_percentage",
@@ -213,6 +210,38 @@ class HTMLToPDFConverter:
     <p>Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</p>
 </body>
 </html>"""
+
+    async def generate_pdf_from_template(self, template_name, context, output_path=None):
+        """
+        Genera un PDF a partir de una plantilla HTML y contexto.
+
+        Args:
+            template_name: Nombre del archivo de plantilla HTML.
+            context: Diccionario con las variables para la plantilla.
+            output_path: Ruta donde guardar el PDF generado.
+
+        Returns:
+            Bytes del PDF generado o ruta al archivo si output_path es proporcionado.
+        """
+        try:
+            # Renderizar la plantilla HTML
+            html_content = self.render_template(template_name, context)
+            
+            # Determinar archivos CSS basados en el nombre de la plantilla
+            css_files = []
+            template_base = template_name.replace('.html', '')
+            css_file = f"{template_base}.css"
+            css_path = os.path.join(self.template_dir, "css", css_file)
+            
+            if os.path.exists(css_path):
+                css_files.append(css_file)
+            
+            # Generar PDF
+            return self.generate_pdf(html_content, css_files, output_path)
+            
+        except Exception as e:
+            logger.error(f"Error en generate_pdf_from_template: {str(e)}")
+            return self._generate_emergency_pdf(f"Error al generar PDF desde plantilla: {str(e)}")
 
     def generate_pdf(self, html_content, css_files=None, output_path=None):
         """

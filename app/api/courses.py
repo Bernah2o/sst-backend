@@ -1350,9 +1350,7 @@ async def get_course_attendance_report(
                 "title": "Reporte de Asistencia del Curso",
                 "course_title": course.title,
                 "session_date": datetime.now().strftime("%d/%m/%Y"),
-                "instructor_name": current_user.first_name
-                + " "
-                + current_user.last_name,
+                "instructor_name": f"{current_user.first_name} {current_user.last_name}",
                 "location": course.location or "No especificado",
                 "duration": (
                     str(course.duration_hours) if course.duration_hours else "N/A"

@@ -29,6 +29,8 @@ from app.schemas.contractor import (
     ContractorContractResponse
 )
 from app.schemas.common import MessageResponse
+import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 

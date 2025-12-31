@@ -16,6 +16,67 @@ from app.schemas.common import MessageResponse
 router = APIRouter()
 
 
+def _check_pending_requirements(db: Session, user_id: int, course_id: int):
+    """
+    Check if there are any pending surveys or evaluations for the course.
+    Returns (pending_surveys, pending_evaluations) lists.
+    """
+    from app.models.survey import Survey, UserSurvey, SurveyStatus, UserSurveyStatus
+    from app.models.evaluation import Evaluation, UserEvaluation, UserEvaluationStatus, EvaluationStatus
+
+    # Check required surveys
+    required_surveys = db.query(Survey).filter(
+        and_(
+            Survey.course_id == course_id,
+            Survey.required_for_completion == True,
+            Survey.status == SurveyStatus.PUBLISHED
+        )
+    ).all()
+    
+    pending_surveys = []
+    for survey in required_surveys:
+        user_submission = db.query(UserSurvey).filter(
+            and_(
+                UserSurvey.user_id == user_id,
+                UserSurvey.survey_id == survey.id,
+                UserSurvey.status == UserSurveyStatus.COMPLETED
+            )
+        ).first()
+        
+        if not user_submission:
+            pending_surveys.append({
+                "id": survey.id,
+                "title": survey.title
+            })
+            
+    # Check published evaluations (all are required for 100% completion)
+    course_evaluations = db.query(Evaluation).filter(
+        and_(
+            Evaluation.course_id == course_id,
+            Evaluation.status == EvaluationStatus.PUBLISHED
+        )
+    ).all()
+    
+    pending_evaluations = []
+    for evaluation in course_evaluations:
+        # Check if passed
+        passed_evaluation = db.query(UserEvaluation).filter(
+            and_(
+                UserEvaluation.user_id == user_id,
+                UserEvaluation.evaluation_id == evaluation.id,
+                UserEvaluation.passed == True
+            )
+        ).first()
+        
+        if not passed_evaluation:
+            pending_evaluations.append({
+                "id": evaluation.id,
+                "title": evaluation.title
+            })
+            
+    return pending_surveys, pending_evaluations
+
+
 @router.post("/material/{material_id}/start")
 async def start_material(
     material_id: int,
@@ -50,6 +111,11 @@ async def start_material(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No está inscrito en este curso"
         )
+    
+    # Start enrollment if pending
+    if enrollment.status == "pending":
+        enrollment.start_enrollment()
+        db.add(enrollment)
     
     # Check if progress already exists
     existing_progress = db.query(UserMaterialProgress).filter(
@@ -271,50 +337,70 @@ async def get_course_progress(
                 self.status = EnrollmentStatus.ACTIVE.value
         enrollment = MockEnrollment()
     
-    # Get course modules
+    # Get course modules with materials in a single query
     modules = db.query(CourseModule).filter(CourseModule.course_id == course_id).all()
+    module_ids = [module.id for module in modules]
     
+    # Get all materials for all modules in one query
+    all_materials = db.query(CourseMaterial).filter(CourseMaterial.module_id.in_(module_ids)).all()
+    materials_by_module = {}
+    for material in all_materials:
+        if material.module_id not in materials_by_module:
+            materials_by_module[material.module_id] = []
+        materials_by_module[material.module_id].append(material)
+    
+    # Get all module progress in one query
+    if current_user.role == "admin" and not enrollment.id:
+        # For admins, get any completed modules
+        module_progress_data = db.query(UserModuleProgress).filter(
+            and_(
+                UserModuleProgress.module_id.in_(module_ids),
+                UserModuleProgress.status == MaterialProgressStatus.COMPLETED
+            )
+        ).all()
+        module_progress_dict = {mp.module_id: mp for mp in module_progress_data}
+    else:
+        # For regular users, get their specific progress
+        module_progress_data = db.query(UserModuleProgress).filter(
+            and_(
+                UserModuleProgress.user_id == current_user.id,
+                UserModuleProgress.module_id.in_(module_ids)
+            )
+        ).all()
+        module_progress_dict = {mp.module_id: mp for mp in module_progress_data}
+    
+    # Get all material progress in one query
+    material_ids = [material.id for material in all_materials]
+    if current_user.role == "admin" and not enrollment.id:
+        # For admins, get any completed materials
+        material_progress_data = db.query(UserMaterialProgress).filter(
+            and_(
+                UserMaterialProgress.material_id.in_(material_ids),
+                UserMaterialProgress.status == MaterialProgressStatus.COMPLETED
+            )
+        ).all()
+        material_progress_dict = {mp.material_id: mp for mp in material_progress_data}
+    else:
+        # For regular users, get their specific progress
+        material_progress_data = db.query(UserMaterialProgress).filter(
+            and_(
+                UserMaterialProgress.user_id == current_user.id,
+                UserMaterialProgress.material_id.in_(material_ids)
+            )
+        ).all()
+        material_progress_dict = {mp.material_id: mp for mp in material_progress_data}
+    
+    # Build modules progress using cached data
     modules_progress = []
     for module in modules:
-        # Get module progress - for admins, show aggregated data
-        if current_user.role == "admin" and not enrollment.id:
-            # For admins, show if any user has completed the module
-            any_module_completed = db.query(UserModuleProgress).filter(
-                and_(
-                    UserModuleProgress.module_id == module.id,
-                    UserModuleProgress.status == MaterialProgressStatus.COMPLETED
-                )
-            ).first()
-            module_progress = any_module_completed
-        else:
-            module_progress = db.query(UserModuleProgress).filter(
-                and_(
-                    UserModuleProgress.user_id == current_user.id,
-                    UserModuleProgress.module_id == module.id
-                )
-            ).first()
+        module_progress = module_progress_dict.get(module.id)
         
-        # Get materials progress
-        materials = db.query(CourseMaterial).filter(CourseMaterial.module_id == module.id).all()
+        # Get materials for this module
+        module_materials = materials_by_module.get(module.id, [])
         materials_progress = []
         
-        for material in materials:
-            if current_user.role == "admin" and not enrollment.id:
-                # For admins, show if any user has completed the material
-                any_material_completed = db.query(UserMaterialProgress).filter(
-                    and_(
-                        UserMaterialProgress.material_id == material.id,
-                        UserMaterialProgress.status == MaterialProgressStatus.COMPLETED
-                    )
-                ).first()
-                material_progress = any_material_completed
-            else:
-                material_progress = db.query(UserMaterialProgress).filter(
-                    and_(
-                        UserMaterialProgress.user_id == current_user.id,
-                        UserMaterialProgress.material_id == material.id
-                    )
-                ).first()
+        for material in module_materials:
+            material_progress = material_progress_dict.get(material.id)
             
             materials_progress.append({
                 "material_id": material.id,
@@ -334,9 +420,16 @@ async def get_course_progress(
             "materials": materials_progress
         })
     
+    # Recalculate course progress as average of all module progress percentages
+    if modules_progress:
+        total_module_progress = sum(module["progress_percentage"] for module in modules_progress)
+        course_progress_percentage = total_module_progress / len(modules_progress)
+    else:
+        course_progress_percentage = 0
+
     # Check for pending required surveys if course is completed
     pending_surveys = []
-    if enrollment.progress >= 100:
+    if course_progress_percentage >= 90:
         from app.models.survey import Survey, UserSurvey, SurveyStatus, UserSurveyStatus
         
         # Get required surveys for this course
@@ -411,7 +504,7 @@ async def get_course_progress(
     survey_status = "not_started"
     completed_surveys_count = 0
     total_surveys_count = 0
-    if enrollment.progress >= 100:
+    if course_progress_percentage >= 90:
         from app.models.survey import Survey, UserSurvey, SurveyStatus, UserSurveyStatus
         
         # Get all surveys for this course (not just required ones)
@@ -446,16 +539,26 @@ async def get_course_progress(
     # Get course information for passing_score
     course = db.query(Course).filter(Course.id == course_id).first()
     
-    # Recalculate course progress as average of all module progress percentages
-    if modules_progress:
-        total_module_progress = sum(module["progress_percentage"] for module in modules_progress)
-        course_progress_percentage = total_module_progress / len(modules_progress)
-    else:
-        course_progress_percentage = 0
+    # Note: course_progress_percentage is already calculated above
+        
+    # Check pending requirements (Surveys and Evaluations)
+    # Use the helper to get fresh status
+    # Note: pending_surveys variable above might be incomplete/old logic, so we check again for gating
+    pending_surveys_check, pending_evaluations_check = _check_pending_requirements(db, current_user.id, course_id)
     
+    # Cap progress if requirements are not met
+    if course_progress_percentage >= 100:
+        if pending_surveys_check or pending_evaluations_check:
+            course_progress_percentage = 99.0  # Cap at 99% if pending items
+
     # Update enrollment progress if it's different
     if enrollment and abs(enrollment.progress - course_progress_percentage) > 0.01:
         enrollment.progress = course_progress_percentage
+        
+        # Auto-complete enrollment if 100%
+        if course_progress_percentage >= 100 and not enrollment.completed_at:
+            enrollment.complete_enrollment()
+            
         db.commit()
         db.refresh(enrollment)
     

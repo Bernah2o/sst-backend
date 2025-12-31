@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notificación de Recomendaciones de Exámenes Médicos Ocupacionales</title>
+    <link rel="stylesheet" href="css/medical_recommendation.css">
+</head>
+<body>
+    <div class="document-container">
+        <!-- Header Section -->
+        <header class="document-header">
+            <div class="header-content">
+                <div class="logo-container">
+                    <img src="file:///E:/DH2OCOL/python/sst-app/sst-backend/app/templates/reports/logo_3.png" alt="Logo" class="company-logo">
+                </div>
+                <div class="header-text">
+                    <h1 class="company-name">ROWL - Sistema de Gestión SST</h1>
+                    <div class="document-type">NOTIFICACIÓN DE RECOMENDACIONES DE EXÁMENES MÉDICOS OCUPACIONALES</div>
+                </div>
+                <div class="header-date">
+                    <div class="date-label">Fecha de emisión:</div>
+                    <div class="date-value">{{ current_date }}</div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Worker Information Section -->
+        <section class="info-section">
+            <h2 class="section-title">INFORMACIÓN DEL TRABAJADOR</h2>
+            <div class="info-grid">
+                <div class="info-row">
+                    <div class="info-item">
+                        <span class="label">Nombre:</span>
+                        <span class="value">{{ worker.first_name }} {{ worker.last_name }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Fecha de Ingreso:</span>
+                        <span class="value">{{ worker.fecha_de_ingreso.strftime('%d/%m/%Y') if worker.fecha_de_ingreso else 'N/A' }}</span>
+                    </div>
+                </div>
+                <div class="info-row">
+                    <div class="info-item">
+                        <span class="label">Documento:</span>
+                        <span class="value">{{ worker.document_number }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Cargo:</span>
+                        <span class="value">{{ worker.cargo.name if worker.cargo else 'N/A' }}</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Medical Exam Information Section -->
+        <section class="info-section">
+            <h2 class="section-title">INFORMACIÓN DEL EXAMEN MÉDICO OCUPACIONAL</h2>
+            <div class="info-grid">
+                <div class="info-row">
+                    <div class="info-item">
+                        <span class="label">Tipo de Examen:</span>
+                        <span class="value">{{ exam.exam_type if exam else 'Examen de Ingreso' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Fecha del Examen:</span>
+                        <span class="value">{{ exam.exam_date.strftime('%d/%m/%Y') if exam and exam.exam_date else 'N/A' }}</span>
+                    </div>
+                </div>
+                <div class="info-row">
+                    <div class="info-item">
+                        <span class="label">Concepto de Aptitud Médica:</span>
+                        <span class="value">{{ exam.medical_aptitude_concept if exam else 'Apto' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Próximo Examen:</span>
+                        <span class="value">{{ exam.next_exam_date or 'N/A' }}</span>
+                    </div>
+                </div>
+                <div class="info-row">
+                    <div class="info-item">
+                        <span class="label">Médico Examinador:</span>
+                        <span class="value">{{ exam.examining_doctor if exam else 'HELDA NUÑEZ' }}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Centro Médico:</span>
+                        <span class="value">{{ exam.medical_center if exam else 'Laboratorios Nancy Flórez Garcial A.S' }}</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Occupational Conclusions Section -->
+        <section class="conclusions-section">
+            <h2 class="section-title">CONCLUSIONES OCUPACIONALES</h2>
+            <div class="conclusion-box">
+                <div class="conclusion-status">
+                    <span class="status-label">CUMPLE CON LOS REQUISITOS PARA EL CARGO</span>
+                </div>
+                <div class="conclusion-details">
+                    <p><strong>Observaciones:</strong> {{ exam.observations if exam and exam.observations else 'EXAMEN FÍSICO DE INGRESO CON ÉNFASIS OSTEOMUSCULAR, SIN ALTERACIÓN AL MOMENTO DE ESTE EXAMEN MÉDICO.' }}</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Preventive Behaviors Section -->
+        <section class="behaviors-section">
+            <h2 class="section-title">COMPORTAMIENTOS PREVENTIVOS OCUPACIONALES</h2>
+            <div class="behaviors-content">
+                <div class="behavior-category">
+                    <h3 class="behavior-title">OSTEOMUSCULAR</h3>
+                    <ul class="behavior-list">
+                        <li>Pausas activas, ejercicios de estiramiento y posturas adecuadas.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- General Recommendations Section -->
+        <section class="recommendations-section">
+            <h2 class="section-title">RECOMENDACIONES GENERALES</h2>
+            <div class="recommendations-content">
+                <div class="recommendation-grid">
+                    <div class="recommendation-item">
+                        <div class="recommendation-text">Control periódico ocupacional</div>
+                    </div>
+                    <div class="recommendation-item">
+                        <div class="recommendation-text">Hábitos nutricionales saludables</div>
+                    </div>
+                    <div class="recommendation-item">
+                        <div class="recommendation-text">Utilización de EPP Elementos de Protección personal de acuerdo al cargo</div>
+                    </div>
+                    <div class="recommendation-item">
+                        <div class="recommendation-text">Ejercicio regular 3 veces / semana</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Signatures Section -->
+        <section class="signatures-section">
+            <div class="signature-grid">
+                <div class="signature-box">
+                    <div class="signature-line"></div>
+                    <div class="signature-label">Profesional SST:</div>
+                    <div class="signature-name">Profesional SST</div>
+                </div>
+                <div class="signature-box">
+                    <div class="signature-line"></div>
+                    <div class="signature-label">Firma del Trabajador:</div>
+                    <div class="signature-name">{{ worker.first_name }} {{ worker.last_name }}</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Observations Section -->
+        <section class="observations-section">
+            <h2 class="section-title">OBSERVACIONES</h2>
+            <div class="observations-content">
+                <div class="observation-box">
+                    <p class="observation-text">
+                        {{ seguimiento.observations if seguimiento and seguimiento.observations else 'EXAMEN FÍSICO DE INGRESO CON ÉNFASIS OSTEOMUSCULAR, SIN ALTERACIÓN AL MOMENTO DE ESTE EXAMEN MÉDICO' }}
+                    </p>
+                </div>
+                <div class="observation-date">
+                    <p><strong>Fecha:</strong> {{ current_date }}</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="document-footer">
+            <div class="footer-content">
+                <p class="footer-text">Documento generado automáticamente por el Sistema de Gestión SST - ROWL</p>
+                <div class="footer-date">{{ current_date }}</div>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>

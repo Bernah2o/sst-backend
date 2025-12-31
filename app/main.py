@@ -3,6 +3,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any
 import logging
+from app.utils.logging_config import configure_logging, is_production, is_development
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.exceptions import RequestValidationError
@@ -22,17 +23,15 @@ from app.scheduler.occupational_exam_scheduler import (
     start_occupational_exam_scheduler,
     stop_occupational_exam_scheduler,
 )
+from app.scheduler.course_reminder_scheduler import (
+    start_course_reminder_scheduler,
+    stop_course_reminder_scheduler,
+)
 
-# Configurar logging basado en variables de entorno
-LOG_LEVEL = os.getenv("LOG_LEVEL", "WARNING").upper()
-DEBUG_MODE = os.getenv("DEBUG", "false").lower() == "true"
-ENVIRONMENT = os.getenv("ENVIRONMENT", "production")
-
-# Configuración básica de logging
-logging.basicConfig(
-    level=getattr(logging, LOG_LEVEL),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+# Configurar logging con helper central
+applied_level = configure_logging(
+    disable_uvicorn_access=True,
+    uvicorn_error_level=logging.ERROR,
 )
 
 # Configurar loggers de librerías externas
@@ -46,23 +45,23 @@ logging.getLogger("fastapi").setLevel(logging.WARNING)
 logging.getLogger("starlette").setLevel(logging.WARNING)
 logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
 
-# CRÍTICO: Deshabilitar access logs de uvicorn en producción
-if not DEBUG_MODE and ENVIRONMENT == "production":
+# CRÍTICO: Deshabilitar access logs de uvicorn en producción (ya hecho por helper)
+if is_production():
     # Deshabilitar completamente los access logs
     logging.getLogger("uvicorn.access").disabled = True
     logging.getLogger("uvicorn.access").setLevel(logging.CRITICAL)
-    logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.error").setLevel(logging.ERROR)
     
     # Logger de la app
     app_logger = logging.getLogger("app")
-    app_logger.info("Logging configurado para producción: access_logs=disabled")
+    app_logger.debug("Logging configurado para producción: access_logs=disabled")
 else:
     # En desarrollo, mostrar logs normales
     logging.getLogger("uvicorn.access").setLevel(logging.INFO)
     logging.getLogger("uvicorn.error").setLevel(logging.INFO)
     
     app_logger = logging.getLogger("app")
-    app_logger.info("Logging configurado para desarrollo: access_logs=enabled")
+    app_logger.debug("Logging configurado para desarrollo: access_logs=enabled")
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -72,8 +71,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             return response
 
-        # En producción con debug deshabilitado, no hacer logging de requests
-        if not DEBUG_MODE and ENVIRONMENT == "production":
+        # En producción, no hacer logging de requests
+        if is_production():
             response = await call_next(request)
             return response
 
@@ -102,6 +101,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         pass
 
+    # Start course reminder scheduler
+    try:
+        start_course_reminder_scheduler()
+    except Exception as e:
+        pass
+
     yield
 
     # Shutdown
@@ -114,6 +119,12 @@ async def lifespan(app: FastAPI):
     # Stop occupational exam scheduler
     try:
         stop_occupational_exam_scheduler()
+    except Exception as e:
+        pass
+
+    # Stop course reminder scheduler
+    try:
+        stop_course_reminder_scheduler()
     except Exception as e:
         pass
 

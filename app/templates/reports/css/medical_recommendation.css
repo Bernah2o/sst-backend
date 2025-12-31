@@ -1,0 +1,376 @@
+/* Professional Medical Report CSS - Single Page Layout */
+:root {
+    --primary-color: #1a3c5e; /* Deep Professional Blue */
+    --accent-color: #2980b9; /* Brighter Blue for highlights */
+    --success-color: #27ae60;
+    --border-color: #e0e0e0;
+    --bg-light: #f8f9fa;
+    --text-dark: #2c3e50;
+    --text-light: #7f8c8d;
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 12px;
+}
+
+@page {
+    size: A4;
+    margin: 0.5cm; /* Minimal margins for maximum space */
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+}
+
+body {
+    font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 10pt; /* Compact base font size */
+    line-height: 1.3;
+    color: var(--text-dark);
+    background: #fff;
+    width: 210mm; /* A4 Width */
+    margin: 0 auto;
+}
+
+.document-container {
+    width: 100%;
+    /* Ensure it fits in one page height (approx 297mm - margins) */
+    max-height: 296mm; 
+    position: relative;
+    padding: 5px;
+}
+
+/* --- Header --- */
+.document-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid var(--primary-color);
+    padding-bottom: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    align-items: center;
+}
+
+.logo-container {
+    flex: 0 0 auto;
+    margin-right: var(--spacing-md);
+}
+
+.company-logo {
+    max-height: 50px;
+    width: auto;
+    display: block;
+}
+
+.header-text {
+    flex: 1;
+    text-align: left; /* Keep left or center? Left usually standard if logo is left. Or Center if Logo Left/Date Right. */
+    padding-left: var(--spacing-sm);
+}
+
+.company-name {
+    font-size: 16pt;
+    color: var(--primary-color);
+    text-transform: uppercase;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+}
+
+.document-type {
+    font-size: 9pt;
+    font-weight: 600;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.header-date {
+    text-align: right;
+    font-size: 9pt;
+    background: var(--bg-light);
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+}
+
+.date-label {
+    font-size: 7pt;
+    text-transform: uppercase;
+    color: var(--text-light);
+}
+
+.date-value {
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+/* --- Common Section Styling --- */
+section {
+    margin-bottom: var(--spacing-sm);
+    page-break-inside: avoid;
+}
+
+.section-title {
+    font-size: 9pt;
+    background-color: var(--primary-color);
+    color: white;
+    padding: 3px 8px;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    margin-bottom: var(--spacing-xs);
+    border-radius: 2px;
+}
+
+/* --- Grid Layouts for Info --- */
+.info-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1px; /* Gap creates borders via background hack if needed, effectively simpler to just use borders */
+    border: 1px solid var(--border-color);
+    background: var(--border-color); /* Creates grid lines */
+}
+
+.info-item {
+    background: #fff;
+    padding: 4px 8px;
+    flex: 1 1 20%; /* Flexible width */
+    min-width: 120px;
+    display: flex;
+    flex-direction: column;
+}
+
+.info-row {
+    display:contents; /* Allows children to participate in the grid if we used grid, but here just purely semantic container */
+}
+
+/* Worker & Exam Info Optimization */
+/* We make these VERY compact */
+.info-section .info-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border-color);
+    border: 1px solid var(--border-color);
+}
+
+.info-section .info-row {
+    display: contents;
+}
+
+.info-section .info-item {
+    background: #fff;
+    padding: 3px 6px; /* Tight padding */
+}
+
+.label {
+    font-size: 7pt;
+    color: var(--text-light);
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 1px;
+}
+
+.value {
+    font-size: 9pt;
+    font-weight: 500;
+    color: var(--text-dark);
+}
+
+/* --- Conclusions --- */
+.conclusion-box {
+    border: 1px solid var(--success-color);
+    background: #f0fdf4;
+    padding: var(--spacing-sm);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.conclusion-status {
+    flex: 0 0 auto;
+}
+
+.status-label {
+    background: var(--success-color);
+    color: white;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 9pt;
+    font-weight: 700;
+    box-shadow: 0 2px 4px rgba(39, 174, 96, 0.2);
+}
+
+.conclusion-details {
+    flex: 1;
+    font-size: 9pt;
+    border-left: 2px solid var(--success-color);
+    padding-left: var(--spacing-sm);
+}
+
+/* --- Behaviors --- */
+.behaviors-content {
+    border: 1px solid var(--border-color);
+    padding: var(--spacing-sm);
+    background: #fff;
+    border-left: 4px solid #f39c12; /* Orange accent for warnings/behaviors */
+}
+
+.behavior-title {
+    font-size: 9pt;
+    color: #e67e22;
+    margin-bottom: 2px;
+}
+
+.behavior-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    columns: 2; /* Split long lists into 2 columns */
+}
+
+.behavior-list li {
+    font-size: 9pt;
+    margin-bottom: 2px;
+    padding-left: 12px;
+    position: relative;
+}
+
+.behavior-list li::before {
+    content: "•";
+    color: #f39c12;
+    position: absolute;
+    left: 0;
+    font-weight: bold;
+}
+
+/* --- Recommendations --- */
+.recommendations-content {
+    border: 1px solid var(--border-color);
+    padding: var(--spacing-xs);
+}
+
+.recommendation-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr); /* 2 Columns for readability */
+    gap: var(--spacing-xs);
+}
+
+.recommendation-item {
+    background: var(--bg-light);
+    padding: 6px;
+    border-left: 3px solid var(--accent-color);
+    font-size: 9pt;
+    display: flex;
+    align-items: center;
+}
+
+/* --- Signatures --- */
+.signatures-section {
+    margin-top: var(--spacing-md);
+    margin-bottom: 0; /* Align towards bottom */
+    padding-top: var(--spacing-xs);
+}
+
+.signature-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2cm; /* Space between signatures */
+}
+
+.signature-box {
+    text-align: center;
+}
+
+.signature-line {
+    border-top: 1px solid #333;
+    margin: 30px auto 5px auto; /* Space for signature image/signing */
+    width: 80%;
+}
+
+.signature-label {
+    font-size: 8pt;
+    color: var(--text-light);
+    text-transform: uppercase;
+}
+
+.signature-name {
+    font-size: 10pt;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+/* --- Observations --- */
+.observations-section {
+    background: var(--bg-light);
+    border: 1px dashed var(--border-color);
+    padding: var(--spacing-sm);
+    margin-top: var(--spacing-sm);
+}
+
+.observation-box p {
+    font-size: 9pt;
+    font-style: italic;
+    color: #555;
+    margin: 0;
+}
+
+.observation-date {
+    display: none; /* Hide redundant date in observations if desired to save space, or make small */
+}
+
+/* --- Footer --- */
+.document-footer {
+    display: flex;
+    justify-content: space-between;
+    border-top: 1px solid var(--border-color);
+    padding-top: 4px;
+    margin-top: var(--spacing-sm);
+    font-size: 7pt;
+    color: #aaa;
+}
+
+/* --- Layout Tweaks for specifically named sections to force compacting --- */
+/* Target the info sections specifically to ensure they don't take up too much height */
+.info-section:nth-of-type(2) .info-grid {
+    /* Different grid for Exam info if needed */
+    grid-template-columns: repeat(4, 1fr); 
+}
+
+/* Merge consecutive sections visually? */
+section + section {
+    margin-top: 8px;
+}
+
+/* Ensure nothing breaks into a new page */
+.info-item, .conclusion-box, .recommendation-item, .signature-box {
+    break-inside: avoid;
+}
+
+/* Print specific overrides */
+@media print {
+    body {
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    .document-container {
+        border: none;
+        box-shadow: none;
+        height: 100vh;
+        overflow: hidden; /* Force clip */
+    }
+}

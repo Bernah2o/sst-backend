@@ -1,393 +1,334 @@
-/* Estilos para el certificado de asistencia horizontal */
-
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
 
+@page {
+    size: 8.5in 5.5in;
+    margin: 0;
+}
+
 body {
     font-family: 'Arial', sans-serif;
-    font-size: 12px;
-    line-height: 1.4;
-    color: #333;
-    background: #fff;
+    color: #2c3e50;
+    background: white;
+    line-height: 1.3;
+    padding: 0;
+    margin: 0;
 }
 
 .certificate-container {
-    width: 100%;
-    height: auto;
-    max-height: 95vh;
-    padding: 8px;
+    width: 8.5in;
+    height: 5.5in;
+    margin: 0;
+    padding: 0.32in 0.4in 0.25in 0.4in;
     position: relative;
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 50%, #e3f2fd 100%);
-    border: 4px solid #1976d2;
-    border-radius: 15px;
-    display: flex;
-    flex-direction: column;
-    overflow: visible;
-    box-shadow: 0 8px 32px rgba(25, 118, 210, 0.15);
-    page-break-inside: avoid;
+    border: 3px solid #2c3e50;
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    box-sizing: border-box;
+    page-break-after: always;
+    overflow: hidden;
 }
 
-/* Header */
 .header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 8px;
-    padding: 8px;
-    border-bottom: 3px solid #1976d2;
-    flex-shrink: 0;
-    background: linear-gradient(90deg, rgba(25, 118, 210, 0.05) 0%, rgba(25, 118, 210, 0.02) 100%);
-    border-radius: 8px;
-    page-break-inside: avoid;
+    display: table;
+    width: 100%;
+    margin-bottom: 10px;
+    border-bottom: 2px solid #3498db;
+    padding-bottom: 8px;
 }
 
 .logo-section {
-    flex: 0 0 80px;
+    display: table-cell;
+    width: 60px;
+    vertical-align: middle;
+    padding-right: 8px;
 }
 
-.logo {
-    max-width: 80px;
-    max-height: 80px;
+.logo-section .logo {
+    width: 50px;
+    height: 50px;
     object-fit: contain;
+    background: #ecf0f1;
+    border-radius: 5px;
+    padding: 3px;
 }
 
 .title-section {
-    flex: 1;
+    display: table-cell;
+    vertical-align: middle;
     text-align: center;
-    padding: 0 20px;
+    padding: 0 6px;
 }
 
 .title-section h1 {
-    font-size: 28px;
+    font-size: 16pt;
     font-weight: bold;
-    color: #1976d2;
-    margin-bottom: 8px;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    text-shadow: 2px 2px 4px rgba(25, 118, 210, 0.1);
-}
-
-.title-section h2 {
-    font-size: 16px;
-    color: #424242;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.icon-section {
-    flex: 0 0 80px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-.certificate-icon {
-    width: 60px;
-    height: 60px;
-    filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.1));
-}
-
-/* Información del curso */
-.course-info {
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-    border-radius: 12px;
-    padding: 8px;
-    margin-bottom: 6px;
-    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.15);
-    border-left: 5px solid #28a745;
-    border: 1px solid rgba(40, 167, 69, 0.2);
-    flex-shrink: 0;
-    page-break-inside: avoid;
-}
-
-.course-info h3 {
-    font-size: 16px;
-    color: #28a745;
-    margin-bottom: 15px;
-    text-transform: uppercase;
-    font-weight: bold;
-}
-
-.info-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 4px;
-    margin-bottom: 4px;
-}
-
-.info-item {
-    text-align: center;
-}
-
-.info-item .label {
-    font-size: 9px;
-    color: #666;
-    text-transform: uppercase;
-    font-weight: 600;
-    margin-bottom: 1px;
+    color: #2c3e50;
+    margin-bottom: 2px;
     letter-spacing: 0.5px;
 }
 
-.info-item .value {
-    font-size: 11px;
-    font-weight: 700;
-    color: #333;
-    background: rgba(40, 167, 69, 0.1);
-    padding: 2px 4px;
-    border-radius: 4px;
-    border: 1px solid rgba(40, 167, 69, 0.2);
+.title-section h2 {
+    font-size: 9pt;
+    font-weight: normal;
+    color: #7f8c8d;
+    letter-spacing: 0.3px;
 }
 
-/* Información del participante */
-.participant-info {
-    background: linear-gradient(135deg, #ffffff 0%, #f3f8ff 100%);
+.icon-section {
+    display: table-cell;
+    width: 60px;
+    vertical-align: middle;
+    text-align: right;
+    padding-left: 8px;
+}
+
+.certificate-icon {
+    width: 45px;
+    height: 45px;
+}
+
+.course-info {
+    margin-bottom: 10px;
+    padding: 10px;
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+    color: white;
+    border-radius: 5px;
+}
+
+.course-date-badge {
+    display: inline-block;
+    background: white;
+    color: #3498db;
+    padding: 4px 12px;
     border-radius: 12px;
-    padding: 8px;
+    font-weight: bold;
+    font-size: 8pt;
     margin-bottom: 6px;
-    box-shadow: 0 4px 12px rgba(25, 118, 210, 0.15);
-    border-left: 5px solid #1976d2;
-    border: 1px solid rgba(25, 118, 210, 0.2);
-    flex-shrink: 0;
-    page-break-inside: avoid;
+}
+
+.course-details h3 {
+    font-size: 8pt;
+    margin-bottom: 5px;
+    opacity: 0.9;
+    font-weight: normal;
+}
+
+.course-title {
+    font-size: 12pt;
+    font-weight: bold;
+    line-height: 1.2;
+}
+
+.participant-info {
+    margin-bottom: 10px;
+    padding: 10px 10px 8px 10px;
+    background: #ecf0f1;
+    border-left: 3px solid #3498db;
 }
 
 .participant-info h3 {
-    font-size: 16px;
-    color: #17a2b8;
-    margin-bottom: 15px;
-    text-transform: uppercase;
+    font-size: 8pt;
+    color: #2c3e50;
+    margin-bottom: 10px;
     font-weight: bold;
+    text-transform: uppercase;
+}
+
+.full-name {
+    font-size: 14pt;
+    font-weight: bold;
+    color: #2c3e50;
+    margin-bottom: 10px;
+    text-align: center;
 }
 
 .participant-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 4px;
-    margin-bottom: 4px;
+    display: table;
+    width: 100%;
+    margin-top: 8px;
+}
+
+.participant-grid.single {
+    text-align: center;
 }
 
 .participant-item {
+    display: table-cell;
+    padding: 2px;
+    vertical-align: middle;
+}
+
+.participant-item.document-centered {
+    display: block;
     text-align: center;
 }
 
 .participant-item .label {
-    font-size: 9px;
-    color: #666;
-    text-transform: uppercase;
-    font-weight: 600;
-    margin-bottom: 1px;
-    letter-spacing: 0.5px;
+    font-weight: normal;
+    color: #7f8c8d;
+    margin-right: 5px;
+    font-size: 8pt;
 }
 
 .participant-item .value {
-    font-size: 11px;
-    font-weight: 700;
-    color: #333;
-    background: rgba(25, 118, 210, 0.1);
-    padding: 2px 4px;
-    border-radius: 4px;
-    border: 1px solid rgba(25, 118, 210, 0.2);
-}
-
-/* Sección de asistencia */
-.attendance-section {
-    background: #fff3cd;
-    border-radius: 8px;
-    padding: 6px;
-    margin-bottom: 6px;
-    text-align: center;
-    border-left: 4px solid #ffc107;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    flex-shrink: 0;
-    page-break-inside: avoid;
-}
-
-.attendance-section h3 {
-    font-size: 13px;
-    margin-bottom: 4px;
-    color: #856404;
+    color: #2c3e50;
+    font-size: 9pt;
     font-weight: 600;
+}
+
+.attendance-section {
+    margin-bottom: 10px;
+    padding: 12px 10px;
+    background: white;
+    border: 2px solid #ecf0f1;
+    border-radius: 5px;
+}
+
+.attendance-status h3 {
+    font-size: 8pt;
+    color: #2c3e50;
+    margin-bottom: 10px;
+    text-align: center;
+    font-weight: bold;
+    text-transform: uppercase;
 }
 
 .status-badge {
     display: inline-block;
-    padding: 4px 12px;
-    border-radius: 20px;
+    padding: 6px 20px;
+    border-radius: 15px;
     font-weight: bold;
-    font-size: 11px;
-    margin-bottom: 4px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    font-size: 11pt;
+    margin: 4px auto;
+    text-align: center;
+    width: 100%;
 }
 
-.status-present {
-    background: #28a745;
+.status-badge.status-presente,
+.status-badge.status-present {
+    background: #27ae60;
     color: white;
 }
 
-.status-absent {
-    background: #dc3545;
+.status-badge.status-ausente,
+.status-badge.status-absent {
+    background: #e74c3c;
     color: white;
 }
 
-.status-late {
-    background: #ffc107;
-    color: #212529;
-}
-
-.status-excused {
-    background: #17a2b8;
-    color: white;
-}
-
-.status-partial {
-    background: #fd7e14;
+.status-badge.status-tardanza,
+.status-badge.status-late {
+    background: #f39c12;
     color: white;
 }
 
 .completion-info {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 10px;
+    text-align: center;
+    margin-top: 8px;
+    font-size: 8pt;
 }
 
 .completion-info .label {
-    font-weight: bold;
-    color: #495057;
+    font-weight: normal;
+    color: #95a5a6;
+    margin-right: 5px;
 }
 
 .completion-info .value {
-    font-size: 16px;
+    color: #2c3e50;
     font-weight: bold;
-    color: #007bff;
+    font-size: 10pt;
 }
 
-/* Sección de firmas */
+.footer {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid #ecf0f1;
+}
+
 .signature-section {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    margin-bottom: 4px;
-    padding: 4px;
-    flex-shrink: 0;
-    page-break-inside: avoid;
+    margin-bottom: 3px;
+    text-align: center;
 }
 
 .signature-box {
+    display: inline-block;
+    width: 200px;
     text-align: center;
-    width: 180px;
+}
+
+.signature-name {
+    font-weight: bold;
+    font-size: 8pt;
+    color: #2c3e50;
+    margin-bottom: 1px;
 }
 
 .signature-line {
-    border-bottom: 2px solid #333;
-    height: 30px;
-    margin-bottom: 4px;
+    width: 100%;
+    height: 1px;
+    background: #2c3e50;
+    margin: 10px 0 3px 0;
 }
 
-.signature-label {
-    font-size: 10px;
-    color: #666;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-/* Footer */
-.footer {
-    margin-top: auto;
-    padding: 6px 8px 4px;
-    border-top: 2px solid #e0e0e0;
-    background: linear-gradient(90deg, rgba(0, 0, 0, 0.02) 0%, rgba(0, 0, 0, 0.01) 100%);
-    border-radius: 0 0 12px 12px;
-    flex-shrink: 0;
-    page-break-inside: avoid;
+.signature-title {
+    font-size: 6pt;
+    color: #95a5a6;
+    font-style: italic;
 }
 
 .footer-info {
     text-align: center;
-    font-size: 10px;
-    color: #6c757d;
-    margin-bottom: 10px;
+    font-size: 5pt;
+    color: #95a5a6;
+    margin-bottom: 0;
+    line-height: 1.1;
 }
 
 .footer-info p {
-    margin: 3px 0;
-    font-size: 11px;
-    color: #6c757d;
-}
-
-.notes-section {
-    margin-top: 6px;
-    padding: 6px;
-    background: #f8f9fa;
-    border-radius: 4px;
-    border-left: 3px solid #17a2b8;
-}
-
-.notes-section p {
     margin: 0;
-    font-size: 10px;
-    color: #495057;
 }
 
-/* Borde decorativo */
+
 .decorative-border {
     position: absolute;
-    top: 10px;
-    left: 10px;
-    right: 10px;
-    bottom: 10px;
-    border: 1px solid #007bff;
-    border-radius: 8px;
+    top: 5px;
+    left: 5px;
+    right: 5px;
+    bottom: 5px;
+    border: 1px solid #bdc3c7;
     pointer-events: none;
-    opacity: 0.3;
 }
 
-/* Estilos para impresión */
+.watermark {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0.03;
+    z-index: -1;
+    width: 280px;
+    height: 280px;
+    text-align: center;
+}
+
+.watermark svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* Ajustes específicos para impresión */
 @media print {
-    @page {
-        size: A4 landscape;
-        margin: 0.8cm;
-    }
-    
-    * {
-        page-break-inside: avoid;
-    }
-    
     body {
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
+        background: white;
     }
     
     .certificate-container {
-        height: auto;
-        min-height: 100vh;
-    }
-}
-
-/* Responsive adjustments para diferentes tamaños */
-@media (max-width: 1000px) {
-    .info-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-    
-    .participant-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-    
-    .signature-section {
-        flex-direction: column;
-        gap: 30px;
-    }
-    
-    .signature-box {
-        width: 100%;
-        max-width: 300px;
-        margin: 0 auto;
+        border: 3px solid #2c3e50;
+        page-break-inside: avoid;
+        box-shadow: none;
     }
 }

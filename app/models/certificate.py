@@ -32,7 +32,7 @@ class Certificate(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=True)
     certificate_number = Column(String(100), unique=True, nullable=False)
     title = Column(String(255), nullable=False)
     description = Column(Text)

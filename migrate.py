@@ -22,6 +22,17 @@ Uso:
 import os
 import sys
 import logging
+from pathlib import Path
+
+# Asegurar que el paquete 'app' sea importable cuando se ejecuta este script directamente
+PROJECT_ROOT = Path(__file__).resolve().parent
+APP_DIR = PROJECT_ROOT / "app"
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+if str(APP_DIR) not in sys.path:
+    sys.path.insert(0, str(APP_DIR))
+
+from app.utils.logging_config import effective_log_level
 import subprocess
 import argparse
 from pathlib import Path
@@ -29,9 +40,9 @@ from typing import Optional
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 
-# Configurar logging
+# Configurar logging con helper central
 logging.basicConfig(
-    level=logging.INFO,
+    level=effective_log_level(),
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
