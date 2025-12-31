@@ -30,7 +30,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Production stage
-FROM python:3.11-slim as production
+FROM python:3.11-slim AS production
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -84,7 +84,7 @@ RUN mkdir -p /app/uploads /app/logs /app/certificates /app/static /app/templates
     chown -R appuser:appuser /app
 
 # Set PYTHONPATH to include the app directory
-ENV PYTHONPATH=/app:/app/app:$PYTHONPATH
+ENV PYTHONPATH=/app:/app/app
 
 # Switch to non-root user
 USER appuser
