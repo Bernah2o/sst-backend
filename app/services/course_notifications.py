@@ -11,6 +11,7 @@ from app.models.enrollment import Enrollment, EnrollmentStatus
 from app.models.survey import Survey, UserSurvey, UserSurveyStatus, SurveyStatus
 from app.models.evaluation import Evaluation, UserEvaluation, UserEvaluationStatus
 from app.services.email_service import EmailService
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +146,7 @@ class CourseNotificationService:
                 <p>Por favor, ingresa a la plataforma para completar estas actividades lo antes posible.</p>
                 
                 <div style="text-align: center; margin: 30px 0;">
-                    <a href="http://localhost:3000/my-courses" 
+                    <a href="{settings.frontend_url}/my-courses" 
                        style="background-color: #3498db; color: white; padding: 12px 30px; 
                               text-decoration: none; border-radius: 5px; display: inline-block;">
                         Ir a mis Cursos
