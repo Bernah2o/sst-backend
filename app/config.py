@@ -83,13 +83,19 @@ class Settings:
         self.firebase_universe_domain = os.getenv("FIREBASE_UNIVERSE_DOMAIN")
 
         self.use_contabo_storage = os.getenv("USE_CONTABO_STORAGE", "False").lower() == "true"
-        self.contabo_endpoint_url = os.getenv("CONTABO_ENDPOINT_URL")
-        self.contabo_access_key_id = os.getenv("CONTABO_ACCESS_KEY_ID")
-        self.contabo_secret_access_key = os.getenv("CONTABO_SECRET_ACCESS_KEY")
-        self.contabo_region = os.getenv("CONTABO_REGION")
-        self.contabo_bucket_name = os.getenv("CONTABO_BUCKET_NAME")
-        self.contabo_public_base_url = os.getenv("CONTABO_PUBLIC_BASE_URL")
-        self.contabo_make_public = os.getenv("CONTABO_MAKE_PUBLIC", "True").lower() == "true"
+        storage_provider = os.getenv("STORAGE_PROVIDER", "").lower()
+        if not self.use_contabo_storage and storage_provider == "contabo":
+            self.use_contabo_storage = True
+        # Leer variables estándar y fallback a nomenclatura CONTABO_S3_* usada en producción
+        self.contabo_endpoint_url = os.getenv("CONTABO_ENDPOINT_URL") or os.getenv("CONTABO_S3_ENDPOINT")
+        self.contabo_access_key_id = os.getenv("CONTABO_ACCESS_KEY_ID") or os.getenv("CONTABO_S3_ACCESS_KEY_ID")
+        self.contabo_secret_access_key = os.getenv("CONTABO_SECRET_ACCESS_KEY") or os.getenv("CONTABO_S3_SECRET_ACCESS_KEY")
+        self.contabo_region = os.getenv("CONTABO_REGION") or os.getenv("CONTABO_S3_REGION")
+        self.contabo_bucket_name = os.getenv("CONTABO_BUCKET_NAME") or os.getenv("CONTABO_S3_BUCKET")
+        self.contabo_public_base_url = os.getenv("CONTABO_PUBLIC_BASE_URL") or os.getenv("CONTABO_S3_PUBLIC_BASE_URL") or os.getenv("BUCKET_URL")
+        # Hacer público por defecto si DEFAULT_ACL=public-read
+        default_acl = os.getenv("CONTABO_S3_DEFAULT_ACL", "")
+        self.contabo_make_public = (os.getenv("CONTABO_MAKE_PUBLIC", "True").lower() == "true") or (default_acl.lower() == "public-read")
 
     def get_firebase_certificate_path(self, certificate_type: str = "general") -> str:
         """
