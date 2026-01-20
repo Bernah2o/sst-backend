@@ -27,7 +27,7 @@ from app.models.course import CourseMaterial, CourseModule
 from app.models.certificate import Certificate
 from app.models.committee import CommitteeDocument, Committee, CommitteeMember, CommitteeMeeting, CommitteeActivity
 from app.utils.storage import storage_manager
-from app.services.s3_storage import s3_service
+from app.services.s3_storage import s3_service, contabo_service
 import httpx
 from app.config import settings
 import logging
@@ -162,6 +162,15 @@ async def migrate_firebase_to_contabo(
     def s3_url_clause(column):
         return column.ilike("%s3.amazonaws.com%")
 
+    def is_contabo_url(url: str) -> bool:
+        if not url:
+            return False
+        base = settings.contabo_endpoint_url or ""
+        return ("contabostorage.com" in url) or (base and base in url)
+
+    def contabo_url_clause(column):
+        return column.ilike("%contabostorage.com/%")
+
     def safe_filename_from_url(url: str, fallback_name: str) -> str:
         try:
             key = storage_manager._extract_firebase_path(url)
@@ -274,13 +283,20 @@ async def migrate_firebase_to_contabo(
             try:
                 if is_firebase_url(cdoc.file_path):
                     content = await storage_manager.download_file(cdoc.file_path, storage_type=None)
-                else:
+                elif is_s3_url(cdoc.file_path):
                     file_key = cdoc.file_path.split('.com/')[-1]
                     signed_url = s3_service.get_file_url(file_key, expiration=3600)
                     async with httpx.AsyncClient() as client:
                         resp = await client.get(signed_url)
                         resp.raise_for_status()
                         content = resp.content
+                elif is_contabo_url(cdoc.file_path):
+                    try:
+                        path = cdoc.file_path.split('.com/')[1]
+                        bucket, key = path.split('/', 1)
+                        content = contabo_service.download_by_bucket_and_key(bucket, key) if contabo_service else None
+                    except Exception:
+                        content = None
                 if not content:
                     summary["errors"].append({"type": "contractor_documents", "id": cdoc.id, "error": "No se pudo descargar"})
                     continue
@@ -374,13 +390,20 @@ async def migrate_firebase_to_contabo(
             try:
                 if is_firebase_url(material.file_url):
                     content = await storage_manager.download_file(material.file_url, storage_type=None)
-                else:
+                elif is_s3_url(material.file_url):
                     file_key = material.file_url.split('.com/')[-1]
                     signed_url = s3_service.get_file_url(file_key, expiration=3600)
                     async with httpx.AsyncClient() as client:
                         resp = await client.get(signed_url)
                         resp.raise_for_status()
                         content = resp.content
+                elif is_contabo_url(material.file_url):
+                    try:
+                        path = material.file_url.split('.com/')[1]
+                        bucket, key = path.split('/', 1)
+                        content = contabo_service.download_by_bucket_and_key(bucket, key) if contabo_service else None
+                    except Exception:
+                        content = None
                 if not content:
                     summary["errors"].append({"type": "course_materials", "id": material.id, "error": "No se pudo descargar"})
                     continue
@@ -422,19 +445,26 @@ async def migrate_firebase_to_contabo(
         )
         for cert in certs:
             summary["processed"]["certificates"] += 1
-            if not is_firebase_url(cert.file_path) and not is_s3_url(cert.file_path):
+            if not is_firebase_url(cert.file_path) and not is_s3_url(cert.file_path) and not is_contabo_url(cert.file_path):
                 summary["skipped"]["certificates"] += 1
                 continue
             try:
                 if is_firebase_url(cert.file_path):
                     content = await storage_manager.download_file(cert.file_path, storage_type=None)
-                else:
+                elif is_s3_url(cert.file_path):
                     file_key = cert.file_path.split('.com/')[-1]
                     signed_url = s3_service.get_file_url(file_key, expiration=3600)
                     async with httpx.AsyncClient() as client:
                         resp = await client.get(signed_url)
                         resp.raise_for_status()
                         content = resp.content
+                else:
+                    try:
+                        path = cert.file_path.split('.com/')[1]
+                        bucket, key = path.split('/', 1)
+                        content = contabo_service.download_by_bucket_and_key(bucket, key) if contabo_service else None
+                    except Exception:
+                        content = None
                 if not content:
                     summary["errors"].append({"type": "certificates", "id": cert.id, "error": "No se pudo descargar"})
                     continue
@@ -475,19 +505,26 @@ async def migrate_firebase_to_contabo(
         )
         for doc in docs:
             summary["processed"]["committee_documents"] += 1
-            if not is_firebase_url(doc.file_path) and not is_s3_url(doc.file_path):
+            if not is_firebase_url(doc.file_path) and not is_s3_url(doc.file_path) and not is_contabo_url(doc.file_path):
                 summary["skipped"]["committee_documents"] += 1
                 continue
             try:
                 if is_firebase_url(doc.file_path):
                     content = await storage_manager.download_file(doc.file_path, storage_type=None)
-                else:
+                elif is_s3_url(doc.file_path):
                     file_key = doc.file_path.split('.com/')[-1]
                     signed_url = s3_service.get_file_url(file_key, expiration=3600)
                     async with httpx.AsyncClient() as client:
                         resp = await client.get(signed_url)
                         resp.raise_for_status()
                         content = resp.content
+                else:
+                    try:
+                        path = doc.file_path.split('.com/')[1]
+                        bucket, key = path.split('/', 1)
+                        content = contabo_service.download_by_bucket_and_key(bucket, key) if contabo_service else None
+                    except Exception:
+                        content = None
                 if not content:
                     summary["errors"].append({"type": "committee_documents", "id": doc.id, "error": "No se pudo descargar"})
                     continue
@@ -525,6 +562,13 @@ async def migrate_firebase_to_contabo(
                         resp = await client.get(signed_url)
                         resp.raise_for_status()
                         content = resp.content
+                elif is_contabo_url(url):
+                    try:
+                        path = url.split('.com/')[1]
+                        bucket, key = path.split('/', 1)
+                        content = contabo_service.download_by_bucket_and_key(bucket, key) if contabo_service else None
+                    except Exception:
+                        content = None
                 else:
                     content = None
                 if not content:

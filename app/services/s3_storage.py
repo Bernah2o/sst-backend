@@ -618,6 +618,14 @@ class ContaboStorageService:
             logger.error(f"Error al descargar archivo en Contabo: {e}")
             return None
 
+    def download_by_bucket_and_key(self, bucket_name: str, file_key: str) -> Optional[bytes]:
+        try:
+            response = self.s3_client.get_object(Bucket=bucket_name, Key=file_key)
+            return response["Body"].read()
+        except Exception as e:
+            logger.error(f"Error al descargar archivo en Contabo bucket {bucket_name}: {e}")
+            return None
+
     def file_exists(self, file_key: str) -> bool:
         try:
             self.s3_client.head_object(Bucket=self.bucket_name, Key=file_key)
