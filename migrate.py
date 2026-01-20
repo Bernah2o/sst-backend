@@ -516,21 +516,110 @@ class DatabaseManager:
                     logger.warning(f"Error descargando de S3: {e}")
                     return None
 
-            # Si es URL de Contabo del bucket viejo, intentar Firebase
+            # Si es URL de Contabo del bucket viejo, intentar varias estrategias
             if "contabostorage.com" in url and is_old_contabo_bucket(url):
-                logger.info(f"URL del bucket viejo detectada, intentando Firebase: {url}")
-                # Intentar descargar de Firebase
-                content = await storage_manager.download_file(url, storage_type="firebase")
-                if content:
-                    return content
-                # Si Firebase falla, intentar descarga directa por HTTP
+                logger.info(f"URL del bucket viejo detectada: {url}")
+                
+                # Estrategia 1: Descarga directa por HTTP (URLs públicas de Contabo)
                 try:
-                    async with httpx.AsyncClient(timeout=60.0) as client:
+                    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
                         resp = await client.get(url)
                         if resp.status_code == 200:
+                            logger.info(f"Descarga HTTP exitosa para: {url}")
                             return resp.content
-                except Exception:
-                    pass
+                        else:
+                            logger.warning(f"HTTP devolvió status {resp.status_code} para: {url}")
+                except Exception as e:
+                    logger.warning(f"Error en descarga HTTP directa: {e}")
+                
+                # Estrategia 2: Intentar descargar de Contabo usando bucket y key del viejo bucket
+                try:
+                    path = url.split(".com/")[1]
+                    old_bucket, key = path.split("/", 1)
+                    logger.info(f"Intentando descargar de Contabo bucket={old_bucket}, key={key}")
+                    if contabo_service:
+                        content = contabo_service.download_by_bucket_and_key(old_bucket, key)
+                        if content:
+                            logger.info(f"Descarga de Contabo bucket viejo exitosa")
+                            return content
+                except Exception as e:
+                    logger.warning(f"Error descargando de Contabo bucket viejo: {e}")
+                
+                # Estrategia 3: Intentar Firebase usando múltiples rutas posibles
+                try:
+                    from urllib.parse import urlparse, unquote
+                    parsed = urlparse(url)
+                    path_parts = parsed.path.strip("/").split("/")
+                    filename = unquote(path_parts[-1]) if path_parts else None
+                    
+                    if filename:
+                        # Construir rutas basadas en la estructura de Contabo
+                        # URL Contabo: .../app/courses/7/materials/xxx.pdf
+                        # Relative path: courses/7/materials/xxx.pdf
+                        
+                        # Detectar inicio de ruta relativa despues de /app/ o el bucket
+                        full_path = parsed.path.strip("/") # app/courses/7/materials/xxx.pdf
+                        parts = full_path.split("/")
+                        
+                        # Intentar encontrar el punto de corte lógico
+                        # Si empieza con 'app', lo quitamos
+                        if parts and parts[0] in ['app', 'sst']:
+                            relative_path = "/".join(parts[1:])
+                        else:
+                            relative_path = "/".join(parts)
+                            
+                        # Lista de rutas a intentar en Firebase
+                        firebase_paths = [
+                            # 1. Ruta relativa directa (ej: contractors/1/documents/doc.pdf)
+                            relative_path,
+                            
+                            # 2. Con prefijo fastapi_project (ej: fastapi_project/certificates/cert.pdf)
+                            f"fastapi_project/{relative_path}",
+                            
+                            # 3. Variaciones comunes específicas
+                            f"fastapi_project/uploads/{filename}",
+                            f"fastapi_project/certificates/{filename}",
+                            f"uploads/{filename}",
+                            f"certificates/{filename}",
+                            
+                            # 4. Solo el nombre del archivo (último recurso)
+                            filename,
+                            f"fastapi_project/{filename}"
+                        ]
+                        
+                        # Limpiar rutas duplicadas o vacías
+                        firebase_paths = list(dict.fromkeys([p for p in firebase_paths if p]))
+                        
+                        # Intentar cada ruta
+                        for fb_path in firebase_paths:
+                            try:
+                                logger.info(f"Intentando Firebase path: {fb_path}")
+                                content = await storage_manager.download_file(fb_path, storage_type="firebase")
+                                if content:
+                                    logger.info(f"✓ Encontrado en Firebase: {fb_path}")
+                                    return content
+                            except Exception:
+                                continue
+                        
+                        # Estrategia 4: Buscar archivo por nombre en todo Firebase
+                        logger.info(f"Buscando archivo {filename} en todo Firebase...")
+                        try:
+                            from app.services.firebase_storage_service import firebase_storage_service
+                            all_files = firebase_storage_service.list_files()
+                            matching_files = [f for f in all_files if filename in f]
+                            if matching_files:
+                                logger.info(f"Archivos encontrados con nombre similar: {matching_files[:5]}")
+                                for match_path in matching_files:
+                                    content = await storage_manager.download_file(match_path, storage_type="firebase")
+                                    if content:
+                                        logger.info(f"✓ Descargado de Firebase: {match_path}")
+                                        return content
+                        except Exception as e:
+                            logger.warning(f"Error en búsqueda global de Firebase: {e}")
+                            
+                except Exception as e:
+                    logger.warning(f"Error buscando en Firebase: {e}")
+                
                 return None
 
             # Si es URL de Contabo del bucket actual
@@ -1067,6 +1156,11 @@ Ejemplos de uso:
     storage_parser.add_argument('--start-after-id', type=int, default=0, help='Procesar registros con id > start_after_id')
     storage_parser.add_argument('--types', default='all', help='Lista de tipos separada por coma o all')
     storage_parser.add_argument('--execute', action='store_true', help='Ejecutar migración real (por defecto es dry-run)')
+
+    # Comando list-firebase - para diagnóstico
+    firebase_parser = subparsers.add_parser('list-firebase', help='Listar archivos en Firebase Storage')
+    firebase_parser.add_argument('--prefix', default='', help='Prefijo para filtrar archivos')
+    firebase_parser.add_argument('--limit', type=int, default=100, help='Máximo de archivos a listar')
     
     if len(sys.argv) == 1:
         parser.print_help()
