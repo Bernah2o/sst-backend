@@ -1186,42 +1186,23 @@ async def get_exam_pdf(
             detail="No hay archivo PDF asociado a este examen",
         )
 
-    # Si es una URL de S3 Storage, descargar y servir el archivo
-    if (
-        exam.pdf_file_path.startswith("http")
-        and "s3.amazonaws.com" in exam.pdf_file_path
-    ):
+    # Descargar y servir cualquier URL HTTP (S3/Contabo u otros proveedores S3-compatibles)
+    if exam.pdf_file_path.startswith("http"):
         try:
-            # Extraer la clave del archivo desde la URL de S3
-            file_key = exam.pdf_file_path.split(".com/")[-1]
-
-            # Obtener URL firmada para descarga desde S3
-            signed_url_result = s3_service.get_signed_url(file_key, expiration=3600)
-
-            if not signed_url_result["success"]:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Error al generar URL de descarga: {signed_url_result.get('error', 'Error desconocido')}",
-                )
-
             async with httpx.AsyncClient() as client:
-                response = await client.get(signed_url_result["signed_url"])
+                response = await client.get(exam.pdf_file_path)
                 response.raise_for_status()
 
-                # Crear un stream de bytes
-                pdf_content = io.BytesIO(response.content)
-
-                # Configurar headers para la respuesta
                 headers = {
                     "Content-Type": "application/pdf",
                 }
 
                 if download:
-                    # Para forzar descarga
-                    filename = f"Examen_Ocupacional_{exam.worker_name.replace(' ', '_') if exam.worker_name else exam_id}.pdf"
+                    worker = exam.worker
+                    worker_name = (worker.full_name.replace(" ", "_") if worker and getattr(worker, "full_name", None) else None)
+                    filename = f"Examen_Ocupacional_{worker_name or exam_id}.pdf"
                     headers["Content-Disposition"] = f"attachment; filename={filename}"
                 else:
-                    # Para previsualización en el navegador
                     headers["Content-Disposition"] = "inline"
 
                 return StreamingResponse(
@@ -1229,21 +1210,21 @@ async def get_exam_pdf(
                     media_type="application/pdf",
                     headers=headers,
                 )
-
         except httpx.HTTPError as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error al obtener el archivo PDF desde S3: {str(e)}",
+                detail=f"Error al obtener el archivo PDF: {str(e)}",
             )
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error interno al procesar el archivo PDF desde S3: {str(e)}",
+                detail=f"Error interno al procesar el archivo PDF: {str(e)}",
             )
 
-    # Si es una ruta local (legacy), manejar como antes
+    # Ruta local (legacy) no soportada
     raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND, detail="Archivo no encontrado"
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Archivo no encontrado",
     )
 
 
