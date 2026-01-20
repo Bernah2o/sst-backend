@@ -733,6 +733,7 @@ class DatabaseManager:
                         or_(
                             firebase_url_clause(ContractorDocument.file_path),
                             s3_url_clause(ContractorDocument.file_path),
+                            contabo_url_clause(ContractorDocument.file_path),
                         ),
                     )
                     .order_by(ContractorDocument.id.asc())
@@ -742,15 +743,7 @@ class DatabaseManager:
                 for doc in rows:
                     summary["processed"]["contractor_documents"] += 1
                     try:
-                        if doc.file_path and "s3.amazonaws.com" in doc.file_path:
-                            file_key = doc.file_path.split(".com/")[-1]
-                            signed_url = s3_service.get_file_url(file_key, expiration=3600)
-                            async with httpx.AsyncClient() as client:
-                                resp = await client.get(signed_url)
-                                resp.raise_for_status()
-                                content = resp.content
-                        else:
-                            content = await storage_manager.download_file(doc.file_path, storage_type=None)
+                        content = await download_from_any_source(doc.file_path)
                         if not content:
                             summary["errors"].append({"type": "contractor_documents", "id": doc.id, "error": "No se pudo descargar"})
                             continue
