@@ -1314,7 +1314,7 @@ async def generate_medical_recommendation_report(
 
             return FileResponse(**response_params)
         else:
-            # Es una URL de Firebase/S3, redirigir o descargar
+            
             if filepath.startswith("http"):
                 # Descargar el archivo desde la URL y devolverlo
                 async with httpx.AsyncClient() as client:

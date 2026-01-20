@@ -981,52 +981,10 @@ async def delete_course_material(
             user_ids.append(progress.user_id)
             db.delete(progress)
 
-        # Delete file from storage before deleting the material record
         if material.file_url:
             try:
-                # Determine if file is stored in Firebase or locally
-                if material.file_url.startswith("http"):
-                    # Firebase Storage - extract path from URL
-                    parsed_url = urlparse(material.file_url)
-                    if (
-                        "firebase" in parsed_url.netloc
-                        or "googleapis.com" in parsed_url.netloc
-                    ):
-                        # Extract Firebase path from URL
-                        # URL format: https://storage.googleapis.com/bucket-name/path/to/file
-                        # or https://firebasestorage.googleapis.com/v0/b/bucket-name/o/path%2Fto%2Ffile
-                        if "googleapis.com" in parsed_url.netloc:
-                            # Extract path after bucket name
-                            path_parts = parsed_url.path.strip("/").split("/", 1)
-                            if len(path_parts) > 1:
-                                firebase_path = path_parts[1]
-                            else:
-                                firebase_path = parsed_url.path.strip("/")
-                        else:
-                            firebase_path = parsed_url.path.strip("/")
-
-                        # Delete from Firebase Storage
-                        await storage_manager.delete_file(firebase_path, "firebase")
-                else:
-                    # Local storage - file_url contains relative path
-                    if material.file_url.startswith("/uploads/"):
-                        # Remove leading slash and construct full path
-                        relative_path = material.file_url.lstrip("/")
-                        local_file_path = os.path.join(
-                            settings.upload_dir, relative_path.replace("uploads/", "")
-                        )
-                    elif material.file_url.startswith("/static/"):
-                        # Static file
-                        relative_path = material.file_url.lstrip("/")
-                        local_file_path = os.path.join(
-                            "static", relative_path.replace("static/", "")
-                        )
-                    else:
-                        # Direct file path
-                        local_file_path = material.file_url
-
-                    # Delete from local storage
-                    await storage_manager.delete_file(local_file_path, "local")
+                # Delete file using storage manager (handles local, S3, Contabo)
+                await storage_manager.delete_file(material.file_url)
 
             except Exception as e:
                 # Continue with database deletion even if file deletion fails

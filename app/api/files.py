@@ -29,9 +29,7 @@ async def upload_file(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:
-    """
-    Upload a file to storage (Firebase or local)
-    """
+
     try:
         # Validate file size (max 50MB)
         max_size = 50 * 1024 * 1024  # 50MB
@@ -118,9 +116,7 @@ async def upload_profile_picture(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:
-    """
-    Upload profile picture using Firebase Storage or local storage
-    """
+    
     # Validate file type
     allowed_types = ["image/jpeg", "image/jpg", "image/png", "image/gif"]
     if file.content_type not in allowed_types:

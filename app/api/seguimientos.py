@@ -281,31 +281,24 @@ async def download_medical_recommendation_pdf(
         worker = db.query(Worker).filter(Worker.id == seguimiento.worker_id).first()
         filename = f"recomendaciones_medicas_{worker.document_number if worker else seguimiento_id}.pdf"
 
-        if settings.use_firebase_storage:
-            # Si Firebase Storage está habilitado, result es una URL de Firebase
-            # Redirigir al usuario a la URL de Firebase para descarga
-            from fastapi.responses import RedirectResponse
+        # result es una ruta relativa
+        # Construir la ruta absoluta del archivo local
+        local_filepath = os.path.join(
+            generator.reports_dir, os.path.basename(result)
+        )
 
-            return RedirectResponse(url=result)
-        else:
-            # Si no usa Firebase Storage, result es una ruta relativa
-            # Construir la ruta absoluta del archivo local
-            local_filepath = os.path.join(
-                generator.reports_dir, os.path.basename(result)
-            )
+        if not os.path.exists(local_filepath):
+            raise HTTPException(status_code=404, detail="Archivo PDF no encontrado")
 
-            if not os.path.exists(local_filepath):
-                raise HTTPException(status_code=404, detail="Archivo PDF no encontrado")
+        # Preparar parámetros de respuesta
+        response_params = {"path": local_filepath, "media_type": "application/pdf"}
 
-            # Preparar parámetros de respuesta
-            response_params = {"path": local_filepath, "media_type": "application/pdf"}
+        # Si se solicita descarga, agregar un nombre de archivo personalizado
+        if download:
+            response_params["filename"] = filename
 
-            # Si se solicita descarga, agregar un nombre de archivo personalizado
-            if download:
-                response_params["filename"] = filename
-
-            # Devolver respuesta de archivo con los parámetros apropiados
-            return FileResponse(**response_params)
+        # Devolver respuesta de archivo con los parámetros apropiados
+        return FileResponse(**response_params)
 
     except Exception as e:
         raise HTTPException(

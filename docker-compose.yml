@@ -196,7 +196,6 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - LOG_LEVEL=${LOG_LEVEL:-WARNING}
       - DEBUG=false
-      - USE_FIREBASE_STORAGE=${USE_FIREBASE_STORAGE:-true}
       - REACT_APP_API_URL=${REACT_APP_API_URL}
     expose:
       - "8000"
@@ -255,7 +254,6 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - LOG_LEVEL=${LOG_LEVEL:-WARNING}
       - DEBUG=false
-      - USE_FIREBASE_STORAGE=${USE_FIREBASE_STORAGE:-true}
       - REACT_APP_API_URL=${REACT_APP_API_URL}
     expose:
       - "8000"

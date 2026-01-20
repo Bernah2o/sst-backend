@@ -265,15 +265,16 @@ async def delete_certificate(
         
         # Si el certificado tiene una ruta de archivo
         if certificate.file_path:
-            # Detectar si es Firebase Storage o almacenamiento local
-            if certificate.file_path.startswith('https://storage.googleapis.com/'):
-                # Firebase Storage - extraer la ruta del archivo
-                firebase_path = certificate.file_path.split('/')[-1]  # Obtener solo el nombre del archivo
-                await storage_manager.delete_file(f"certificates/{firebase_path}")
-            else:
-                # Almacenamiento local
-                if os.path.exists(certificate.file_path):
-                    os.remove(certificate.file_path)
+             try:
+                 await storage_manager.delete_file(certificate.file_path)
+             except Exception as e:
+                 print(f"Warning: Could not delete certificate file from storage: {e}")
+                 # Try local delete as fallback if path exists locally
+                 if os.path.exists(certificate.file_path):
+                     try:
+                        os.remove(certificate.file_path)
+                     except OSError:
+                        pass
         
         # También intentar eliminar usando el generador de certificados
         generator = CertificateGenerator(db)
@@ -638,35 +639,42 @@ async def get_certificate_pdf(
                 detail=f"Error generando PDF del certificado: {str(e)}"
             )
     
-    # Handle Firebase Storage URLs vs local files
-    is_temp_file = False
-    if file_path.startswith('https://storage.googleapis.com/'):
-        # Firebase Storage URL - need to download temporarily for FileResponse
-        try:
-            # Download file from Firebase Storage
-            response = requests.get(file_path, timeout=30)
-            response.raise_for_status()
+    # Handle file download/view
+    try:
+        if file_path.startswith("http"):
+            # Use storage_manager to download file content
+            file_content = await storage_manager.download_file(file_path)
+            if not file_content:
+                raise HTTPException(
+                     status_code=status.HTTP_404_NOT_FOUND,
+                     detail="No se pudo descargar el archivo del certificado"
+                )
             
             # Create temporary file
             temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
-            temp_file.write(response.content)
+            temp_file.write(file_content)
             temp_file.close()
             
             local_file_path = temp_file.name
             is_temp_file = True
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Error descargando archivo del certificado: {str(e)}"
-            )
-    else:
-        # Local file path
-        local_file_path = file_path
-        if not os.path.exists(local_file_path):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Archivo del certificado no encontrado"
-            )
+        else:
+            # Local file path
+            local_file_path = file_path
+            if not os.path.exists(local_file_path):
+                # Try to construct path relative to app root if absolute path fails
+                possible_path = os.path.join(os.getcwd(), local_file_path.lstrip('/'))
+                if os.path.exists(possible_path):
+                    local_file_path = possible_path
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Archivo del certificado no encontrado"
+                    )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error obteniendo archivo del certificado: {str(e)}"
+        )
     
     # Prepare response parameters
     response_params = {

@@ -55,36 +55,9 @@ class MedicalRecommendationGenerator:
         # Generar PDF usando HTML
         await self._create_medical_recommendation_pdf_from_html(local_filepath, context)
         
-        # Subir a Firebase Storage si está habilitado
-        if settings.use_firebase_storage:
-            # Crear UploadFile desde el archivo local
-            with open(local_filepath, 'rb') as f:
-                file_content = f.read()
-            
-            # Crear un objeto UploadFile mock
-            from fastapi import UploadFile
-            from io import BytesIO
-            
-            upload_file = UploadFile(
-                filename=filename,
-                file=BytesIO(file_content)
-            )
-            
-            result = await self.storage_manager.upload_file(
-                file=upload_file,
-                folder="medical_reports"
-            )
-            
-            # Limpiar archivo local después de subir
-            try:
-                os.remove(local_filepath)
-            except OSError:
-                pass
-                
-            return result["url"]
-        else:
-            # Usar ruta local
-            return f"/medical_reports/{filename}"
+        
+        # Usar ruta local
+        return f"/medical_reports/{filename}"
     
     def _prepare_template_context(self, worker, exam, seguimiento):
         """Prepara el contexto de datos para la plantilla HTML"""

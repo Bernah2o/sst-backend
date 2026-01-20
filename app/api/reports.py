@@ -1193,25 +1193,11 @@ async def generate_occupational_exam_report_pdf(
         # Generate PDF content
         pdf_content = converter.generate_occupational_exam_report_pdf(template_data)
         
-        # Determine if use Firebase Storage or local storage
-        use_firebase = getattr(settings, 'USE_FIREBASE_STORAGE', 'False').lower() == 'true'
         
-        # Firebase Storage path
-        firebase_path = f"medical_reports/{filename}"
-        
-        if use_firebase:
-            # Upload to Firebase Storage
-            storage_manager.upload_file(firebase_path, pdf_content, content_type="application/pdf")
-            # Get public URL
-            file_url = storage_manager.get_public_url(firebase_path)
-            # Also save locally for FileResponse
-            with open(local_filepath, "wb") as f:
-                f.write(pdf_content)
-        else:
-            # Save PDF to disk for FileResponse
-            with open(local_filepath, "wb") as f:
-                f.write(pdf_content)
-            file_url = None
+        # Save PDF to disk for FileResponse
+        with open(local_filepath, "wb") as f:
+            f.write(pdf_content)
+        file_url = None
         
         # Prepare response parameters
         response_params = {

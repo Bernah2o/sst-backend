@@ -48,37 +48,55 @@ class CertificateGenerator:
             raise ValueError("Course not found")
         
         # Generar nombre del archivo
-        filename = f"certificate_{certificate.certificate_number}.pdf"
+        import re
+        def sanitize_filename(name):
+            # Reemplazar espacios y caracteres especiales
+            name = name.lower()
+            name = re.sub(r'[áàäâ]', 'a', name)
+            name = re.sub(r'[éèëê]', 'e', name)
+            name = re.sub(r'[íìïî]', 'i', name)
+            name = re.sub(r'[óòöô]', 'o', name)
+            name = re.sub(r'[úùüû]', 'u', name)
+            name = re.sub(r'[ñ]', 'n', name)
+            name = re.sub(r'[^a-z0-9]', '_', name)
+            name = re.sub(r'_+', '_', name) # Evitar múltiples guiones bajos seguidos
+            return name.strip('_')
+
+        user_name_sanitized = sanitize_filename(user.full_name)
+        filename = f"certificate_{user_name_sanitized}_{certificate.certificate_number}.pdf"
         local_filepath = os.path.join(self.certificates_dir, filename)
         
         # Crear el PDF localmente usando WeasyPrint
         self._create_certificate_pdf_with_weasyprint(local_filepath, certificate, user, course)
         
-        # Si Firebase Storage está habilitado, subir el archivo
-        if settings.use_firebase_storage:
-            # Subir a Firebase Storage
-            firebase_path = f"{settings.firebase_certificates_path}/{filename}"
-            success = await self.storage_manager.copy_local_to_firebase(local_filepath, firebase_path)
-            if success:
-                file_url = f"https://storage.googleapis.com/{settings.firebase_storage_bucket}/{firebase_path}"
-                logger.info(f"Certificado subido a Firebase: {file_url}")
-            else:
-                logger.error("Error al subir certificado a Firebase Storage")
-                # Usar archivo local como fallback
-                file_url = f"/certificates/{filename}"
-            
-            # Limpiar archivo local después de subir
-            try:
-                os.remove(local_filepath)
-            except OSError:
-                pass
+        # Subir el archivo usando storage_manager
+        try:
+            with open(local_filepath, "rb") as f:
+                result = await self.storage_manager.upload_file(
+                    f, 
+                    folder="certificates"
+                )
                 
+            file_url = result.get("url")
+            logger.info(f"Certificado subido a Storage: {file_url}")
+            
+            # Limpiar archivo local después de subir si no es almacenamiento local
+            # Si el storage_manager devolvió una URL remota, podemos borrar el local
+            if file_url and file_url.startswith("http"):
+                try:
+                    os.remove(local_filepath)
+                except OSError:
+                    pass
+            
             # Actualizar la ruta del archivo en la base de datos
             certificate.file_path = file_url
-        else:
-            # Usar ruta local
-            certificate.file_path = local_filepath
-            file_url = f"/certificates/{filename}"
+            
+        except Exception as e:
+            logger.error(f"Error al subir certificado a Storage: {e}")
+            # Usar ruta local como fallback si falló la subida pero el archivo existe
+            if os.path.exists(local_filepath):
+                certificate.file_path = local_filepath
+                file_url = f"/certificates/{filename}"
         
         self.db.commit()
         

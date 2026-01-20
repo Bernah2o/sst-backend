@@ -354,6 +354,24 @@ async def delete_contractor(
             detail="No se puede eliminar el contratista porque tiene inscripciones activas"
         )
     
+    # Eliminar archivos físicos de los documentos asociados
+    # La eliminación de registros en BD se maneja por cascade="all, delete-orphan"
+    try:
+        documents = db.query(ContractorDocument).filter(
+            ContractorDocument.contractor_id == contractor_id
+        ).all()
+        
+        for doc in documents:
+            if doc.file_path:
+                try:
+                    await storage_manager.delete_file(doc.file_path)
+                    logger.info(f"Archivo eliminado de Storage: {doc.file_path}")
+                except Exception as e:
+                    logger.warning(f"Error al eliminar archivo de Storage para documento {doc.id}: {e}")
+    except Exception as e:
+        logger.error(f"Error al procesar eliminación de documentos del contratista {contractor_id}: {e}")
+        # No bloqueamos la eliminación del contratista si falla la limpieza de archivos
+    
     db.delete(contractor)
     db.commit()
     
@@ -405,8 +423,23 @@ async def upload_contractor_document(
     
     try:
         # Generar nombre único para el archivo
+        import re
+        def sanitize_filename(name):
+            # Reemplazar espacios y caracteres especiales
+            name = name.lower()
+            name = re.sub(r'[áàäâ]', 'a', name)
+            name = re.sub(r'[éèëê]', 'e', name)
+            name = re.sub(r'[íìïî]', 'i', name)
+            name = re.sub(r'[óòöô]', 'o', name)
+            name = re.sub(r'[úùüû]', 'u', name)
+            name = re.sub(r'[ñ]', 'n', name)
+            name = re.sub(r'[^a-z0-9]', '_', name)
+            name = re.sub(r'_+', '_', name)
+            return name.strip('_')
+
+        contractor_name_sanitized = sanitize_filename(f"{contractor.first_name} {contractor.last_name}")
         file_extension = file.filename.split('.')[-1] if '.' in file.filename else 'pdf'
-        unique_filename = f"contractor_{contractor_id}_{tipo_documento}_{uuid.uuid4().hex}.{file_extension}"
+        unique_filename = f"contractor_{contractor_name_sanitized}_{tipo_documento}_{uuid.uuid4().hex[:8]}.{file_extension}"
         storage_path = f"contractors/{contractor_id}/documents/{unique_filename}"
         
         # Subir archivo usando storage_manager

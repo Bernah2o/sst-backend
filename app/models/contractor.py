@@ -260,7 +260,7 @@ class ContractorDocument(Base):
     # Información del Documento
     document_type = Column(String(100), nullable=False)  # arl, eps, afp, otros
     document_name = Column(String(255), nullable=False)
-    file_path = Column(String(500))  # URL del archivo en Firebase Storage
+    file_path = Column(String(500))  # URL del archivo en Storage
     file_size = Column(Integer)  # Tamaño del archivo en bytes
     content_type = Column(String(100))  # Tipo MIME del archivo
     
