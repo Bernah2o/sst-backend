@@ -1658,16 +1658,11 @@ async def upload_worker_document(
     unique_filename = f"{uuid.uuid4()}{file_extension}"
     
     try:
-        # Subir usando StorageManager (soporta Contabo/Firebase/Local)
-        # Para Contabo, organizamos por trabajador
-        folder = f"workers/{worker_id}/documents"
-        upload_result = await storage_manager.upload_file(file, folder=folder)
-        if not upload_result or not upload_result.get("url"):
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error al subir archivo"
-            )
-        file_url = upload_result["url"]
+        from app.services.s3_storage import s3_service
+        temp_result = await s3_service.upload_employee_document(worker_id, file, document_category.value if document_category else "general")
+        if not temp_result.get("success"):
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error al subir archivo: {temp_result.get('error')}")
+        file_url = temp_result["file_url"]
         
         # Crear registro en la base de datos
         db_document = WorkerDocument(
@@ -1677,7 +1672,7 @@ async def upload_worker_document(
             category=document_category,
             file_name=file.filename,
             file_url=file_url,
-            file_size=upload_result.get("size"),
+            file_size=temp_result.get("size"),
             file_type=file.content_type,
             uploaded_by=current_user.id
         )
@@ -1882,10 +1877,11 @@ async def delete_worker_document(
     if not document:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     
-    # Eliminar archivo del storage usando StorageManager
-    if document.file_url:
+    if document.file_url and "s3.amazonaws.com" in document.file_url:
         try:
-            await storage_manager.delete_file(document.file_url)
+            from app.services.s3_storage import s3_service
+            file_key = document.file_url.split('.com/')[-1]
+            s3_service.delete_file(file_key)
         except Exception:
             pass
     
@@ -1926,9 +1922,21 @@ async def download_worker_document(
         raise HTTPException(status_code=404, detail="Documento no encontrado")
     
     try:
-        file_bytes = await storage_manager.download_file(document.file_url)
-        if not file_bytes:
-            raise HTTPException(status_code=404, detail="Archivo no encontrado")
+        if document.file_url and "s3.amazonaws.com" in document.file_url:
+            from app.services.s3_storage import s3_service
+            file_key = document.file_url.split('.com/')[-1]
+            signed_url = s3_service.get_file_url(file_key, expiration=3600)
+            if not signed_url:
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error al generar URL de descarga desde S3")
+            import httpx
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(signed_url)
+                resp.raise_for_status()
+                file_bytes = resp.content
+        else:
+            file_bytes = await storage_manager.download_file(document.file_url)
+            if not file_bytes:
+                raise HTTPException(status_code=404, detail="Archivo no encontrado")
         return Response(
             content=file_bytes,
             media_type=document.file_type or "application/octet-stream",

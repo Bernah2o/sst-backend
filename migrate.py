@@ -448,6 +448,7 @@ class DatabaseManager:
         from app.models.certificate import Certificate
         from app.models.committee import CommitteeDocument, Committee, CommitteeMember, CommitteeMeeting, CommitteeActivity
         import mimetypes
+        import os
 
         if not settings.use_contabo_storage:
             print("❌ Contabo no está habilitado en configuración")
@@ -457,7 +458,6 @@ class DatabaseManager:
 
         if not types:
             types = [
-                "worker_documents",
                 "contractor_documents",
                 "occupational_exams",
                 "course_materials",
@@ -465,6 +465,9 @@ class DatabaseManager:
                 "committee_documents",
                 "committee_urls",
             ]
+        migrate_worker_docs = os.getenv("MIGRATE_WORKER_DOCUMENTS", "false").lower() == "true"
+        if not migrate_worker_docs and "worker_documents" in types:
+            types = [t for t in types if t != "worker_documents"]
 
         def firebase_url_clause(column):
             return or_(
