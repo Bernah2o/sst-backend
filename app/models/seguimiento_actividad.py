@@ -18,7 +18,7 @@ class SeguimientoActividad(Base):
     prioridad = Column(String(20), nullable=False, default='media')  # baja, media, alta, critica
     responsable = Column(String(255), nullable=True)
     observaciones = Column(Text, nullable=True)
-    archivo_soporte_url = Column(String(500), nullable=True)  # URL del archivo en Firebase Storage
+    archivo_soporte_url = Column(String(500), nullable=True)  # URL del archivo en Storage
     archivo_soporte_nombre = Column(String(255), nullable=True)  # Nombre original del archivo
     completada_por = Column(Integer, ForeignKey("users.id"), nullable=True)
     fecha_completada = Column(DateTime, nullable=True)

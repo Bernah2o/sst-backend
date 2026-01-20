@@ -33,7 +33,7 @@ class WorkerDocument(Base):
     
     # Información del archivo
     file_name = Column(String(255), nullable=False)
-    file_url = Column(String(500), nullable=False)  # URL en Firebase Storage o local
+    file_url = Column(String(500), nullable=False)  # URL en Storage o local
     file_size = Column(Integer, nullable=True)  # Tamaño en bytes
     file_type = Column(String(100), nullable=True)  # MIME type
     

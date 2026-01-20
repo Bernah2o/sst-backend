@@ -639,6 +639,10 @@ async def get_certificate_pdf(
                 detail=f"Error generando PDF del certificado: {str(e)}"
             )
     
+    # Instantiate storage manager
+    storage_manager = StorageManager()
+    is_temp_file = False
+
     # Handle file download/view
     try:
         if file_path.startswith("http"):
