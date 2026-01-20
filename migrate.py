@@ -22,6 +22,8 @@ Uso:
 import os
 import sys
 import logging
+import asyncio
+import json
 from pathlib import Path
 
 # Asegurar que el paquete 'app' sea importable cuando se ejecuta este script directamente
@@ -36,7 +38,7 @@ from app.utils.logging_config import effective_log_level
 import subprocess
 import argparse
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 
@@ -55,13 +57,19 @@ class DatabaseManager:
         self.project_root = Path(__file__).parent
         self.alembic_ini = self.project_root / "alembic.ini"
         self.env_file = '.env' if env == 'local' else '.env.production'
+        self.env_file_path = self.project_root / self.env_file
         
         # Cargar variables de entorno
-        if os.path.exists(self.env_file):
-            load_dotenv(self.env_file)
+        if self.env_file_path.exists():
+            load_dotenv(self.env_file_path)
         else:
-            print(f"❌ Error: No se encontró {self.env_file}")
-            sys.exit(1)
+            if env == "production":
+                logger.warning(
+                    f"No se encontró {self.env_file_path}. Continuando con variables de entorno existentes (Dockploy)."
+                )
+            else:
+                print(f"❌ Error: No se encontró {self.env_file_path}")
+                sys.exit(1)
         
         # Verificar que existe alembic.ini
         if not self.alembic_ini.exists():
@@ -421,6 +429,445 @@ class DatabaseManager:
         else:
             print("   ❌ Error de conexión")
 
+    async def storage_migrate(
+        self,
+        limit: int = 500,
+        start_after_id: int = 0,
+        types: Optional[List[str]] = None,
+        execute: bool = False,
+    ) -> bool:
+        from sqlalchemy import or_
+        from app.database import SessionLocal
+        from app.config import settings
+        from app.utils.storage import storage_manager
+        from app.models.worker_document import WorkerDocument
+        from app.models.contractor import ContractorDocument
+        from app.models.occupational_exam import OccupationalExam
+        from app.models.course import CourseMaterial, CourseModule
+        from app.models.certificate import Certificate
+        from app.models.committee import CommitteeDocument, Committee, CommitteeMember, CommitteeMeeting, CommitteeActivity
+        import mimetypes
+
+        if not settings.use_contabo_storage:
+            print("❌ Contabo no está habilitado en configuración")
+            return False
+
+        dry_run = not execute
+
+        if not types:
+            types = [
+                "worker_documents",
+                "contractor_documents",
+                "occupational_exams",
+                "course_materials",
+                "certificates",
+                "committee_documents",
+                "committee_urls",
+            ]
+
+        def firebase_url_clause(column):
+            return or_(
+                column.ilike("%firebasestorage.googleapis.com%"),
+                column.ilike("%storage.googleapis.com%"),
+            )
+
+        def safe_filename_from_url(url: str, fallback_name: str) -> str:
+            try:
+                key = storage_manager._extract_firebase_path(url)
+                if key:
+                    return key.split("/")[-1]
+            except Exception:
+                pass
+            return fallback_name
+
+        def guess_content_type(name: str) -> str:
+            content_type, _ = mimetypes.guess_type(name)
+            return content_type or "application/octet-stream"
+
+        summary = {
+            "dry_run": dry_run,
+            "start_after_id": start_after_id,
+            "processed": {t: 0 for t in types},
+            "migrated": {t: 0 for t in types},
+            "skipped": {t: 0 for t in types},
+            "last_ids": {},
+            "errors": [],
+        }
+
+        db = SessionLocal()
+        try:
+            if "worker_documents" in types:
+                rows = (
+                    db.query(WorkerDocument)
+                    .filter(
+                        WorkerDocument.is_active == True,
+                        WorkerDocument.id > start_after_id,
+                        firebase_url_clause(WorkerDocument.file_url),
+                    )
+                    .order_by(WorkerDocument.id.asc())
+                    .limit(limit)
+                    .all()
+                )
+                for doc in rows:
+                    summary["processed"]["worker_documents"] += 1
+                    try:
+                        content = await storage_manager.download_file(doc.file_url, storage_type=None)
+                        if not content:
+                            summary["errors"].append({"type": "worker_documents", "id": doc.id, "error": "No se pudo descargar"})
+                            continue
+                        filename = safe_filename_from_url(doc.file_url, f"{doc.id}_{doc.file_name}")
+                        folder = f"workers/{doc.worker_id}/documents"
+                        if dry_run:
+                            summary["migrated"]["worker_documents"] += 1
+                            continue
+                        upload = await storage_manager.upload_bytes(content, filename, folder, doc.file_type or guess_content_type(filename))
+                        if not upload or not upload.get("url"):
+                            summary["errors"].append({"type": "worker_documents", "id": doc.id, "error": "Upload falló"})
+                            continue
+                        doc.file_url = upload["url"]
+                        doc.file_size = upload.get("size")
+                        doc.updated_at = datetime.utcnow()
+                        db.add(doc)
+                        db.commit()
+                        summary["migrated"]["worker_documents"] += 1
+                    except Exception as e:
+                        db.rollback()
+                        summary["errors"].append({"type": "worker_documents", "id": doc.id, "error": str(e)})
+                if rows:
+                    summary["last_ids"]["worker_documents"] = rows[-1].id
+
+            if "contractor_documents" in types:
+                rows = (
+                    db.query(ContractorDocument)
+                    .filter(
+                        ContractorDocument.id > start_after_id,
+                        ContractorDocument.file_path != None,
+                        firebase_url_clause(ContractorDocument.file_path),
+                    )
+                    .order_by(ContractorDocument.id.asc())
+                    .limit(limit)
+                    .all()
+                )
+                for doc in rows:
+                    summary["processed"]["contractor_documents"] += 1
+                    try:
+                        content = await storage_manager.download_file(doc.file_path, storage_type=None)
+                        if not content:
+                            summary["errors"].append({"type": "contractor_documents", "id": doc.id, "error": "No se pudo descargar"})
+                            continue
+                        filename = safe_filename_from_url(doc.file_path, f"{doc.id}_{doc.document_name}")
+                        folder = f"contractors/{doc.contractor_id}/documents/{doc.document_type}"
+                        if dry_run:
+                            summary["migrated"]["contractor_documents"] += 1
+                            continue
+                        upload = await storage_manager.upload_bytes(content, filename, folder, doc.content_type or guess_content_type(filename))
+                        if not upload or not upload.get("url"):
+                            summary["errors"].append({"type": "contractor_documents", "id": doc.id, "error": "Upload falló"})
+                            continue
+                        doc.file_path = upload["url"]
+                        doc.file_size = upload.get("size")
+                        doc.updated_at = datetime.utcnow()
+                        db.add(doc)
+                        db.commit()
+                        summary["migrated"]["contractor_documents"] += 1
+                    except Exception as e:
+                        db.rollback()
+                        summary["errors"].append({"type": "contractor_documents", "id": doc.id, "error": str(e)})
+                if rows:
+                    summary["last_ids"]["contractor_documents"] = rows[-1].id
+
+            if "occupational_exams" in types:
+                rows = (
+                    db.query(OccupationalExam)
+                    .filter(
+                        OccupationalExam.id > start_after_id,
+                        OccupationalExam.pdf_file_path != None,
+                        firebase_url_clause(OccupationalExam.pdf_file_path),
+                    )
+                    .order_by(OccupationalExam.id.asc())
+                    .limit(limit)
+                    .all()
+                )
+                for exam in rows:
+                    summary["processed"]["occupational_exams"] += 1
+                    try:
+                        content = await storage_manager.download_file(exam.pdf_file_path, storage_type=None)
+                        if not content:
+                            summary["errors"].append({"type": "occupational_exams", "id": exam.id, "error": "No se pudo descargar"})
+                            continue
+                        filename = safe_filename_from_url(exam.pdf_file_path, f"exam_{exam.id}.pdf")
+                        folder = f"workers/{exam.worker_id}/exams"
+                        if dry_run:
+                            summary["migrated"]["occupational_exams"] += 1
+                            continue
+                        upload = await storage_manager.upload_bytes(content, filename, folder, "application/pdf")
+                        if not upload or not upload.get("url"):
+                            summary["errors"].append({"type": "occupational_exams", "id": exam.id, "error": "Upload falló"})
+                            continue
+                        exam.pdf_file_path = upload["url"]
+                        exam.updated_at = datetime.utcnow()
+                        db.add(exam)
+                        db.commit()
+                        summary["migrated"]["occupational_exams"] += 1
+                    except Exception as e:
+                        db.rollback()
+                        summary["errors"].append({"type": "occupational_exams", "id": exam.id, "error": str(e)})
+                if rows:
+                    summary["last_ids"]["occupational_exams"] = rows[-1].id
+
+            if "course_materials" in types:
+                rows = (
+                    db.query(CourseMaterial, CourseModule.course_id)
+                    .join(CourseModule, CourseMaterial.module_id == CourseModule.id)
+                    .filter(
+                        CourseMaterial.id > start_after_id,
+                        CourseMaterial.file_url != None,
+                        firebase_url_clause(CourseMaterial.file_url),
+                    )
+                    .order_by(CourseMaterial.id.asc())
+                    .limit(limit)
+                    .all()
+                )
+                for material, course_id in rows:
+                    summary["processed"]["course_materials"] += 1
+                    try:
+                        content = await storage_manager.download_file(material.file_url, storage_type=None)
+                        if not content:
+                            summary["errors"].append({"type": "course_materials", "id": material.id, "error": "No se pudo descargar"})
+                            continue
+                        filename = safe_filename_from_url(material.file_url, f"material_{material.id}")
+                        folder = f"courses/{course_id}/materials"
+                        if dry_run:
+                            summary["migrated"]["course_materials"] += 1
+                            continue
+                        upload = await storage_manager.upload_bytes(content, filename, folder, guess_content_type(filename))
+                        if not upload or not upload.get("url"):
+                            summary["errors"].append({"type": "course_materials", "id": material.id, "error": "Upload falló"})
+                            continue
+                        material.file_url = upload["url"]
+                        material.updated_at = datetime.utcnow()
+                        db.add(material)
+                        db.commit()
+                        summary["migrated"]["course_materials"] += 1
+                    except Exception as e:
+                        db.rollback()
+                        summary["errors"].append({"type": "course_materials", "id": material.id, "error": str(e)})
+                if rows:
+                    summary["last_ids"]["course_materials"] = rows[-1][0].id
+
+            if "certificates" in types:
+                rows = (
+                    db.query(Certificate)
+                    .filter(
+                        Certificate.id > start_after_id,
+                        Certificate.file_path != None,
+                        firebase_url_clause(Certificate.file_path),
+                    )
+                    .order_by(Certificate.id.asc())
+                    .limit(limit)
+                    .all()
+                )
+                for cert in rows:
+                    summary["processed"]["certificates"] += 1
+                    try:
+                        content = await storage_manager.download_file(cert.file_path, storage_type=None)
+                        if not content:
+                            summary["errors"].append({"type": "certificates", "id": cert.id, "error": "No se pudo descargar"})
+                            continue
+                        filename = safe_filename_from_url(cert.file_path, f"{cert.certificate_number}.pdf")
+                        folder = f"certificates/{cert.user_id}"
+                        if dry_run:
+                            summary["migrated"]["certificates"] += 1
+                            continue
+                        upload = await storage_manager.upload_bytes(content, filename, folder, "application/pdf")
+                        if not upload or not upload.get("url"):
+                            summary["errors"].append({"type": "certificates", "id": cert.id, "error": "Upload falló"})
+                            continue
+                        cert.file_path = upload["url"]
+                        cert.updated_at = datetime.utcnow()
+                        db.add(cert)
+                        db.commit()
+                        summary["migrated"]["certificates"] += 1
+                    except Exception as e:
+                        db.rollback()
+                        summary["errors"].append({"type": "certificates", "id": cert.id, "error": str(e)})
+                if rows:
+                    summary["last_ids"]["certificates"] = rows[-1].id
+
+            if "committee_documents" in types:
+                rows = (
+                    db.query(CommitteeDocument)
+                    .filter(
+                        CommitteeDocument.id > start_after_id,
+                        firebase_url_clause(CommitteeDocument.file_path),
+                    )
+                    .order_by(CommitteeDocument.id.asc())
+                    .limit(limit)
+                    .all()
+                )
+                for doc in rows:
+                    summary["processed"]["committee_documents"] += 1
+                    try:
+                        content = await storage_manager.download_file(doc.file_path, storage_type=None)
+                        if not content:
+                            summary["errors"].append({"type": "committee_documents", "id": doc.id, "error": "No se pudo descargar"})
+                            continue
+                        filename = safe_filename_from_url(doc.file_path, f"{doc.id}_{doc.file_name}")
+                        folder = f"committees/{doc.committee_id}/documents/{doc.document_type}"
+                        if dry_run:
+                            summary["migrated"]["committee_documents"] += 1
+                            continue
+                        upload = await storage_manager.upload_bytes(content, filename, folder, doc.mime_type or guess_content_type(filename))
+                        if not upload or not upload.get("url"):
+                            summary["errors"].append({"type": "committee_documents", "id": doc.id, "error": "Upload falló"})
+                            continue
+                        doc.file_path = upload["url"]
+                        doc.file_size = upload.get("size")
+                        doc.updated_at = datetime.utcnow()
+                        db.add(doc)
+                        db.commit()
+                        summary["migrated"]["committee_documents"] += 1
+                    except Exception as e:
+                        db.rollback()
+                        summary["errors"].append({"type": "committee_documents", "id": doc.id, "error": str(e)})
+                if rows:
+                    summary["last_ids"]["committee_documents"] = rows[-1].id
+
+            if "committee_urls" in types:
+                async def migrate_url_field(model_name: str, record_id: int, url: str, folder: str) -> Optional[str]:
+                    try:
+                        content = await storage_manager.download_file(url, storage_type=None)
+                        if not content:
+                            summary["errors"].append({"type": "committee_urls", "id": record_id, "model": model_name, "error": "No se pudo descargar"})
+                            return None
+                        filename = safe_filename_from_url(url, f"{model_name}_{record_id}")
+                        if dry_run:
+                            summary["migrated"]["committee_urls"] += 1
+                            return url
+                        upload = await storage_manager.upload_bytes(content, filename, folder, guess_content_type(filename))
+                        if not upload or not upload.get("url"):
+                            summary["errors"].append({"type": "committee_urls", "id": record_id, "model": model_name, "error": "Upload falló"})
+                            return None
+                        summary["migrated"]["committee_urls"] += 1
+                        return upload["url"]
+                    except Exception as e:
+                        summary["errors"].append({"type": "committee_urls", "id": record_id, "model": model_name, "error": str(e)})
+                        return None
+
+                last_id_candidates: List[int] = []
+
+                committees = (
+                    db.query(Committee)
+                    .filter(
+                        Committee.id > start_after_id,
+                        Committee.regulations_document_url != None,
+                        firebase_url_clause(Committee.regulations_document_url),
+                    )
+                    .order_by(Committee.id.asc())
+                    .limit(limit)
+                    .all()
+                )
+                for c in committees:
+                    summary["processed"]["committee_urls"] += 1
+                    new_url = await migrate_url_field("committee", c.id, c.regulations_document_url, f"committees/{c.id}/regulations")
+                    if not dry_run and new_url:
+                        c.regulations_document_url = new_url
+                        c.updated_at = datetime.utcnow()
+                        db.add(c)
+                        db.commit()
+                if committees:
+                    last_id_candidates.append(committees[-1].id)
+
+                members = (
+                    db.query(CommitteeMember)
+                    .filter(
+                        CommitteeMember.id > start_after_id,
+                        CommitteeMember.appointment_document_url != None,
+                        firebase_url_clause(CommitteeMember.appointment_document_url),
+                    )
+                    .order_by(CommitteeMember.id.asc())
+                    .limit(limit)
+                    .all()
+                )
+                for m in members:
+                    summary["processed"]["committee_urls"] += 1
+                    new_url = await migrate_url_field(
+                        "committee_member",
+                        m.id,
+                        m.appointment_document_url,
+                        f"committees/{m.committee_id}/members/{m.id}/appointment",
+                    )
+                    if not dry_run and new_url:
+                        m.appointment_document_url = new_url
+                        m.updated_at = datetime.utcnow()
+                        db.add(m)
+                        db.commit()
+                if members:
+                    last_id_candidates.append(members[-1].id)
+
+                meetings = (
+                    db.query(CommitteeMeeting)
+                    .filter(
+                        CommitteeMeeting.id > start_after_id,
+                        CommitteeMeeting.minutes_document_url != None,
+                        firebase_url_clause(CommitteeMeeting.minutes_document_url),
+                    )
+                    .order_by(CommitteeMeeting.id.asc())
+                    .limit(limit)
+                    .all()
+                )
+                for mtg in meetings:
+                    summary["processed"]["committee_urls"] += 1
+                    new_url = await migrate_url_field(
+                        "committee_meeting",
+                        mtg.id,
+                        mtg.minutes_document_url,
+                        f"committees/{mtg.committee_id}/meetings/{mtg.id}/minutes",
+                    )
+                    if not dry_run and new_url:
+                        mtg.minutes_document_url = new_url
+                        mtg.updated_at = datetime.utcnow()
+                        db.add(mtg)
+                        db.commit()
+                if meetings:
+                    last_id_candidates.append(meetings[-1].id)
+
+                activities = (
+                    db.query(CommitteeActivity)
+                    .filter(
+                        CommitteeActivity.id > start_after_id,
+                        CommitteeActivity.supporting_document_url != None,
+                        firebase_url_clause(CommitteeActivity.supporting_document_url),
+                    )
+                    .order_by(CommitteeActivity.id.asc())
+                    .limit(limit)
+                    .all()
+                )
+                for act in activities:
+                    summary["processed"]["committee_urls"] += 1
+                    new_url = await migrate_url_field(
+                        "committee_activity",
+                        act.id,
+                        act.supporting_document_url,
+                        f"committees/{act.committee_id}/activities/{act.id}/support",
+                    )
+                    if not dry_run and new_url:
+                        act.supporting_document_url = new_url
+                        act.updated_at = datetime.utcnow()
+                        db.add(act)
+                        db.commit()
+                if activities:
+                    last_id_candidates.append(activities[-1].id)
+
+                if last_id_candidates:
+                    summary["last_ids"]["committee_urls"] = max(last_id_candidates)
+
+        finally:
+            db.close()
+
+        print(json.dumps(summary, ensure_ascii=False))
+        return True
+
 def main():
     """Función principal con argumentos de línea de comandos"""
     parser = argparse.ArgumentParser(
@@ -476,6 +923,12 @@ Ejemplos de uso:
     
     # Comando server
     subparsers.add_parser('server', help='Ejecutar servidor de desarrollo')
+
+    storage_parser = subparsers.add_parser('storage-migrate', help='Migrar adjuntos Firebase→Contabo')
+    storage_parser.add_argument('--limit', type=int, default=500, help='Máximo de registros por tipo')
+    storage_parser.add_argument('--start-after-id', type=int, default=0, help='Procesar registros con id > start_after_id')
+    storage_parser.add_argument('--types', default='all', help='Lista de tipos separada por coma o all')
+    storage_parser.add_argument('--execute', action='store_true', help='Ejecutar migración real (por defecto es dry-run)')
     
     if len(sys.argv) == 1:
         parser.print_help()
@@ -508,6 +961,19 @@ Ejemplos de uso:
             success = True
         elif args.command == 'server':
             success = manager.run_server()
+        elif args.command == 'storage-migrate':
+            if args.types == 'all':
+                types = None
+            else:
+                types = [t.strip() for t in args.types.split(",") if t.strip()]
+            success = asyncio.run(
+                manager.storage_migrate(
+                    limit=args.limit,
+                    start_after_id=args.start_after_id,
+                    types=types,
+                    execute=args.execute,
+                )
+            )
         
         if success:
             print("\n🎉 Proceso completado exitosamente")

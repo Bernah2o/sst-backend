@@ -82,6 +82,15 @@ class Settings:
         self.firebase_client_x509_cert_url = os.getenv("FIREBASE_CLIENT_X509_CERT_URL")
         self.firebase_universe_domain = os.getenv("FIREBASE_UNIVERSE_DOMAIN")
 
+        self.use_contabo_storage = os.getenv("USE_CONTABO_STORAGE", "False").lower() == "true"
+        self.contabo_endpoint_url = os.getenv("CONTABO_ENDPOINT_URL")
+        self.contabo_access_key_id = os.getenv("CONTABO_ACCESS_KEY_ID")
+        self.contabo_secret_access_key = os.getenv("CONTABO_SECRET_ACCESS_KEY")
+        self.contabo_region = os.getenv("CONTABO_REGION")
+        self.contabo_bucket_name = os.getenv("CONTABO_BUCKET_NAME")
+        self.contabo_public_base_url = os.getenv("CONTABO_PUBLIC_BASE_URL")
+        self.contabo_make_public = os.getenv("CONTABO_MAKE_PUBLIC", "True").lower() == "true"
+
     def get_firebase_certificate_path(self, certificate_type: str = "general") -> str:
         """
         Genera dinámicamente la ruta de Firebase Storage para certificados basada en el tipo.

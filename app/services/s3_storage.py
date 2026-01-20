@@ -11,6 +11,7 @@ from botocore.exceptions import ClientError, NoCredentialsError
 from fastapi import UploadFile
 import uuid
 from pathlib import Path
+from app.config import settings
 
 # Configurar logging
 logger = logging.getLogger(__name__)
@@ -547,8 +548,100 @@ class S3StorageService:
         return config_status
 
 
+class ContaboStorageService:
+    def __init__(self):
+        self.endpoint_url = settings.contabo_endpoint_url
+        self.access_key_id = settings.contabo_access_key_id
+        self.secret_access_key = settings.contabo_secret_access_key
+        self.region = settings.contabo_region
+        self.bucket_name = settings.contabo_bucket_name
+        self.public_base_url = settings.contabo_public_base_url
+        self.make_public = settings.contabo_make_public
+
+        if not all([self.endpoint_url, self.access_key_id, self.secret_access_key, self.bucket_name]):
+            missing_vars = []
+            if not self.endpoint_url:
+                missing_vars.append("CONTABO_ENDPOINT_URL")
+            if not self.access_key_id:
+                missing_vars.append("CONTABO_ACCESS_KEY_ID")
+            if not self.secret_access_key:
+                missing_vars.append("CONTABO_SECRET_ACCESS_KEY")
+            if not self.bucket_name:
+                missing_vars.append("CONTABO_BUCKET_NAME")
+            error_msg = f"Variables de entorno faltantes para Contabo: {', '.join(missing_vars)}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        self.s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=self.access_key_id,
+            aws_secret_access_key=self.secret_access_key,
+            region_name=self.region,
+            endpoint_url=self.endpoint_url
+        )
+
+    def _build_public_url(self, file_key: str) -> str:
+        if self.public_base_url:
+            return f"{self.public_base_url.rstrip('/')}/{file_key}"
+        if self.endpoint_url:
+            return f"{self.endpoint_url.rstrip('/')}/{self.bucket_name}/{file_key}"
+        return file_key
+
+    def get_public_url(self, file_key: str) -> str:
+        return self._build_public_url(file_key)
+
+    def upload_bytes(self, file_content: bytes, file_key: str, content_type: str = "application/octet-stream") -> str:
+        params = {
+            "Bucket": self.bucket_name,
+            "Key": file_key,
+            "Body": file_content,
+            "ContentType": content_type or "application/octet-stream"
+        }
+        if self.make_public:
+            params["ACL"] = "public-read"
+        self.s3_client.put_object(**params)
+        return self._build_public_url(file_key)
+
+    def delete_file(self, file_key: str) -> bool:
+        try:
+            self.s3_client.delete_object(Bucket=self.bucket_name, Key=file_key)
+            return True
+        except Exception as e:
+            logger.error(f"Error al eliminar archivo en Contabo: {e}")
+            return False
+
+    def download_file_as_bytes(self, file_key: str) -> Optional[bytes]:
+        try:
+            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=file_key)
+            return response["Body"].read()
+        except Exception as e:
+            logger.error(f"Error al descargar archivo en Contabo: {e}")
+            return None
+
+    def file_exists(self, file_key: str) -> bool:
+        try:
+            self.s3_client.head_object(Bucket=self.bucket_name, Key=file_key)
+            return True
+        except Exception:
+            return False
+
+    def list_files(self, prefix: str = None) -> list:
+        try:
+            response = self.s3_client.list_objects_v2(Bucket=self.bucket_name, Prefix=prefix or "")
+            return [obj["Key"] for obj in response.get("Contents", [])]
+        except Exception as e:
+            logger.error(f"Error al listar archivos en Contabo: {e}")
+            return []
+
+
 # Instancia global del servicio
 s3_service = S3StorageService()
+
+try:
+    contabo_service = ContaboStorageService()
+except Exception as e:
+    contabo_service = None
+    logger.error(f"Error inicializando ContaboStorageService: {e}")
 
 
 # Funciones de conveniencia
