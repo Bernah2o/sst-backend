@@ -447,6 +447,8 @@ class DatabaseManager:
         from app.models.course import CourseMaterial, CourseModule
         from app.models.certificate import Certificate
         from app.models.committee import CommitteeDocument, Committee, CommitteeMember, CommitteeMeeting, CommitteeActivity
+        from app.services.s3_storage import s3_service
+        import httpx
         import mimetypes
         import os
 
@@ -459,7 +461,6 @@ class DatabaseManager:
         if not types:
             types = [
                 "contractor_documents",
-                "occupational_exams",
                 "course_materials",
                 "certificates",
                 "committee_documents",
@@ -474,6 +475,9 @@ class DatabaseManager:
                 column.ilike("%firebasestorage.googleapis.com%"),
                 column.ilike("%storage.googleapis.com%"),
             )
+
+        def s3_url_clause(column):
+            return column.ilike("%s3.amazonaws.com%")
 
         def safe_filename_from_url(url: str, fallback_name: str) -> str:
             try:
@@ -546,7 +550,10 @@ class DatabaseManager:
                     .filter(
                         ContractorDocument.id > start_after_id,
                         ContractorDocument.file_path != None,
-                        firebase_url_clause(ContractorDocument.file_path),
+                        or_(
+                            firebase_url_clause(ContractorDocument.file_path),
+                            s3_url_clause(ContractorDocument.file_path),
+                        ),
                     )
                     .order_by(ContractorDocument.id.asc())
                     .limit(limit)
@@ -555,7 +562,15 @@ class DatabaseManager:
                 for doc in rows:
                     summary["processed"]["contractor_documents"] += 1
                     try:
-                        content = await storage_manager.download_file(doc.file_path, storage_type=None)
+                        if doc.file_path and "s3.amazonaws.com" in doc.file_path:
+                            file_key = doc.file_path.split(".com/")[-1]
+                            signed_url = s3_service.get_file_url(file_key, expiration=3600)
+                            async with httpx.AsyncClient() as client:
+                                resp = await client.get(signed_url)
+                                resp.raise_for_status()
+                                content = resp.content
+                        else:
+                            content = await storage_manager.download_file(doc.file_path, storage_type=None)
                         if not content:
                             summary["errors"].append({"type": "contractor_documents", "id": doc.id, "error": "No se pudo descargar"})
                             continue
@@ -626,7 +641,10 @@ class DatabaseManager:
                     .filter(
                         CourseMaterial.id > start_after_id,
                         CourseMaterial.file_url != None,
-                        firebase_url_clause(CourseMaterial.file_url),
+                        or_(
+                            firebase_url_clause(CourseMaterial.file_url),
+                            s3_url_clause(CourseMaterial.file_url),
+                        ),
                     )
                     .order_by(CourseMaterial.id.asc())
                     .limit(limit)
@@ -635,7 +653,15 @@ class DatabaseManager:
                 for material, course_id in rows:
                     summary["processed"]["course_materials"] += 1
                     try:
-                        content = await storage_manager.download_file(material.file_url, storage_type=None)
+                        if material.file_url and "s3.amazonaws.com" in material.file_url:
+                            file_key = material.file_url.split(".com/")[-1]
+                            signed_url = s3_service.get_file_url(file_key, expiration=3600)
+                            async with httpx.AsyncClient() as client:
+                                resp = await client.get(signed_url)
+                                resp.raise_for_status()
+                                content = resp.content
+                        else:
+                            content = await storage_manager.download_file(material.file_url, storage_type=None)
                         if not content:
                             summary["errors"].append({"type": "course_materials", "id": material.id, "error": "No se pudo descargar"})
                             continue
@@ -665,7 +691,10 @@ class DatabaseManager:
                     .filter(
                         Certificate.id > start_after_id,
                         Certificate.file_path != None,
-                        firebase_url_clause(Certificate.file_path),
+                        or_(
+                            firebase_url_clause(Certificate.file_path),
+                            s3_url_clause(Certificate.file_path),
+                        ),
                     )
                     .order_by(Certificate.id.asc())
                     .limit(limit)
@@ -674,7 +703,15 @@ class DatabaseManager:
                 for cert in rows:
                     summary["processed"]["certificates"] += 1
                     try:
-                        content = await storage_manager.download_file(cert.file_path, storage_type=None)
+                        if cert.file_path and "s3.amazonaws.com" in cert.file_path:
+                            file_key = cert.file_path.split(".com/")[-1]
+                            signed_url = s3_service.get_file_url(file_key, expiration=3600)
+                            async with httpx.AsyncClient() as client:
+                                resp = await client.get(signed_url)
+                                resp.raise_for_status()
+                                content = resp.content
+                        else:
+                            content = await storage_manager.download_file(cert.file_path, storage_type=None)
                         if not content:
                             summary["errors"].append({"type": "certificates", "id": cert.id, "error": "No se pudo descargar"})
                             continue
@@ -703,7 +740,10 @@ class DatabaseManager:
                     db.query(CommitteeDocument)
                     .filter(
                         CommitteeDocument.id > start_after_id,
-                        firebase_url_clause(CommitteeDocument.file_path),
+                        or_(
+                            firebase_url_clause(CommitteeDocument.file_path),
+                            s3_url_clause(CommitteeDocument.file_path),
+                        ),
                     )
                     .order_by(CommitteeDocument.id.asc())
                     .limit(limit)
@@ -712,7 +752,15 @@ class DatabaseManager:
                 for doc in rows:
                     summary["processed"]["committee_documents"] += 1
                     try:
-                        content = await storage_manager.download_file(doc.file_path, storage_type=None)
+                        if doc.file_path and "s3.amazonaws.com" in doc.file_path:
+                            file_key = doc.file_path.split(".com/")[-1]
+                            signed_url = s3_service.get_file_url(file_key, expiration=3600)
+                            async with httpx.AsyncClient() as client:
+                                resp = await client.get(signed_url)
+                                resp.raise_for_status()
+                                content = resp.content
+                        else:
+                            content = await storage_manager.download_file(doc.file_path, storage_type=None)
                         if not content:
                             summary["errors"].append({"type": "committee_documents", "id": doc.id, "error": "No se pudo descargar"})
                             continue
@@ -740,7 +788,15 @@ class DatabaseManager:
             if "committee_urls" in types:
                 async def migrate_url_field(model_name: str, record_id: int, url: str, folder: str) -> Optional[str]:
                     try:
-                        content = await storage_manager.download_file(url, storage_type=None)
+                        if url and "s3.amazonaws.com" in url:
+                            file_key = url.split(".com/")[-1]
+                            signed_url = s3_service.get_file_url(file_key, expiration=3600)
+                            async with httpx.AsyncClient() as client:
+                                resp = await client.get(signed_url)
+                                resp.raise_for_status()
+                                content = resp.content
+                        else:
+                            content = await storage_manager.download_file(url, storage_type=None)
                         if not content:
                             summary["errors"].append({"type": "committee_urls", "id": record_id, "model": model_name, "error": "No se pudo descargar"})
                             return None
@@ -765,7 +821,10 @@ class DatabaseManager:
                     .filter(
                         Committee.id > start_after_id,
                         Committee.regulations_document_url != None,
-                        firebase_url_clause(Committee.regulations_document_url),
+                        or_(
+                            firebase_url_clause(Committee.regulations_document_url),
+                            s3_url_clause(Committee.regulations_document_url),
+                        ),
                     )
                     .order_by(Committee.id.asc())
                     .limit(limit)
@@ -787,7 +846,10 @@ class DatabaseManager:
                     .filter(
                         CommitteeMember.id > start_after_id,
                         CommitteeMember.appointment_document_url != None,
-                        firebase_url_clause(CommitteeMember.appointment_document_url),
+                        or_(
+                            firebase_url_clause(CommitteeMember.appointment_document_url),
+                            s3_url_clause(CommitteeMember.appointment_document_url),
+                        ),
                     )
                     .order_by(CommitteeMember.id.asc())
                     .limit(limit)
@@ -814,7 +876,10 @@ class DatabaseManager:
                     .filter(
                         CommitteeMeeting.id > start_after_id,
                         CommitteeMeeting.minutes_document_url != None,
-                        firebase_url_clause(CommitteeMeeting.minutes_document_url),
+                        or_(
+                            firebase_url_clause(CommitteeMeeting.minutes_document_url),
+                            s3_url_clause(CommitteeMeeting.minutes_document_url),
+                        ),
                     )
                     .order_by(CommitteeMeeting.id.asc())
                     .limit(limit)
@@ -841,7 +906,10 @@ class DatabaseManager:
                     .filter(
                         CommitteeActivity.id > start_after_id,
                         CommitteeActivity.supporting_document_url != None,
-                        firebase_url_clause(CommitteeActivity.supporting_document_url),
+                        or_(
+                            firebase_url_clause(CommitteeActivity.supporting_document_url),
+                            s3_url_clause(CommitteeActivity.supporting_document_url),
+                        ),
                     )
                     .order_by(CommitteeActivity.id.asc())
                     .limit(limit)

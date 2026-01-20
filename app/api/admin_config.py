@@ -669,10 +669,15 @@ async def migrate_storage_diagnostics(
     current_user: User = Depends(require_admin)
 ):
     counts = {
-        "worker_documents": db.query(WorkerDocument).filter(firebase_url_clause(WorkerDocument.file_url)).count(),
+        "worker_documents": db.query(WorkerDocument).filter(
+            firebase_url_clause(WorkerDocument.file_url)
+        ).count(),
         "contractor_documents": db.query(ContractorDocument).filter(
             ContractorDocument.file_path != None,
-            firebase_url_clause(ContractorDocument.file_path)
+            or_(
+                firebase_url_clause(ContractorDocument.file_path),
+                s3_url_clause(ContractorDocument.file_path),
+            )
         ).count(),
         "occupational_exams": db.query(OccupationalExam).filter(
             OccupationalExam.pdf_file_path != None,
@@ -680,31 +685,52 @@ async def migrate_storage_diagnostics(
         ).count(),
         "course_materials": db.query(CourseMaterial).filter(
             CourseMaterial.file_url != None,
-            firebase_url_clause(CourseMaterial.file_url)
+            or_(
+                firebase_url_clause(CourseMaterial.file_url),
+                s3_url_clause(CourseMaterial.file_url),
+            )
         ).count(),
         "certificates": db.query(Certificate).filter(
             Certificate.file_path != None,
-            firebase_url_clause(Certificate.file_path)
+            or_(
+                firebase_url_clause(Certificate.file_path),
+                s3_url_clause(Certificate.file_path),
+            )
         ).count(),
         "committee_documents": db.query(CommitteeDocument).filter(
-            firebase_url_clause(CommitteeDocument.file_path)
+            or_(
+                firebase_url_clause(CommitteeDocument.file_path),
+                s3_url_clause(CommitteeDocument.file_path),
+            )
         ).count(),
         "committee_urls": (
             db.query(Committee).filter(
                 Committee.regulations_document_url != None,
-                firebase_url_clause(Committee.regulations_document_url)
+                or_(
+                    firebase_url_clause(Committee.regulations_document_url),
+                    s3_url_clause(Committee.regulations_document_url),
+                )
             ).count()
             + db.query(CommitteeMember).filter(
                 CommitteeMember.appointment_document_url != None,
-                firebase_url_clause(CommitteeMember.appointment_document_url)
+                or_(
+                    firebase_url_clause(CommitteeMember.appointment_document_url),
+                    s3_url_clause(CommitteeMember.appointment_document_url),
+                )
             ).count()
             + db.query(CommitteeMeeting).filter(
                 CommitteeMeeting.minutes_document_url != None,
-                firebase_url_clause(CommitteeMeeting.minutes_document_url)
+                or_(
+                    firebase_url_clause(CommitteeMeeting.minutes_document_url),
+                    s3_url_clause(CommitteeMeeting.minutes_document_url),
+                )
             ).count()
             + db.query(CommitteeActivity).filter(
                 CommitteeActivity.supporting_document_url != None,
-                firebase_url_clause(CommitteeActivity.supporting_document_url)
+                or_(
+                    firebase_url_clause(CommitteeActivity.supporting_document_url),
+                    s3_url_clause(CommitteeActivity.supporting_document_url),
+                )
             ).count()
         ),
     }
