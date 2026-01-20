@@ -27,6 +27,8 @@ from app.models.course import CourseMaterial, CourseModule
 from app.models.certificate import Certificate
 from app.models.committee import CommitteeDocument, Committee, CommitteeMember, CommitteeMeeting, CommitteeActivity
 from app.utils.storage import storage_manager
+from app.services.s3_storage import s3_service
+import httpx
 from app.config import settings
 import logging
 from datetime import datetime
@@ -152,6 +154,14 @@ async def migrate_firebase_to_contabo(
             column.ilike("%storage.googleapis.com%"),
         )
 
+    def is_s3_url(url: str) -> bool:
+        if not url:
+            return False
+        return "s3.amazonaws.com" in url
+
+    def s3_url_clause(column):
+        return column.ilike("%s3.amazonaws.com%")
+
     def safe_filename_from_url(url: str, fallback_name: str) -> str:
         try:
             key = storage_manager._extract_firebase_path(url)
@@ -247,7 +257,10 @@ async def migrate_firebase_to_contabo(
             .filter(
                 ContractorDocument.id > start_after_id,
                 ContractorDocument.file_path != None,
-                firebase_url_clause(ContractorDocument.file_path),
+                or_(
+                    firebase_url_clause(ContractorDocument.file_path),
+                    s3_url_clause(ContractorDocument.file_path),
+                ),
             )
             .order_by(ContractorDocument.id.asc())
             .limit(limit)
@@ -255,11 +268,19 @@ async def migrate_firebase_to_contabo(
         )
         for cdoc in cq:
             summary["processed"]["contractor_documents"] += 1
-            if not is_firebase_url(cdoc.file_path):
+            if not is_firebase_url(cdoc.file_path) and not is_s3_url(cdoc.file_path):
                 summary["skipped"]["contractor_documents"] += 1
                 continue
             try:
-                content = await storage_manager.download_file(cdoc.file_path, storage_type=None)
+                if is_firebase_url(cdoc.file_path):
+                    content = await storage_manager.download_file(cdoc.file_path, storage_type=None)
+                else:
+                    file_key = cdoc.file_path.split('.com/')[-1]
+                    signed_url = s3_service.get_file_url(file_key, expiration=3600)
+                    async with httpx.AsyncClient() as client:
+                        resp = await client.get(signed_url)
+                        resp.raise_for_status()
+                        content = resp.content
                 if not content:
                     summary["errors"].append({"type": "contractor_documents", "id": cdoc.id, "error": "No se pudo descargar"})
                     continue
@@ -336,7 +357,10 @@ async def migrate_firebase_to_contabo(
             .filter(
                 CourseMaterial.id > start_after_id,
                 CourseMaterial.file_url != None,
-                firebase_url_clause(CourseMaterial.file_url),
+                or_(
+                    firebase_url_clause(CourseMaterial.file_url),
+                    s3_url_clause(CourseMaterial.file_url),
+                ),
             )
             .order_by(CourseMaterial.id.asc())
             .limit(limit)
@@ -344,11 +368,19 @@ async def migrate_firebase_to_contabo(
         )
         for material, course_id in mq:
             summary["processed"]["course_materials"] += 1
-            if not is_firebase_url(material.file_url):
+            if not is_firebase_url(material.file_url) and not is_s3_url(material.file_url):
                 summary["skipped"]["course_materials"] += 1
                 continue
             try:
-                content = await storage_manager.download_file(material.file_url, storage_type=None)
+                if is_firebase_url(material.file_url):
+                    content = await storage_manager.download_file(material.file_url, storage_type=None)
+                else:
+                    file_key = material.file_url.split('.com/')[-1]
+                    signed_url = s3_service.get_file_url(file_key, expiration=3600)
+                    async with httpx.AsyncClient() as client:
+                        resp = await client.get(signed_url)
+                        resp.raise_for_status()
+                        content = resp.content
                 if not content:
                     summary["errors"].append({"type": "course_materials", "id": material.id, "error": "No se pudo descargar"})
                     continue
@@ -379,7 +411,10 @@ async def migrate_firebase_to_contabo(
             .filter(
                 Certificate.id > start_after_id,
                 Certificate.file_path != None,
-                firebase_url_clause(Certificate.file_path),
+                or_(
+                    firebase_url_clause(Certificate.file_path),
+                    s3_url_clause(Certificate.file_path),
+                ),
             )
             .order_by(Certificate.id.asc())
             .limit(limit)
@@ -387,11 +422,19 @@ async def migrate_firebase_to_contabo(
         )
         for cert in certs:
             summary["processed"]["certificates"] += 1
-            if not is_firebase_url(cert.file_path):
+            if not is_firebase_url(cert.file_path) and not is_s3_url(cert.file_path):
                 summary["skipped"]["certificates"] += 1
                 continue
             try:
-                content = await storage_manager.download_file(cert.file_path, storage_type=None)
+                if is_firebase_url(cert.file_path):
+                    content = await storage_manager.download_file(cert.file_path, storage_type=None)
+                else:
+                    file_key = cert.file_path.split('.com/')[-1]
+                    signed_url = s3_service.get_file_url(file_key, expiration=3600)
+                    async with httpx.AsyncClient() as client:
+                        resp = await client.get(signed_url)
+                        resp.raise_for_status()
+                        content = resp.content
                 if not content:
                     summary["errors"].append({"type": "certificates", "id": cert.id, "error": "No se pudo descargar"})
                     continue
@@ -421,7 +464,10 @@ async def migrate_firebase_to_contabo(
             db.query(CommitteeDocument)
             .filter(
                 CommitteeDocument.id > start_after_id,
-                firebase_url_clause(CommitteeDocument.file_path),
+                or_(
+                    firebase_url_clause(CommitteeDocument.file_path),
+                    s3_url_clause(CommitteeDocument.file_path),
+                ),
             )
             .order_by(CommitteeDocument.id.asc())
             .limit(limit)
@@ -429,11 +475,19 @@ async def migrate_firebase_to_contabo(
         )
         for doc in docs:
             summary["processed"]["committee_documents"] += 1
-            if not is_firebase_url(doc.file_path):
+            if not is_firebase_url(doc.file_path) and not is_s3_url(doc.file_path):
                 summary["skipped"]["committee_documents"] += 1
                 continue
             try:
-                content = await storage_manager.download_file(doc.file_path, storage_type=None)
+                if is_firebase_url(doc.file_path):
+                    content = await storage_manager.download_file(doc.file_path, storage_type=None)
+                else:
+                    file_key = doc.file_path.split('.com/')[-1]
+                    signed_url = s3_service.get_file_url(file_key, expiration=3600)
+                    async with httpx.AsyncClient() as client:
+                        resp = await client.get(signed_url)
+                        resp.raise_for_status()
+                        content = resp.content
                 if not content:
                     summary["errors"].append({"type": "committee_documents", "id": doc.id, "error": "No se pudo descargar"})
                     continue
@@ -462,7 +516,17 @@ async def migrate_firebase_to_contabo(
     if "committee_urls" in types:
         async def migrate_url_field(model_name: str, record_id: int, url: str, folder: str, content_type: str = "application/octet-stream") -> Optional[str]:
             try:
-                content = await storage_manager.download_file(url, storage_type=None)
+                if is_firebase_url(url):
+                    content = await storage_manager.download_file(url, storage_type=None)
+                elif is_s3_url(url):
+                    file_key = url.split('.com/')[-1]
+                    signed_url = s3_service.get_file_url(file_key, expiration=3600)
+                    async with httpx.AsyncClient() as client:
+                        resp = await client.get(signed_url)
+                        resp.raise_for_status()
+                        content = resp.content
+                else:
+                    content = None
                 if not content:
                     summary["errors"].append({"type": "committee_urls", "id": record_id, "model": model_name, "error": "No se pudo descargar"})
                     return None
@@ -485,7 +549,10 @@ async def migrate_firebase_to_contabo(
             .filter(
                 Committee.id > start_after_id,
                 Committee.regulations_document_url != None,
-                firebase_url_clause(Committee.regulations_document_url),
+                or_(
+                    firebase_url_clause(Committee.regulations_document_url),
+                    s3_url_clause(Committee.regulations_document_url),
+                ),
             )
             .order_by(Committee.id.asc())
             .limit(limit)
@@ -505,7 +572,10 @@ async def migrate_firebase_to_contabo(
             .filter(
                 CommitteeMember.id > start_after_id,
                 CommitteeMember.appointment_document_url != None,
-                firebase_url_clause(CommitteeMember.appointment_document_url),
+                or_(
+                    firebase_url_clause(CommitteeMember.appointment_document_url),
+                    s3_url_clause(CommitteeMember.appointment_document_url),
+                ),
             )
             .order_by(CommitteeMember.id.asc())
             .limit(limit)
@@ -530,7 +600,10 @@ async def migrate_firebase_to_contabo(
             .filter(
                 CommitteeMeeting.id > start_after_id,
                 CommitteeMeeting.minutes_document_url != None,
-                firebase_url_clause(CommitteeMeeting.minutes_document_url),
+                or_(
+                    firebase_url_clause(CommitteeMeeting.minutes_document_url),
+                    s3_url_clause(CommitteeMeeting.minutes_document_url),
+                ),
             )
             .order_by(CommitteeMeeting.id.asc())
             .limit(limit)
@@ -588,6 +661,54 @@ async def migrate_firebase_to_contabo(
             summary["last_ids"]["committee_urls"] = max(last_id_candidates)
 
     return summary
+
+
+@router.get("/migrate-storage/firebase-to-contabo/diagnostics")
+async def migrate_storage_diagnostics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    counts = {
+        "worker_documents": db.query(WorkerDocument).filter(firebase_url_clause(WorkerDocument.file_url)).count(),
+        "contractor_documents": db.query(ContractorDocument).filter(
+            ContractorDocument.file_path != None,
+            firebase_url_clause(ContractorDocument.file_path)
+        ).count(),
+        "occupational_exams": db.query(OccupationalExam).filter(
+            OccupationalExam.pdf_file_path != None,
+            firebase_url_clause(OccupationalExam.pdf_file_path)
+        ).count(),
+        "course_materials": db.query(CourseMaterial).filter(
+            CourseMaterial.file_url != None,
+            firebase_url_clause(CourseMaterial.file_url)
+        ).count(),
+        "certificates": db.query(Certificate).filter(
+            Certificate.file_path != None,
+            firebase_url_clause(Certificate.file_path)
+        ).count(),
+        "committee_documents": db.query(CommitteeDocument).filter(
+            firebase_url_clause(CommitteeDocument.file_path)
+        ).count(),
+        "committee_urls": (
+            db.query(Committee).filter(
+                Committee.regulations_document_url != None,
+                firebase_url_clause(Committee.regulations_document_url)
+            ).count()
+            + db.query(CommitteeMember).filter(
+                CommitteeMember.appointment_document_url != None,
+                firebase_url_clause(CommitteeMember.appointment_document_url)
+            ).count()
+            + db.query(CommitteeMeeting).filter(
+                CommitteeMeeting.minutes_document_url != None,
+                firebase_url_clause(CommitteeMeeting.minutes_document_url)
+            ).count()
+            + db.query(CommitteeActivity).filter(
+                CommitteeActivity.supporting_document_url != None,
+                firebase_url_clause(CommitteeActivity.supporting_document_url)
+            ).count()
+        ),
+    }
+    return {"firebase_candidates": counts, "use_contabo_storage": settings.use_contabo_storage}
 
 
 @router.post("/", response_model=AdminConfigSchema, status_code=status.HTTP_201_CREATED)
