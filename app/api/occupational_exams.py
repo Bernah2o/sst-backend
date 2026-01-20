@@ -1186,40 +1186,48 @@ async def get_exam_pdf(
             detail="No hay archivo PDF asociado a este examen",
         )
 
-    # Descargar y servir cualquier URL HTTP (S3/Contabo u otros proveedores S3-compatibles)
-    if exam.pdf_file_path.startswith("http"):
+    if exam.pdf_file_path.startswith("http") and "s3.amazonaws.com" in exam.pdf_file_path:
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(exam.pdf_file_path)
-                response.raise_for_status()
-
-                headers = {
-                    "Content-Type": "application/pdf",
-                }
-
-                if download:
-                    worker = exam.worker
-                    worker_name = (worker.full_name.replace(" ", "_") if worker and getattr(worker, "full_name", None) else None)
-                    filename = f"Examen_Ocupacional_{worker_name or exam_id}.pdf"
-                    headers["Content-Disposition"] = f"attachment; filename={filename}"
-                else:
-                    headers["Content-Disposition"] = "inline"
-
-                return StreamingResponse(
-                    io.BytesIO(response.content),
-                    media_type="application/pdf",
-                    headers=headers,
+            file_key = exam.pdf_file_path.split(".com/")[-1]
+            signed_url = s3_service.get_file_url(file_key, expiration=3600)
+            if not signed_url:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="No se pudo generar URL firmada para S3",
                 )
+            async with httpx.AsyncClient() as client:
+                response = await client.get(signed_url)
+                response.raise_for_status()
+            headers = {
+                "Content-Type": "application/pdf",
+            }
+            if download:
+                worker = exam.worker
+                worker_name = (worker.full_name.replace(" ", "_") if worker and getattr(worker, "full_name", None) else None)
+                filename = f"Examen_Ocupacional_{worker_name or exam_id}.pdf"
+                headers["Content-Disposition"] = f"attachment; filename={filename}"
+            else:
+                headers["Content-Disposition"] = "inline"
+            return StreamingResponse(
+                io.BytesIO(response.content),
+                media_type="application/pdf",
+                headers=headers,
+            )
         except httpx.HTTPError as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error al obtener el archivo PDF: {str(e)}",
+                detail=f"Error al obtener el archivo PDF desde S3: {str(e)}",
             )
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error interno al procesar el archivo PDF: {str(e)}",
+                detail=f"Error interno al procesar el archivo PDF desde S3: {str(e)}",
             )
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="URL de PDF no válida para S3",
+    )
 
     # Ruta local (legacy) no soportada
     raise HTTPException(

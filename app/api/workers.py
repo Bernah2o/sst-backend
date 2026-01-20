@@ -1934,9 +1934,7 @@ async def download_worker_document(
                 resp.raise_for_status()
                 file_bytes = resp.content
         else:
-            file_bytes = await storage_manager.download_file(document.file_url)
-            if not file_bytes:
-                raise HTTPException(status_code=404, detail="Archivo no encontrado")
+            raise HTTPException(status_code=404, detail="URL de archivo no válida para S3")
         return Response(
             content=file_bytes,
             media_type=document.file_type or "application/octet-stream",
