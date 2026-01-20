@@ -269,6 +269,7 @@ async def migrate_firebase_to_contabo(
                 or_(
                     firebase_url_clause(ContractorDocument.file_path),
                     s3_url_clause(ContractorDocument.file_path),
+                    contabo_url_clause(ContractorDocument.file_path),
                 ),
             )
             .order_by(ContractorDocument.id.asc())
@@ -277,7 +278,7 @@ async def migrate_firebase_to_contabo(
         )
         for cdoc in cq:
             summary["processed"]["contractor_documents"] += 1
-            if not is_firebase_url(cdoc.file_path) and not is_s3_url(cdoc.file_path):
+            if not is_firebase_url(cdoc.file_path) and not is_s3_url(cdoc.file_path) and not is_contabo_url(cdoc.file_path):
                 summary["skipped"]["contractor_documents"] += 1
                 continue
             try:
@@ -376,6 +377,7 @@ async def migrate_firebase_to_contabo(
                 or_(
                     firebase_url_clause(CourseMaterial.file_url),
                     s3_url_clause(CourseMaterial.file_url),
+                    contabo_url_clause(CourseMaterial.file_url),
                 ),
             )
             .order_by(CourseMaterial.id.asc())
@@ -384,7 +386,7 @@ async def migrate_firebase_to_contabo(
         )
         for material, course_id in mq:
             summary["processed"]["course_materials"] += 1
-            if not is_firebase_url(material.file_url) and not is_s3_url(material.file_url):
+            if not is_firebase_url(material.file_url) and not is_s3_url(material.file_url) and not is_contabo_url(material.file_url):
                 summary["skipped"]["course_materials"] += 1
                 continue
             try:
@@ -437,6 +439,7 @@ async def migrate_firebase_to_contabo(
                 or_(
                     firebase_url_clause(Certificate.file_path),
                     s3_url_clause(Certificate.file_path),
+                    contabo_url_clause(Certificate.file_path),
                 ),
             )
             .order_by(Certificate.id.asc())

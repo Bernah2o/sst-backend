@@ -479,6 +479,9 @@ class DatabaseManager:
         def s3_url_clause(column):
             return column.ilike("%s3.amazonaws.com%")
 
+        def contabo_url_clause(column):
+            return column.ilike("%contabostorage.com/%")
+
         def safe_filename_from_url(url: str, fallback_name: str) -> str:
             try:
                 key = storage_manager._extract_firebase_path(url)
@@ -644,6 +647,7 @@ class DatabaseManager:
                         or_(
                             firebase_url_clause(CourseMaterial.file_url),
                             s3_url_clause(CourseMaterial.file_url),
+                            contabo_url_clause(CourseMaterial.file_url),
                         ),
                     )
                     .order_by(CourseMaterial.id.asc())
@@ -660,6 +664,13 @@ class DatabaseManager:
                                 resp = await client.get(signed_url)
                                 resp.raise_for_status()
                                 content = resp.content
+                        elif material.file_url and "contabostorage.com" in material.file_url:
+                            try:
+                                path = material.file_url.split(".com/")[1]
+                                bucket, key = path.split("/", 1)
+                                content = contabo_service.download_by_bucket_and_key(bucket, key) if contabo_service else None
+                            except Exception:
+                                content = None
                         else:
                             content = await storage_manager.download_file(material.file_url, storage_type=None)
                         if not content:
@@ -694,6 +705,7 @@ class DatabaseManager:
                         or_(
                             firebase_url_clause(Certificate.file_path),
                             s3_url_clause(Certificate.file_path),
+                            contabo_url_clause(Certificate.file_path),
                         ),
                     )
                     .order_by(Certificate.id.asc())
@@ -710,6 +722,13 @@ class DatabaseManager:
                                 resp = await client.get(signed_url)
                                 resp.raise_for_status()
                                 content = resp.content
+                        elif cert.file_path and "contabostorage.com" in cert.file_path:
+                            try:
+                                path = cert.file_path.split(".com/")[1]
+                                bucket, key = path.split("/", 1)
+                                content = contabo_service.download_by_bucket_and_key(bucket, key) if contabo_service else None
+                            except Exception:
+                                content = None
                         else:
                             content = await storage_manager.download_file(cert.file_path, storage_type=None)
                         if not content:
@@ -743,6 +762,7 @@ class DatabaseManager:
                         or_(
                             firebase_url_clause(CommitteeDocument.file_path),
                             s3_url_clause(CommitteeDocument.file_path),
+                            contabo_url_clause(CommitteeDocument.file_path),
                         ),
                     )
                     .order_by(CommitteeDocument.id.asc())
@@ -759,6 +779,13 @@ class DatabaseManager:
                                 resp = await client.get(signed_url)
                                 resp.raise_for_status()
                                 content = resp.content
+                        elif doc.file_path and "contabostorage.com" in doc.file_path:
+                            try:
+                                path = doc.file_path.split(".com/")[1]
+                                bucket, key = path.split("/", 1)
+                                content = contabo_service.download_by_bucket_and_key(bucket, key) if contabo_service else None
+                            except Exception:
+                                content = None
                         else:
                             content = await storage_manager.download_file(doc.file_path, storage_type=None)
                         if not content:
@@ -824,6 +851,7 @@ class DatabaseManager:
                         or_(
                             firebase_url_clause(Committee.regulations_document_url),
                             s3_url_clause(Committee.regulations_document_url),
+                            contabo_url_clause(Committee.regulations_document_url),
                         ),
                     )
                     .order_by(Committee.id.asc())
@@ -849,6 +877,7 @@ class DatabaseManager:
                         or_(
                             firebase_url_clause(CommitteeMember.appointment_document_url),
                             s3_url_clause(CommitteeMember.appointment_document_url),
+                            contabo_url_clause(CommitteeMember.appointment_document_url),
                         ),
                     )
                     .order_by(CommitteeMember.id.asc())
@@ -879,6 +908,7 @@ class DatabaseManager:
                         or_(
                             firebase_url_clause(CommitteeMeeting.minutes_document_url),
                             s3_url_clause(CommitteeMeeting.minutes_document_url),
+                            contabo_url_clause(CommitteeMeeting.minutes_document_url),
                         ),
                     )
                     .order_by(CommitteeMeeting.id.asc())
@@ -909,6 +939,7 @@ class DatabaseManager:
                         or_(
                             firebase_url_clause(CommitteeActivity.supporting_document_url),
                             s3_url_clause(CommitteeActivity.supporting_document_url),
+                            contabo_url_clause(CommitteeActivity.supporting_document_url),
                         ),
                     )
                     .order_by(CommitteeActivity.id.asc())
