@@ -716,7 +716,7 @@ async def download_document(
 ):
     """Descargar un documento específico"""
     from fastapi.responses import StreamingResponse
-    from app.services.firebase_storage_service import firebase_storage_service
+    from app.utils.storage import storage_manager
     import io
     
     # Buscar el documento
@@ -753,8 +753,8 @@ async def download_document(
         document.download_count = (document.download_count or 0) + 1
         db.commit()
         
-        # Descargar el archivo usando Firebase Storage
-        file_content = firebase_storage_service.download_file_as_bytes(document.file_path)
+        # Descargar el archivo usando storage_manager
+        file_content = await storage_manager.download_file(document.file_path)
         
         # Crear un stream de bytes para la respuesta
         file_stream = io.BytesIO(file_content)

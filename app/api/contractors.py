@@ -15,7 +15,7 @@ from app.dependencies import get_current_user, get_current_active_user, require_
 from app.models.user import User, UserRole
 from app.models.contractor import Contractor, ContractorContract, ContractorDocument
 from app.services.contractor_service import contractor_service
-from app.services.firebase_storage_service import firebase_storage_service
+from app.utils.storage import storage_manager
 from app.config import settings
 from app.schemas.contractor import (
     ContractorCreate,
@@ -30,6 +30,8 @@ from app.schemas.contractor import (
 )
 from app.schemas.common import MessageResponse
 import logging
+import uuid
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -407,12 +409,14 @@ async def upload_contractor_document(
         unique_filename = f"contractor_{contractor_id}_{tipo_documento}_{uuid.uuid4().hex}.{file_extension}"
         storage_path = f"contractors/{contractor_id}/documents/{unique_filename}"
         
-        # Subir archivo a Firebase Storage
-        file_url = firebase_storage_service.upload_from_bytes(
-            file_bytes=file_content,
-            destination_path=storage_path,
+        # Subir archivo usando storage_manager
+        result = await storage_manager.upload_bytes(
+            file_content=file_content,
+            filename=unique_filename,
+            folder=f"contractors/{contractor_id}/documents",
             content_type=file.content_type
         )
+        file_url = result["url"]
         
         # Crear registro en la base de datos (usando columnas que existen en la tabla)
         document = ContractorDocument(
@@ -619,7 +623,7 @@ async def delete_contractor_document(
         )
     
     try:
-        contractor_service.delete_document(document_id, db)
+        await contractor_service.delete_document(document_id, db)
         return MessageResponse(message="Documento eliminado exitosamente")
     except Exception as e:
         raise HTTPException(
@@ -658,23 +662,8 @@ async def download_contractor_document(
         )
     
     try:
-        # Descargar el archivo usando Firebase Storage
-        # El file_path contiene la URL completa de Firebase, necesitamos extraer solo el path
-        if document.file_path.startswith('https://'):
-            # Extraer el path del archivo de la URL de Firebase
-            # URL format: https://storage.googleapis.com/bucket-name/path/to/file
-            from urllib.parse import urlparse
-            parsed_url = urlparse(document.file_path)
-            # El path está después del bucket name en la URL
-            path_parts = parsed_url.path.strip('/').split('/', 1)
-            if len(path_parts) > 1:
-                firebase_path = path_parts[1]
-            else:
-                firebase_path = parsed_url.path.strip('/')
-        else:
-            firebase_path = document.file_path
-        
-        file_content = firebase_storage_service.download_file_as_bytes(firebase_path)
+        # Descargar el archivo usando storage_manager
+        file_content = await storage_manager.download_file(document.file_path)
         
         # Crear un stream de bytes para la respuesta
         from fastapi.responses import StreamingResponse

@@ -57,66 +57,26 @@ class Settings:
         # Configuración de logging
         self.log_level = os.getenv("LOG_LEVEL", "INFO")
         
-        # Configuración de Firebase Storage
-        self.gs_bucket_name = os.getenv("GS_BUCKET_NAME")
-        self.firebase_storage_bucket = os.getenv("FIREBASE_STORAGE_BUCKET")
-        self.firebase_project_id = os.getenv("FIREBASE_PROJECT_ID")
-        self.firebase_static_path = os.getenv("FIREBASE_STATIC_PATH", "fastapi_project/static")
-        self.firebase_uploads_path = os.getenv("FIREBASE_UPLOADS_PATH", "fastapi_project/uploads")
-        self.firebase_certificates_path = os.getenv("FIREBASE_CERTIFICATES_PATH", "fastapi_project/certificates")
-        self.firebase_medical_reports_path = os.getenv("FIREBASE_MEDICAL_REPORTS_PATH", "fastapi_project/medical_reports")
-        self.firebase_attendance_lists_path = os.getenv("FIREBASE_ATTENDANCE_LISTS_PATH", "fastapi_project/attendance_lists")
-        # Firebase Storage configuration
-        self.use_firebase_storage = os.getenv("USE_FIREBASE_STORAGE", "False").lower() == "true"
-        self.firebase_credentials_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
+        # Configuración de Contabo Object Storage (S3 compatible)
+        # Soporte para ambas convenciones de nombres (CONTABO_* y CONTABO_S3_*)
+        self.use_contabo_storage = (
+            os.getenv("USE_CONTABO_STORAGE", "False").lower() == "true" or 
+            os.getenv("STORAGE_PROVIDER", "").lower() == "contabo"
+        )
         
-        # Variables de entorno individuales de Firebase (alternativa al archivo JSON)
-        self.firebase_type = os.getenv("FIREBASE_TYPE")
-        self.firebase_private_key_id = os.getenv("FIREBASE_PRIVATE_KEY_ID")
-        self.firebase_private_key = os.getenv("FIREBASE_PRIVATE_KEY")
-        self.firebase_client_email = os.getenv("FIREBASE_CLIENT_EMAIL")
-        self.firebase_client_id = os.getenv("FIREBASE_CLIENT_ID")
-        self.firebase_auth_uri = os.getenv("FIREBASE_AUTH_URI")
-        self.firebase_token_uri = os.getenv("FIREBASE_TOKEN_URI")
-        self.firebase_auth_provider_x509_cert_url = os.getenv("FIREBASE_AUTH_PROVIDER_X509_CERT_URL")
-        self.firebase_client_x509_cert_url = os.getenv("FIREBASE_CLIENT_X509_CERT_URL")
-        self.firebase_universe_domain = os.getenv("FIREBASE_UNIVERSE_DOMAIN")
-
-        self.use_contabo_storage = os.getenv("USE_CONTABO_STORAGE", "False").lower() == "true"
-        storage_provider = os.getenv("STORAGE_PROVIDER", "").lower()
-        if not self.use_contabo_storage and storage_provider == "contabo":
-            self.use_contabo_storage = True
-        # Leer variables estándar y fallback a nomenclatura CONTABO_S3_* usada en producción
-        self.contabo_endpoint_url = os.getenv("CONTABO_ENDPOINT_URL") or os.getenv("CONTABO_S3_ENDPOINT")
-        self.contabo_access_key_id = os.getenv("CONTABO_ACCESS_KEY_ID") or os.getenv("CONTABO_S3_ACCESS_KEY_ID")
-        self.contabo_secret_access_key = os.getenv("CONTABO_SECRET_ACCESS_KEY") or os.getenv("CONTABO_S3_SECRET_ACCESS_KEY")
-        self.contabo_region = os.getenv("CONTABO_REGION") or os.getenv("CONTABO_S3_REGION")
-        self.contabo_bucket_name = os.getenv("CONTABO_BUCKET_NAME") or os.getenv("CONTABO_S3_BUCKET")
-        self.contabo_public_base_url = os.getenv("CONTABO_PUBLIC_BASE_URL") or os.getenv("CONTABO_S3_PUBLIC_BASE_URL") or os.getenv("BUCKET_URL")
-        # Hacer público por defecto si DEFAULT_ACL=public-read
-        default_acl = os.getenv("CONTABO_S3_DEFAULT_ACL", "")
-        self.contabo_make_public = (os.getenv("CONTABO_MAKE_PUBLIC", "True").lower() == "true") or (default_acl.lower() == "public-read")
-
-    def get_firebase_certificate_path(self, certificate_type: str = "general") -> str:
-        """
-        Genera dinámicamente la ruta de Firebase Storage para certificados basada en el tipo.
+        self.contabo_endpoint_url = os.getenv("CONTABO_ENDPOINT_URL", os.getenv("CONTABO_S3_ENDPOINT"))
+        self.contabo_access_key_id = os.getenv("CONTABO_ACCESS_KEY_ID", os.getenv("CONTABO_S3_ACCESS_KEY_ID"))
+        self.contabo_secret_access_key = os.getenv("CONTABO_SECRET_ACCESS_KEY", os.getenv("CONTABO_S3_SECRET_ACCESS_KEY"))
+        self.contabo_bucket_name = os.getenv("CONTABO_BUCKET_NAME", os.getenv("CONTABO_S3_BUCKET"))
+        self.contabo_region = os.getenv("CONTABO_REGION", os.getenv("CONTABO_S3_REGION", "default"))
         
-        Args:
-            certificate_type: Tipo de certificado ('attendance', 'course', 'general', etc.)
-            
-        Returns:
-            str: Ruta de Firebase Storage para el tipo de certificado especificado
-        """
-        base_path = self.firebase_certificates_path
-        
-        if certificate_type == "attendance":
-            return f"{base_path}/attendance"
-        elif certificate_type == "course":
-            return f"{base_path}/courses"
-        elif certificate_type == "completion":
-            return f"{base_path}/completion"
-        else:
-            # Para tipos no especificados, usar la ruta base
-            return base_path
+        # URL publica base
+        public_base_url = os.getenv("CONTABO_PUBLIC_BASE_URL", os.getenv("CONTABO_S3_PUBLIC_BASE_URL"))
+        if not public_base_url and self.contabo_endpoint_url and self.contabo_bucket_name:
+             # Construir URL por defecto si no se proporciona
+             public_base_url = f"{self.contabo_endpoint_url.rstrip('/')}/{self.contabo_bucket_name}"
+             
+        self.contabo_public_base_url = public_base_url
+        self.contabo_make_public = os.getenv("CONTABO_MAKE_PUBLIC", "True").lower() == "true"
 
 settings = Settings()

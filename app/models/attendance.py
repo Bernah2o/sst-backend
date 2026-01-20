@@ -85,6 +85,11 @@ class Attendance(Base):
     def __repr__(self):
         return f"<Attendance(id={self.id}, user_id={self.user_id}, status='{self.status}')>"
 
+    @property
+    def attendance_percentage(self) -> float:
+        """Alias for completion_percentage to match schema"""
+        return self.completion_percentage or 0.0
+
 
 class VirtualSession(Base):
     __tablename__ = "virtual_sessions"

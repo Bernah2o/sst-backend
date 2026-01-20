@@ -169,36 +169,22 @@ async def upload_profile_picture(
         # Delete old profile picture if exists
         if current_user.profile_picture:
             # Extract storage info from URL or path
-            old_storage_type = "firebase" if current_user.profile_picture.startswith("http") else "local"
-            if old_storage_type == "firebase":
-                # Extract Firebase path from URL
-                old_path = current_user.profile_picture.split("/")[-1]
-                storage_manager.delete_file(f"{settings.firebase_static_path}/profile_pictures/{old_path}", "firebase")
-            else:
-                old_file_path = os.path.join(settings.upload_dir, current_user.profile_picture)
-                storage_manager.delete_file(old_file_path, "local")
+            try:
+                await storage_manager.delete_file(current_user.profile_picture)
+            except Exception as e:
+                logger.warning(f"Failed to delete old profile picture: {e}")
         
         # Upload processed image directly
-        if settings.use_firebase_storage:
-            # Upload to Firebase Storage
-            from app.services.firebase_storage_service import firebase_storage_service
-            firebase_path = f"profile_pictures/{unique_filename}"
-            public_url = firebase_storage_service.upload_file(processed_image, firebase_path)
-            result = {
-                "url": public_url,
-                "storage_type": "firebase"
-            }
-        else:
-            # Save to local storage
-            upload_path = os.path.join(settings.upload_dir, unique_filename)
-            os.makedirs(os.path.dirname(upload_path), exist_ok=True)
-            with open(upload_path, "wb") as f:
-                processed_image.seek(0)
-                f.write(processed_image.read())
-            result = {
-                "url": f"/uploads/{unique_filename}",
-                "storage_type": "local"
-            }
+        # Upload processed image directly
+        processed_image.seek(0)
+        file_bytes = processed_image.read()
+        
+        result = await storage_manager.upload_bytes(
+            file_content=file_bytes,
+            filename=unique_filename,
+            folder="profile_pictures",
+            content_type="image/jpeg"
+        )
         
         # Update user profile picture in database
         current_user.profile_picture = result["url"]
@@ -216,10 +202,7 @@ async def upload_profile_picture(
         error_details = {
             "error_type": type(e).__name__,
             "error_message": str(e),
-            "traceback": traceback.format_exc(),
-            "firebase_enabled": settings.use_firebase_storage,
-            "firebase_bucket": settings.firebase_storage_bucket,
-            "firebase_credentials_path": settings.firebase_credentials_path
+            "traceback": traceback.format_exc()
         }
         logger.error(f"Error en upload_profile_picture: {error_details}")
         raise HTTPException(

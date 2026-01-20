@@ -3,7 +3,6 @@ import shutil
 from typing import Optional, BinaryIO
 from fastapi import UploadFile
 from app.config import settings
-from app.services.firebase_storage_service import firebase_storage_service
 from app.services.s3_storage import contabo_service
 import logging
 import uuid
@@ -13,15 +12,14 @@ from urllib.parse import urlparse, unquote
 logger = logging.getLogger(__name__)
 
 class StorageManager:
-    """Gestor de almacenamiento que maneja tanto Firebase Storage como almacenamiento local"""
+    """Gestor de almacenamiento que maneja almacenamiento Contabo y local"""
     
     def __init__(self):
         self.use_contabo = settings.use_contabo_storage
-        self.use_firebase = settings.use_firebase_storage and not self.use_contabo
         
-        # Crear directorios locales si no existen
-        if not self.use_firebase and not self.use_contabo:
-            self._ensure_local_directories()
+        # Crear directorios locales si no usamos Contabo (o incluso si lo usamos, para temporales)
+        # Por seguridad siempre aseguramos directorios locales
+        self._ensure_local_directories()
     
     def _ensure_local_directories(self):
         """Asegura que los directorios locales existan"""
@@ -44,7 +42,7 @@ class StorageManager:
         return f"{unique_id}{file_extension}"
     
     async def upload_file(self, file: UploadFile, folder: str = "uploads", keep_original_name: bool = False) -> dict:
-        """Sube un archivo usando Firebase Storage o almacenamiento local"""
+        """Sube un archivo usando Contabo Storage o almacenamiento local"""
         try:
             # Generar nombre del archivo
             if keep_original_name:
@@ -57,39 +55,11 @@ class StorageManager:
             
             if self.use_contabo:
                 return await self._upload_to_contabo(file_content, filename, folder, file.content_type)
-            if self.use_firebase:
-                return await self._upload_to_firebase(file_content, filename, folder, file.content_type)
             else:
                 return await self._upload_to_local(file_content, filename, folder)
                 
         except Exception as e:
             logger.error(f"Error al subir archivo: {str(e)}")
-            raise
-    
-    async def _upload_to_firebase(self, file_content: bytes, filename: str, folder: str, content_type: str) -> dict:
-        """Sube archivo a Firebase Storage"""
-        try:
-            # Determinar la ruta en Firebase
-            if folder == "static":
-                firebase_path = f"{settings.firebase_static_path}/{filename}"
-            else:
-                firebase_path = f"{settings.firebase_uploads_path}/{filename}"
-            
-            # Subir archivo
-            from io import BytesIO
-            file_stream = BytesIO(file_content)
-            public_url = firebase_storage_service.upload_file(file_stream, firebase_path, content_type)
-            
-            return {
-                "filename": filename,
-                "url": public_url,
-                "path": firebase_path,
-                "storage_type": "firebase",
-                "size": len(file_content)
-            }
-            
-        except Exception as e:
-            logger.error(f"Error al subir a Firebase Storage: {str(e)}")
             raise
 
     async def _upload_to_contabo(self, file_content: bytes, filename: str, folder: str, content_type: str) -> dict:
@@ -146,30 +116,10 @@ class StorageManager:
         try:
             if self.use_contabo:
                 return await self._upload_to_contabo(file_content, filename, folder, content_type)
-            if self.use_firebase:
-                return await self._upload_to_firebase(file_content, filename, folder, content_type)
             return await self._upload_to_local(file_content, filename, folder)
         except Exception as e:
             logger.error(f"Error al subir bytes: {str(e)}")
             raise
-
-    def _extract_firebase_path(self, file_url: str) -> Optional[str]:
-        try:
-            parsed = urlparse(file_url)
-            if "firebasestorage.googleapis.com" in parsed.netloc:
-                if "/o/" in parsed.path:
-                    return unquote(parsed.path.split("/o/")[1])
-            if "storage.googleapis.com" in parsed.netloc and settings.firebase_storage_bucket:
-                path = parsed.path.lstrip("/")
-                if path.startswith(f"{settings.firebase_storage_bucket}/"):
-                    return path.split("/", 1)[1]
-            if settings.firebase_storage_bucket and settings.firebase_storage_bucket in parsed.path:
-                path = parsed.path.lstrip("/")
-                if path.startswith(f"{settings.firebase_storage_bucket}/"):
-                    return path.split("/", 1)[1]
-            return None
-        except Exception:
-            return None
 
     def _extract_contabo_key(self, file_url: str) -> Optional[str]:
         try:
@@ -192,15 +142,10 @@ class StorageManager:
             contabo_key = self._extract_contabo_key(file_path)
             if contabo_key:
                 return "contabo", contabo_key
-            firebase_key = self._extract_firebase_path(file_path)
-            if firebase_key:
-                return "firebase", firebase_key
         if file_path.startswith("/uploads") or file_path.startswith("/static"):
             return "local", file_path
         if self.use_contabo:
             return "contabo", file_path
-        if self.use_firebase:
-            return "firebase", file_path
         return "local", file_path
     
     async def delete_file(self, file_path: str, storage_type: str = None) -> bool:
@@ -209,8 +154,6 @@ class StorageManager:
             resolved_type, resolved_path = self._resolve_storage_target(file_path, storage_type)
             if resolved_type == "contabo":
                 return contabo_service.delete_file(resolved_path) if contabo_service else False
-            if resolved_type == "firebase":
-                return firebase_storage_service.delete_file(resolved_path)
             else:
                 local_path = resolved_path
                 if local_path.startswith("/uploads/"):
@@ -233,8 +176,6 @@ class StorageManager:
             resolved_type, resolved_path = self._resolve_storage_target(file_path, storage_type)
             if resolved_type == "contabo":
                 return contabo_service.file_exists(resolved_path) if contabo_service else False
-            if resolved_type == "firebase":
-                return firebase_storage_service.file_exists(resolved_path)
             else:
                 local_path = resolved_path
                 if local_path.startswith("/uploads/"):
@@ -253,8 +194,6 @@ class StorageManager:
             resolved_type, resolved_path = self._resolve_storage_target(file_path, storage_type)
             if resolved_type == "contabo":
                 return contabo_service.download_file_as_bytes(resolved_path) if contabo_service else None
-            if resolved_type == "firebase":
-                return firebase_storage_service.download_file_as_bytes(resolved_path)
             else:
                 local_path = resolved_path
                 if local_path.startswith("/uploads/"):
@@ -276,8 +215,6 @@ class StorageManager:
             resolved_type, resolved_path = self._resolve_storage_target(file_path, storage_type)
             if resolved_type == "contabo":
                 return contabo_service.get_public_url(resolved_path) if contabo_service else None
-            if resolved_type == "firebase":
-                return firebase_storage_service.get_public_url(resolved_path)
             else:
                 # Para almacenamiento local, devolver una URL relativa
                 return f"/static/{os.path.basename(resolved_path)}"
@@ -292,8 +229,6 @@ class StorageManager:
             resolved_type, resolved_path = self._resolve_storage_target(file_path, storage_type)
             if resolved_type == "contabo":
                 return contabo_service.get_public_url(resolved_path) if contabo_service else None
-            if resolved_type == "firebase":
-                return firebase_storage_service.get_public_url(resolved_path)
             else:
                 # Para archivos locales, retornar URL relativa
                 local_path = resolved_path
@@ -318,13 +253,6 @@ class StorageManager:
                     return []
                 prefix = f"{folder.strip('/')}/" if folder else ""
                 return contabo_service.list_files(prefix)
-            if resolved_type == "firebase":
-                # Listar archivos de Firebase
-                if folder == "static":
-                    prefix = settings.firebase_static_path
-                else:
-                    prefix = settings.firebase_uploads_path
-                return firebase_storage_service.list_files(prefix)
             else:
                 # Listar archivos locales
                 if folder == "static":
@@ -339,29 +267,6 @@ class StorageManager:
         except Exception as e:
             logger.error(f"Error al listar archivos: {str(e)}")
             return []
-    
-    async def copy_local_to_firebase(self, local_path: str, firebase_path: str) -> bool:
-        """Copia un archivo local a Firebase Storage"""
-        try:
-            if not os.path.exists(local_path):
-                logger.error(f"Archivo local no existe: {local_path}")
-                return False
-            
-            # Determinar content type
-            import mimetypes
-            content_type, _ = mimetypes.guess_type(local_path)
-            
-            # Subir a Firebase
-            public_url = firebase_storage_service.upload_file_from_path(
-                local_path, firebase_path, content_type
-            )
-            
-            logger.info(f"Archivo copiado a Firebase: {local_path} -> {firebase_path}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error al copiar archivo a Firebase: {str(e)}")
-            return False
 
 # Instancia global del gestor de almacenamiento
 storage_manager = StorageManager()

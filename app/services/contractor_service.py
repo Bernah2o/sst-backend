@@ -9,7 +9,7 @@ from fastapi import UploadFile, HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.contractor import Contractor, ContractorDocument
-from app.services.firebase_storage_service import firebase_storage_service
+from app.utils.storage import storage_manager
 
 logger = logging.getLogger(__name__)
 
@@ -18,12 +18,12 @@ class ContractorService:
     """Servicio para manejar contratistas y sus documentos."""
 
     @staticmethod
-    def delete_document(
+    async def delete_document(
         document_id: int,
         db: Session
     ) -> Dict[str, str]:
         """
-        Eliminar un documento de contratista de la base de datos y Firebase Storage.
+        Eliminar un documento de contratista de la base de datos y Storage.
         
         Args:
             document_id: ID del documento a eliminar
@@ -41,22 +41,21 @@ class ContractorService:
             if not document:
                 raise HTTPException(status_code=404, detail="Documento no encontrado")
             
-            # Guardar información del archivo para eliminarlo de Firebase Storage
-            file_path = document.file_path  # Este es el s3_key que se usa como path en Firebase
+            # Guardar información del archivo para eliminarlo de Storage
+            file_path = document.file_path
             
             # Eliminar el documento de la base de datos
             db.delete(document)
             db.commit()
             
-            # Eliminar el archivo de Firebase Storage
+            # Eliminar el archivo de Storage
             if file_path:
                 try:
-                    firebase_storage_service.delete_file(file_path)
-                    logger.info(f"Archivo eliminado de Firebase Storage: {file_path}")
+                    await storage_manager.delete_file(file_path)
+                    logger.info(f"Archivo eliminado de Storage: {file_path}")
                 except Exception as e:
-                    logger.warning(f"Error al eliminar archivo de Firebase Storage: {e}")
-                    # No fallar la operación si no se puede eliminar de Firebase
-                    # El documento ya fue eliminado de la base de datos
+                    logger.warning(f"Error al eliminar archivo de Storage: {e}")
+                    # No fallar la operación si no se puede eliminar de Storage
             
             logger.info(f"Documento eliminado exitosamente: ID {document_id}")
             return {"message": "Documento eliminado exitosamente"}

@@ -19,7 +19,7 @@ from app.schemas.seguimiento_actividad import (
 )
 from app.schemas.common import MessageResponse
 from app.dependencies import get_current_user, require_supervisor_or_admin
-from app.services.firebase_storage_service import firebase_storage_service
+from app.utils.storage import storage_manager
 
 router = APIRouter()
 
@@ -120,7 +120,7 @@ def update_actividad(
     return db_actividad
 
 @router.delete("/actividades/{actividad_id}")
-def delete_actividad(
+async def delete_actividad(
     actividad_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -132,12 +132,11 @@ def delete_actividad(
     if not db_actividad:
         raise HTTPException(status_code=404, detail="Actividad no encontrada")
     
-    # Si tiene archivo de soporte, eliminarlo de Firebase Storage
+    # Si tiene archivo de soporte, eliminarlo
     if db_actividad.archivo_soporte_url:
         try:
-            # Extraer el path del archivo de la URL
-            file_path = db_actividad.archivo_soporte_url.split('/')[-1]
-            firebase_storage_service.delete_file(f"seguimiento_actividades/{file_path}")
+            # Extraer el path del archivo o usar la URL completa
+             await storage_manager.delete_file(db_actividad.archivo_soporte_url)
         except Exception as e:
             # Log el error pero no fallar la eliminación de la actividad
             print(f"Error eliminando archivo de soporte: {str(e)}")
@@ -166,28 +165,23 @@ async def upload_archivo_soporte(
         raise HTTPException(status_code=400, detail="Solo se permiten archivos PDF")
     
     try:
-        # Generar nombre único para el archivo
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        file_extension = os.path.splitext(file.filename)[1]
-        unique_filename = f"actividad_{actividad_id}_{timestamp}{file_extension}"
-        destination_path = f"seguimiento_actividades/{unique_filename}"
-        
-        # Subir archivo a Firebase Storage
-        file_content = await file.read()
-        file_url = firebase_storage_service.upload_file(
-            file_content, 
-            destination_path, 
-            content_type="application/pdf"
+        # Subir archivo usando storage_manager
+        result = await storage_manager.upload_file(
+            file, 
+            folder="seguimiento_actividades"
         )
+        
+        file_url = result.get("url")
+        filename = result.get("filename")
         
         # Actualizar la actividad con la información del archivo
         db_actividad.archivo_soporte_url = file_url
-        db_actividad.archivo_soporte_nombre = file.filename
+        db_actividad.archivo_soporte_nombre = filename or file.filename
         db.commit()
         
         return ArchivoSoporteResponse(
             url=file_url,
-            nombre_archivo=file.filename,
+            nombre_archivo=filename,
             mensaje="Archivo de soporte subido exitosamente"
         )
         
@@ -198,7 +192,7 @@ async def upload_archivo_soporte(
         )
 
 @router.delete("/actividades/{actividad_id}/soporte")
-def delete_archivo_soporte(
+async def delete_archivo_soporte(
     actividad_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -214,9 +208,8 @@ def delete_archivo_soporte(
         raise HTTPException(status_code=404, detail="No hay archivo de soporte para eliminar")
     
     try:
-        # Extraer el path del archivo de la URL
-        file_path = db_actividad.archivo_soporte_url.split('/')[-1]
-        firebase_storage_service.delete_file(f"seguimiento_actividades/{file_path}")
+        # Eliminar archivo
+        await storage_manager.delete_file(db_actividad.archivo_soporte_url)
         
         # Limpiar la información del archivo en la base de datos
         db_actividad.archivo_soporte_url = None
