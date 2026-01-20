@@ -1,5 +1,6 @@
 import os
 import tempfile
+import base64
 from datetime import datetime
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
@@ -104,11 +105,23 @@ class MedicalRecommendationGenerator:
             'created_by_user': None  # El modelo Seguimiento no tiene relación con User
         }
         
+        # Cargar logo como base64
+        company_logo = ""
+        try:
+            logo_path = os.path.join(self.html_to_pdf.template_dir, "logo_3.png")
+            if os.path.exists(logo_path):
+                with open(logo_path, "rb") as image_file:
+                    encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+                    company_logo = f"data:image/png;base64,{encoded_string}"
+        except Exception as e:
+            print(f"Error loading logo: {e}")
+        
         return {
             'worker': worker_data,
             'exam': exam_data,
             'seguimiento': seguimiento_data,
-            'current_date': datetime.now().strftime('%d/%m/%Y')
+            'current_date': datetime.now().strftime('%d/%m/%Y'),
+            'company_logo': company_logo
         }
     
     async def _create_medical_recommendation_pdf_from_html(self, filepath: str, context: Dict[str, Any]):
