@@ -482,8 +482,96 @@ class DatabaseManager:
         def contabo_url_clause(column):
             return column.ilike("%contabostorage.com/%")
 
+        def is_old_contabo_bucket(url: str) -> bool:
+            """Detecta si la URL apunta al bucket viejo /app de Contabo"""
+            if not url or "contabostorage.com" not in url:
+                return False
+            # El bucket actual es 'sst', cualquier otro bucket es viejo
+            current_bucket = settings.contabo_bucket_name or "sst"
+            try:
+                path = url.split(".com/")[1]
+                url_bucket = path.split("/")[0]
+                return url_bucket != current_bucket
+            except Exception:
+                return False
+
+        async def download_from_any_source(url: str) -> Optional[bytes]:
+            """
+            Intenta descargar desde la fuente apropiada.
+            Si es del bucket viejo de Contabo, intenta Firebase primero.
+            """
+            if not url:
+                return None
+
+            # Si es URL de S3 AWS
+            if "s3.amazonaws.com" in url:
+                try:
+                    file_key = url.split(".com/")[-1]
+                    signed_url = s3_service.get_file_url(file_key, expiration=3600)
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        resp = await client.get(signed_url)
+                        resp.raise_for_status()
+                        return resp.content
+                except Exception as e:
+                    logger.warning(f"Error descargando de S3: {e}")
+                    return None
+
+            # Si es URL de Contabo del bucket viejo, intentar Firebase
+            if "contabostorage.com" in url and is_old_contabo_bucket(url):
+                logger.info(f"URL del bucket viejo detectada, intentando Firebase: {url}")
+                # Intentar descargar de Firebase
+                content = await storage_manager.download_file(url, storage_type="firebase")
+                if content:
+                    return content
+                # Si Firebase falla, intentar descarga directa por HTTP
+                try:
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        resp = await client.get(url)
+                        if resp.status_code == 200:
+                            return resp.content
+                except Exception:
+                    pass
+                return None
+
+            # Si es URL de Contabo del bucket actual
+            if "contabostorage.com" in url:
+                try:
+                    path = url.split(".com/")[1]
+                    bucket, key = path.split("/", 1)
+                    content = contabo_service.download_by_bucket_and_key(bucket, key) if contabo_service else None
+                    if content:
+                        return content
+                except Exception as e:
+                    logger.warning(f"Error descargando de Contabo: {e}")
+
+            # Intentar con storage_manager (detecta automaticamente Firebase)
+            content = await storage_manager.download_file(url, storage_type=None)
+            if content:
+                return content
+
+            # Ultimo intento: descarga HTTP directa
+            try:
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    resp = await client.get(url)
+                    if resp.status_code == 200:
+                        return resp.content
+            except Exception:
+                pass
+
+            return None
+
         def safe_filename_from_url(url: str, fallback_name: str) -> str:
             try:
+                # Primero intentar extraer de la URL directamente
+                if url:
+                    from urllib.parse import urlparse, unquote
+                    parsed = urlparse(url)
+                    path_parts = parsed.path.split("/")
+                    if path_parts:
+                        filename = unquote(path_parts[-1])
+                        if filename and "." in filename:
+                            return filename
+                # Fallback a Firebase path
                 key = storage_manager._extract_firebase_path(url)
                 if key:
                     return key.split("/")[-1]
@@ -657,22 +745,7 @@ class DatabaseManager:
                 for material, course_id in rows:
                     summary["processed"]["course_materials"] += 1
                     try:
-                        if material.file_url and "s3.amazonaws.com" in material.file_url:
-                            file_key = material.file_url.split(".com/")[-1]
-                            signed_url = s3_service.get_file_url(file_key, expiration=3600)
-                            async with httpx.AsyncClient() as client:
-                                resp = await client.get(signed_url)
-                                resp.raise_for_status()
-                                content = resp.content
-                        elif material.file_url and "contabostorage.com" in material.file_url:
-                            try:
-                                path = material.file_url.split(".com/")[1]
-                                bucket, key = path.split("/", 1)
-                                content = contabo_service.download_by_bucket_and_key(bucket, key) if contabo_service else None
-                            except Exception:
-                                content = None
-                        else:
-                            content = await storage_manager.download_file(material.file_url, storage_type=None)
+                        content = await download_from_any_source(material.file_url)
                         if not content:
                             summary["errors"].append({"type": "course_materials", "id": material.id, "error": "No se pudo descargar"})
                             continue
@@ -715,22 +788,7 @@ class DatabaseManager:
                 for cert in rows:
                     summary["processed"]["certificates"] += 1
                     try:
-                        if cert.file_path and "s3.amazonaws.com" in cert.file_path:
-                            file_key = cert.file_path.split(".com/")[-1]
-                            signed_url = s3_service.get_file_url(file_key, expiration=3600)
-                            async with httpx.AsyncClient() as client:
-                                resp = await client.get(signed_url)
-                                resp.raise_for_status()
-                                content = resp.content
-                        elif cert.file_path and "contabostorage.com" in cert.file_path:
-                            try:
-                                path = cert.file_path.split(".com/")[1]
-                                bucket, key = path.split("/", 1)
-                                content = contabo_service.download_by_bucket_and_key(bucket, key) if contabo_service else None
-                            except Exception:
-                                content = None
-                        else:
-                            content = await storage_manager.download_file(cert.file_path, storage_type=None)
+                        content = await download_from_any_source(cert.file_path)
                         if not content:
                             summary["errors"].append({"type": "certificates", "id": cert.id, "error": "No se pudo descargar"})
                             continue
@@ -772,22 +830,7 @@ class DatabaseManager:
                 for doc in rows:
                     summary["processed"]["committee_documents"] += 1
                     try:
-                        if doc.file_path and "s3.amazonaws.com" in doc.file_path:
-                            file_key = doc.file_path.split(".com/")[-1]
-                            signed_url = s3_service.get_file_url(file_key, expiration=3600)
-                            async with httpx.AsyncClient() as client:
-                                resp = await client.get(signed_url)
-                                resp.raise_for_status()
-                                content = resp.content
-                        elif doc.file_path and "contabostorage.com" in doc.file_path:
-                            try:
-                                path = doc.file_path.split(".com/")[1]
-                                bucket, key = path.split("/", 1)
-                                content = contabo_service.download_by_bucket_and_key(bucket, key) if contabo_service else None
-                            except Exception:
-                                content = None
-                        else:
-                            content = await storage_manager.download_file(doc.file_path, storage_type=None)
+                        content = await download_from_any_source(doc.file_path)
                         if not content:
                             summary["errors"].append({"type": "committee_documents", "id": doc.id, "error": "No se pudo descargar"})
                             continue
@@ -815,15 +858,7 @@ class DatabaseManager:
             if "committee_urls" in types:
                 async def migrate_url_field(model_name: str, record_id: int, url: str, folder: str) -> Optional[str]:
                     try:
-                        if url and "s3.amazonaws.com" in url:
-                            file_key = url.split(".com/")[-1]
-                            signed_url = s3_service.get_file_url(file_key, expiration=3600)
-                            async with httpx.AsyncClient() as client:
-                                resp = await client.get(signed_url)
-                                resp.raise_for_status()
-                                content = resp.content
-                        else:
-                            content = await storage_manager.download_file(url, storage_type=None)
+                        content = await download_from_any_source(url)
                         if not content:
                             summary["errors"].append({"type": "committee_urls", "id": record_id, "model": model_name, "error": "No se pudo descargar"})
                             return None
