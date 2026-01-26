@@ -64,3 +64,32 @@ class Programas(ProgramasBase):
     
     class Config:
         from_attributes = True
+
+
+class OcupacionBase(BaseModel):
+    """Base schema for occupations"""
+    nombre: str = Field(..., description="Nombre de la ocupación", max_length=100)
+    descripcion: Optional[str] = Field(None, description="Descripción de la ocupación", max_length=255)
+    activo: bool = Field(True, description="Si la ocupación está activa")
+
+
+class OcupacionCreate(OcupacionBase):
+    """Schema for creating occupations"""
+    pass
+
+
+class OcupacionUpdate(BaseModel):
+    """Schema for updating occupations"""
+    nombre: Optional[str] = Field(None, description="Nombre de la ocupación", max_length=100)
+    descripcion: Optional[str] = Field(None, description="Descripción de la ocupación", max_length=255)
+    activo: Optional[bool] = Field(None, description="Si la ocupación está activa")
+
+
+class Ocupacion(OcupacionBase):
+    """Schema for occupations response"""
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

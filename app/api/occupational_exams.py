@@ -10,7 +10,7 @@ from fastapi import (
     File,
 )
 from fastapi.responses import RedirectResponse, FileResponse, StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func
 from datetime import date, timedelta, datetime
 import os
@@ -32,6 +32,7 @@ from app.dependencies import (
 from app.models.user import User
 from app.models.worker import Worker
 from app.models.occupational_exam import OccupationalExam
+from app.models.tipo_examen import TipoExamen
 from app.models.cargo import Cargo
 from app.models.notification_acknowledgment import NotificationAcknowledgment
 from app.models.admin_config import Programas
@@ -43,6 +44,7 @@ from app.schemas.occupational_exam import (
 )
 from app.schemas.common import MessageResponse, PaginatedResponse
 from app.models.seguimiento import Seguimiento, EstadoSeguimiento, ValoracionRiesgo
+from app.models.profesiograma import Profesiograma, ProfesiogramaFactor, ProfesiogramaEstado
 
 router = APIRouter()
 
@@ -52,7 +54,7 @@ router = APIRouter()
 async def get_occupational_exams(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    exam_type: Optional[str] = Query(None),
+    tipo_examen_id: Optional[int] = Query(None),
     result: Optional[str] = Query(None),
     worker_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
@@ -66,11 +68,11 @@ async def get_occupational_exams(
     skip = (page - 1) * limit
 
     # Base query with join to get worker information
-    query = db.query(OccupationalExam).join(Worker)
+    query = db.query(OccupationalExam).join(Worker).options(joinedload(OccupationalExam.tipo_examen))
 
     # Apply filters
-    if exam_type:
-        query = query.filter(OccupationalExam.exam_type == exam_type)
+    if tipo_examen_id:
+        query = query.filter(OccupationalExam.tipo_examen_id == tipo_examen_id)
 
     if result:
         # Map result filter to medical_aptitude_concept values
@@ -114,7 +116,11 @@ async def get_occupational_exams(
         worker = exam.worker
 
         # Calcular fecha del próximo examen basado en la periodicidad del cargo
-        cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
+        cargo = None
+        if getattr(worker, "cargo_id", None):
+            cargo = db.query(Cargo).filter(Cargo.id == worker.cargo_id).first()
+        if not cargo:
+            cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
         periodicidad = cargo.periodicidad_emo if cargo else "anual"
 
         if periodicidad == "semestral":
@@ -142,8 +148,14 @@ async def get_occupational_exams(
                 if worker and worker.fecha_de_ingreso
                 else None
             ),
-            "exam_type": exam.exam_type,
+            "tipo_examen_id": exam.tipo_examen_id,
+            "tipo_examen": exam.tipo_examen,
             "exam_date": exam.exam_date.isoformat(),
+            "departamento": exam.departamento,
+            "ciudad": exam.ciudad,
+            "duracion_cargo_actual_meses": exam.duracion_cargo_actual_meses,
+            "factores_riesgo_evaluados": exam.factores_riesgo_evaluados,
+            "cargo_id_momento_examen": exam.cargo_id_momento_examen,
             "programa": exam.programa,
             "occupational_conclusions": exam.occupational_conclusions,
             "preventive_occupational_behaviors": exam.preventive_occupational_behaviors,
@@ -207,7 +219,11 @@ async def calculate_next_exam_date(
             )
 
         # Obtener cargo del trabajador
-        cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
+        cargo = None
+        if getattr(worker, "cargo_id", None):
+            cargo = db.query(Cargo).filter(Cargo.id == worker.cargo_id).first()
+        if not cargo:
+            cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
 
         # Convertir la fecha del examen
         try:
@@ -228,12 +244,34 @@ async def calculate_next_exam_date(
         else:  # anual por defecto
             next_exam_date = exam_date_obj + timedelta(days=365)  # 1 año
 
+        # Obtener factores de riesgo del profesiograma activo
+        risk_factors = []
+        if cargo:
+            profesiograma = db.query(Profesiograma).filter(
+                Profesiograma.cargo_id == cargo.id,
+                Profesiograma.estado == ProfesiogramaEstado.ACTIVO
+            ).order_by(Profesiograma.version.desc()).first()
+
+            if profesiograma:
+                factors = db.query(ProfesiogramaFactor).options(
+                    joinedload(ProfesiogramaFactor.factor_riesgo)
+                ).filter(ProfesiogramaFactor.profesiograma_id == profesiograma.id).all()
+                
+                for f in factors:
+                    risk_factors.append({
+                        "nombre": f.factor_riesgo.nombre,
+                        "categoria": f.factor_riesgo.categoria,
+                        "nivel_exposicion": f.nivel_exposicion,
+                        "tiempo_exposicion_horas": float(f.tiempo_exposicion_horas) if f.tiempo_exposicion_horas else 0,
+                    })
+
         return {
             "next_exam_date": next_exam_date.isoformat(),
             "periodicidad": periodicidad,
             "worker_name": worker.full_name,
             "worker_position": worker.position,
             "cargo_name": cargo.nombre_cargo if cargo else "No especificado",
+            "risk_factors": risk_factors
         }
 
     except HTTPException:
@@ -262,8 +300,113 @@ async def create_occupational_exam(
             status_code=status.HTTP_404_NOT_FOUND, detail="Trabajador no encontrado"
         )
 
-    # Create exam
-    exam = OccupationalExam(**exam_data.dict())
+    data = exam_data.dict()
+
+    if not data.get("departamento") and getattr(worker, "department", None):
+        data["departamento"] = worker.department
+    if not data.get("ciudad") and getattr(worker, "city", None):
+        data["ciudad"] = worker.city
+    if not data.get("afiliacion_eps_momento") and getattr(worker, "eps", None):
+        data["afiliacion_eps_momento"] = worker.eps
+    if not data.get("afiliacion_afp_momento") and getattr(worker, "afp", None):
+        data["afiliacion_afp_momento"] = worker.afp
+    if not data.get("afiliacion_arl_momento") and getattr(worker, "arl", None):
+        data["afiliacion_arl_momento"] = worker.arl
+    if not data.get("cargo_id_momento_examen") and getattr(worker, "cargo_id", None):
+        data["cargo_id_momento_examen"] = worker.cargo_id
+
+    # Calcular duración del cargo actual automáticamente (Art. 15)
+    # Se usa la fecha de ingreso del trabajador y la fecha del examen
+    if getattr(worker, "fecha_de_ingreso", None) and data.get("exam_date"):
+        try:
+            # exam_date puede ser date o str dependiendo del origen
+            exam_dt = data["exam_date"]
+            if isinstance(exam_dt, str):
+                exam_dt = datetime.strptime(exam_dt, "%Y-%m-%d").date()
+            
+            # Calcular diferencia en meses: (year_diff * 12) + month_diff
+            months_diff = (exam_dt.year - worker.fecha_de_ingreso.year) * 12 + (exam_dt.month - worker.fecha_de_ingreso.month)
+            # Si el día del examen es menor al día de ingreso, restar un mes (no ha cumplido el mes completo)
+            if exam_dt.day < worker.fecha_de_ingreso.day:
+                months_diff -= 1
+            
+            # Asegurar que no sea negativo
+            data["duracion_cargo_actual_meses"] = max(0, months_diff)
+        except Exception as e:
+            print(f"Error calculando duración del cargo: {e}")
+            # Si falla el cálculo, se respeta el valor enviado o None
+
+    # Auto-poblar factores de riesgo desde el profesiograma (Art. 15)
+    worker_cargo_id = getattr(worker, "cargo_id", None)
+    # Si no tiene cargo_id directo, intentar buscar por nombre de posición (legacy)
+    cargo_obj = None
+    if worker_cargo_id:
+        cargo_obj = db.query(Cargo).filter(Cargo.id == worker_cargo_id).first()
+    elif worker.position:
+         cargo_obj = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
+    
+    if cargo_obj:
+        profesiograma = (
+            db.query(Profesiograma)
+            .filter(
+                Profesiograma.cargo_id == cargo_obj.id,
+                Profesiograma.estado == ProfesiogramaEstado.ACTIVO
+            )
+            .order_by(Profesiograma.version.desc())
+            .first()
+        )
+        
+        if profesiograma:
+            factors = (
+                db.query(ProfesiogramaFactor)
+                .options(joinedload(ProfesiogramaFactor.factor_riesgo))
+                .filter(ProfesiogramaFactor.profesiograma_id == profesiograma.id)
+                .all()
+            )
+            
+            risk_factors_list = []
+            for pf in factors:
+                risk_factors_list.append({
+                    "factor_riesgo_id": pf.factor_riesgo_id,
+                    "nombre": pf.factor_riesgo.nombre,
+                    "codigo": pf.factor_riesgo.codigo,
+                    "categoria": pf.factor_riesgo.categoria,
+                    "nivel_exposicion": pf.nivel_exposicion,
+                    "tiempo_exposicion_horas": float(pf.tiempo_exposicion_horas) if pf.tiempo_exposicion_horas else 0,
+                })
+            
+            # Sobrescribir siempre con los datos del profesiograma
+            data["factores_riesgo_evaluados"] = risk_factors_list
+            print(f"DEBUG: Auto-populated {len(risk_factors_list)} risk factors from Profesiograma {profesiograma.id}")
+        else:
+             # Si no hay profesiograma activo, lista vacía o lo que venga (pero preferiblemente vacío para consistencia)
+             if "factores_riesgo_evaluados" not in data:
+                 data["factores_riesgo_evaluados"] = []
+    else:
+        if "factores_riesgo_evaluados" not in data:
+             data["factores_riesgo_evaluados"] = []
+
+    required_fields = [
+        "departamento",
+        "ciudad",
+        # "duracion_cargo_actual_meses", # Ya no es obligatorio que venga en el payload si se calcula
+        # "factores_riesgo_evaluados", # Ya no es obligatorio en payload, se calcula
+        "cargo_id_momento_examen",
+    ]
+    missing = [k for k in required_fields if not data.get(k)]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "Campos obligatorios faltantes (Art. 15)", "campos_faltantes": missing},
+        )
+
+    # Validación relajada: Si se calcularon factores, bien. Si no, permitir vacío si no hay profesiograma.
+    # El usuario pidió que fuera read-only desde profesiograma, así que confiamos en la lógica de arriba.
+    # if not isinstance(data.get("factores_riesgo_evaluados"), list) or len(data["factores_riesgo_evaluados"]) == 0:
+    #    # Ya no lanzamos error aquí para permitir casos sin profesiograma o sin riesgos definidos aún
+    #    pass
+
+    exam = OccupationalExam(**data)
     db.add(exam)
     db.commit()
     db.refresh(exam)
@@ -311,9 +454,13 @@ async def create_occupational_exam(
                 observacion_parts.append(f"Médico examinador: {exam.examining_doctor}")
             if exam.medical_center:
                 observacion_parts.append(f"Centro médico: {exam.medical_center}")
-            if exam.exam_type:
-                exam_type_label = exam.exam_type.replace("_", " ").title()
-                observacion_parts.append(f"Tipo de examen: {exam_type_label}")
+            if exam.tipo_examen:
+                exam_type_label = exam.tipo_examen.nombre
+            else:
+                # Intentar cargar si no está disponible (lazy load)
+                te = db.query(TipoExamen).filter(TipoExamen.id == exam.tipo_examen_id).first()
+                exam_type_label = te.nombre if te else "Desconocido"
+            observacion_parts.append(f"Tipo de examen: {exam_type_label}")
 
             observacion_completa = (
                 "\n".join(observacion_parts) if observacion_parts else None
@@ -349,7 +496,11 @@ async def create_occupational_exam(
             print(f"DEBUG: Seguimiento creado exitosamente con ID: {db_seguimiento.id}")
 
     # Calcular fecha del próximo examen basado en la periodicidad del cargo
-    cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
+    cargo = None
+    if getattr(worker, "cargo_id", None):
+        cargo = db.query(Cargo).filter(Cargo.id == worker.cargo_id).first()
+    if not cargo:
+        cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
     periodicidad = cargo.periodicidad_emo if cargo else "anual"
 
     if periodicidad == "semestral":
@@ -369,8 +520,14 @@ async def create_occupational_exam(
     # Crear respuesta enriquecida con datos del trabajador
     exam_dict = {
         "id": exam.id,
-        "exam_type": exam.exam_type,
+        "tipo_examen_id": exam.tipo_examen_id,
+        "tipo_examen": exam.tipo_examen,
         "exam_date": exam.exam_date,
+        "departamento": exam.departamento,
+        "ciudad": exam.ciudad,
+        "duracion_cargo_actual_meses": exam.duracion_cargo_actual_meses,
+        "factores_riesgo_evaluados": exam.factores_riesgo_evaluados,
+        "cargo_id_momento_examen": exam.cargo_id_momento_examen,
         "programa": exam.programa,
         "occupational_conclusions": exam.occupational_conclusions,
         "preventive_occupational_behaviors": exam.preventive_occupational_behaviors,
@@ -393,6 +550,11 @@ async def create_occupational_exam(
             else None
         ),
         "next_exam_date": next_exam_date.isoformat(),
+        "departamento": exam.departamento,
+        "ciudad": exam.ciudad,
+        "duracion_cargo_actual_meses": exam.duracion_cargo_actual_meses,
+        "factores_riesgo_evaluados": exam.factores_riesgo_evaluados,
+        "cargo_id_momento_examen": exam.cargo_id_momento_examen,
         # Campos legacy para compatibilidad con el frontend
         "status": "realizado",
         "result": result_mapping.get(exam.medical_aptitude_concept, "pendiente"),
@@ -411,7 +573,7 @@ async def create_occupational_exam(
 @router.get("/report/pdf")
 async def generate_occupational_exam_report_pdf(
     worker_id: Optional[int] = Query(None, description="ID del trabajador específico"),
-    exam_type: Optional[str] = Query(None, description="Tipo de examen"),
+    tipo_examen_id: Optional[int] = Query(None, description="ID del tipo de examen"),
     start_date: Optional[date] = Query(None, description="Fecha de inicio del rango"),
     end_date: Optional[date] = Query(None, description="Fecha de fin del rango"),
     include_overdue: bool = Query(True, description="Incluir exámenes vencidos"),
@@ -431,13 +593,13 @@ async def generate_occupational_exam_report_pdf(
         total_workers = len(workers)
 
         # Obtener exámenes ocupacionales con filtros
-        exams_query = db.query(OccupationalExam).join(Worker)
+        exams_query = db.query(OccupationalExam).join(Worker).options(joinedload(OccupationalExam.tipo_examen)).options(joinedload(OccupationalExam.tipo_examen))
 
         if worker_id:
             exams_query = exams_query.filter(OccupationalExam.worker_id == worker_id)
 
-        if exam_type:
-            exams_query = exams_query.filter(OccupationalExam.exam_type == exam_type)
+        if tipo_examen_id:
+            exams_query = exams_query.filter(OccupationalExam.tipo_examen_id == tipo_examen_id)
 
         if start_date:
             exams_query = exams_query.filter(OccupationalExam.exam_date >= start_date)
@@ -463,11 +625,11 @@ async def generate_occupational_exam_report_pdf(
 
             if last_exam:
                 # Calcular fecha del próximo examen basado en la periodicidad del cargo
-                cargo = (
-                    db.query(Cargo)
-                    .filter(Cargo.nombre_cargo == worker.position)
-                    .first()
-                )
+                cargo = None
+                if getattr(worker, "cargo_id", None):
+                    cargo = db.query(Cargo).filter(Cargo.id == worker.cargo_id).first()
+                if not cargo:
+                    cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
                 periodicidad = cargo.periodicidad_emo if cargo else "anual"
 
                 if periodicidad == "semestral":
@@ -487,7 +649,7 @@ async def generate_occupational_exam_report_pdf(
                     "cargo": worker.position or "No especificado",
                     "last_exam_date": last_exam.exam_date.strftime("%d/%m/%Y"),
                     "next_exam_date": next_exam_date.strftime("%d/%m/%Y"),
-                    "exam_type": last_exam.exam_type.replace("_", " ").title(),
+                    "exam_type": last_exam.tipo_examen.nombre if last_exam.tipo_examen else "Desconocido",
                 }
 
                 if days_difference < 0:
@@ -594,8 +756,14 @@ async def get_occupational_exam(
     worker = exam.worker
     exam_dict = {
         "id": exam.id,
-        "exam_type": exam.exam_type,
+        "tipo_examen_id": exam.tipo_examen_id,
+        "tipo_examen": exam.tipo_examen,
         "exam_date": exam.exam_date,
+        "departamento": exam.departamento,
+        "ciudad": exam.ciudad,
+        "duracion_cargo_actual_meses": exam.duracion_cargo_actual_meses,
+        "factores_riesgo_evaluados": exam.factores_riesgo_evaluados,
+        "cargo_id_momento_examen": exam.cargo_id_momento_examen,
         "programa": exam.programa,
         "occupational_conclusions": exam.occupational_conclusions,
         "preventive_occupational_behaviors": exam.preventive_occupational_behaviors,
@@ -651,6 +819,20 @@ async def update_occupational_exam(
         )
 
     update_data = exam_data.dict(exclude_unset=True)
+
+    # Recalcular duración si cambia la fecha del examen
+    if "exam_date" in update_data:
+        worker = exam.worker
+        if worker and worker.fecha_de_ingreso:
+            try:
+                exam_dt = update_data["exam_date"]
+                # Calcular diferencia en meses
+                months_diff = (exam_dt.year - worker.fecha_de_ingreso.year) * 12 + (exam_dt.month - worker.fecha_de_ingreso.month)
+                if exam_dt.day < worker.fecha_de_ingreso.day:
+                    months_diff -= 1
+                update_data["duracion_cargo_actual_meses"] = max(0, months_diff)
+            except Exception as e:
+                print(f"Error recalculando duración del cargo en update: {e}")
 
     # Guardar el valor anterior de requires_follow_up antes de actualizar
     previous_requires_follow_up = exam.requires_follow_up
@@ -718,9 +900,17 @@ async def update_occupational_exam(
                     )
                 if exam.medical_center:
                     observacion_parts.append(f"Centro médico: {exam.medical_center}")
-                if exam.exam_type:
-                    exam_type_label = exam.exam_type.replace("_", " ").title()
-                    observacion_parts.append(f"Tipo de examen: {exam_type_label}")
+                if exam.tipo_examen:
+
+                    exam_type_label = exam.tipo_examen.nombre
+
+                else:
+
+                    te = db.query(TipoExamen).filter(TipoExamen.id == exam.tipo_examen_id).first()
+
+                    exam_type_label = te.nombre if te else "Desconocido"
+
+                observacion_parts.append(f"Tipo de examen: {exam_type_label}")
 
                 observacion_completa = (
                     "\n".join(observacion_parts) if observacion_parts else None
@@ -763,7 +953,11 @@ async def update_occupational_exam(
 
     # Calcular fecha del próximo examen basado en la periodicidad del cargo
     worker = exam.worker
-    cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
+    cargo = None
+    if getattr(worker, "cargo_id", None):
+        cargo = db.query(Cargo).filter(Cargo.id == worker.cargo_id).first()
+    if not cargo:
+        cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
     periodicidad = cargo.periodicidad_emo if cargo else "anual"
 
     from datetime import timedelta
@@ -785,7 +979,8 @@ async def update_occupational_exam(
     # Crear respuesta enriquecida con datos del trabajador
     exam_dict = {
         "id": exam.id,
-        "exam_type": exam.exam_type,
+        "tipo_examen_id": exam.tipo_examen_id,
+        "tipo_examen": exam.tipo_examen,
         "exam_date": exam.exam_date,
         "programa": exam.programa,
         "occupational_conclusions": exam.occupational_conclusions,

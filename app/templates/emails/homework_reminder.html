@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recordatorio: Autoevaluación de Trabajo en Casa</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background-color: #ffffff;
+            margin: 20px auto;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            background-color: #1976d2;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .content {
+            padding: 30px;
+        }
+        .highlight-box {
+            background-color: #e3f2fd;
+            border-left: 5px solid #1976d2;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .button {
+            display: inline-block;
+            background-color: #1976d2;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 15px;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            border-top: 1px solid #eaeaea;
+        }
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">SISTEMA SST</div>
+            <h3>Recordatorio de Actividad Pendiente</h3>
+        </div>
+        
+        <div class="content">
+            <p>Hola <strong>{{ user_name }}</strong>,</p>
+            
+            <p>Esperamos que te encuentres bien.</p>
+            
+            <p>Desde el área de Seguridad y Salud en el Trabajo (SST), te recordamos amablemente que tienes pendiente completar tu <strong>Autoevaluación de Trabajo en Casa</strong>.</p>
+            
+            <div class="highlight-box">
+                <p><strong>Actividad:</strong> Autoevaluación de Condiciones de Trabajo en Casa</p>
+                <p><strong>Estado:</strong> <span style="color: #d32f2f; font-weight: bold;">Pendiente</span></p>
+                <p><strong>Fecha límite sugerida:</strong> {{ due_date }}</p>
+            </div>
+            
+            <p>Esta evaluación es fundamental para asegurar que cuentas con las condiciones ergonómicas y de seguridad adecuadas para desempeñar tus labores remotamente.</p>
+            
+            <div style="text-align: center;">
+                <a href="{{ action_url }}" class="button">Realizar Autoevaluación Ahora</a>
+            </div>
+            
+            <p style="margin-top: 30px; font-size: 14px;">Si ya has completado esta actividad recientemente, por favor haz caso omiso a este mensaje.</p>
+        </div>
+        
+        <div class="footer">
+            <p>Este mensaje fue enviado automáticamente por el Sistema de Gestión SST.</p>
+            <p>Área de Seguridad y Salud en el Trabajo - ROWL UNITED COLOMBIA S.A.S.</p>
+        </div>
+    </div>
+</body>
+</html>

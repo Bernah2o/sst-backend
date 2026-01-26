@@ -9,6 +9,7 @@ from app.models.user import User
 from app.models.seguimiento import Seguimiento
 from app.models.worker import Worker
 from app.models.occupational_exam import OccupationalExam
+from app.models.cargo import Cargo
 from app.utils.storage import StorageManager
 from app.services.html_to_pdf import HTMLToPDFConverter
 from app.config import settings
@@ -41,7 +42,8 @@ class MedicalRecommendationGenerator:
         # Obtener el examen ocupacional más reciente del trabajador
         from sqlalchemy.orm import joinedload
         latest_exam = self.db.query(OccupationalExam).options(
-            joinedload(OccupationalExam.doctor)
+            joinedload(OccupationalExam.doctor),
+            joinedload(OccupationalExam.tipo_examen)
         ).filter(
             OccupationalExam.worker_id == seguimiento.worker_id
         ).order_by(OccupationalExam.exam_date.desc()).first()
@@ -64,26 +66,44 @@ class MedicalRecommendationGenerator:
         """Prepara el contexto de datos para la plantilla HTML"""
         from datetime import datetime
         
+        # Helper para formatear fecha de manera segura
+        def format_date_safe(d):
+            if not d:
+                return None
+            if isinstance(d, str):
+                try:
+                    # Intenta parsear ISO format YYYY-MM-DD
+                    return datetime.strptime(d, '%Y-%m-%d').strftime('%d/%m/%Y')
+                except ValueError:
+                    return d # Retorna original si falla
+            if hasattr(d, 'strftime'):
+                return d.strftime('%d/%m/%Y')
+            return str(d)
+
         # Datos del trabajador
         worker_data = {
             'first_name': worker.first_name,
             'last_name': worker.last_name,
             'document_number': worker.document_number,
-            'fecha_de_ingreso': worker.fecha_de_ingreso,  # Usar el campo correcto del modelo
+            'fecha_de_ingreso': format_date_safe(worker.fecha_de_ingreso) if worker.fecha_de_ingreso else None,
             'position': worker.position,  # Usar position en lugar de cargo
             'cargo': {'name': worker.position} if worker.position else None  # Simular la estructura cargo.name para la plantilla
         }
         
         # Calcular próximo examen
-        next_exam_date = self._calculate_next_exam_date(exam) if exam else None
+        next_exam_date = self._calculate_next_exam_date(exam, worker) if exam else None
         
         # Obtener información del médico examinador
         examining_doctor_name = self._get_examining_doctor_name(exam)
         
         # Datos del examen ocupacional
+        exam_type_name = 'Examen de Ingreso'
+        if exam and exam.tipo_examen:
+            exam_type_name = exam.tipo_examen.nombre
+        
         exam_data = {
-            'exam_type': exam.exam_type if exam else 'Examen de Ingreso',
-            'exam_date': exam.exam_date if exam else None,
+            'exam_type': exam_type_name,
+            'exam_date': format_date_safe(exam.exam_date) if exam else None,
             'medical_aptitude_concept': exam.medical_aptitude_concept if exam else 'Apto',  # Usar el campo correcto
             'examining_doctor': examining_doctor_name,
             'medical_center': exam.medical_center if exam else 'Laboratorios Nancy Flórez Garcial A.S',
@@ -91,7 +111,10 @@ class MedicalRecommendationGenerator:
             'occupational_conclusions': exam.occupational_conclusions if exam else None,
             'preventive_occupational_behaviors': exam.preventive_occupational_behaviors if exam else None,
             'general_recommendations': exam.general_recommendations if exam else None,
-            'next_exam_date': next_exam_date
+            'next_exam_date': next_exam_date,
+            'duracion_cargo_actual_meses': exam.duracion_cargo_actual_meses if exam and exam.duracion_cargo_actual_meses is not None else 'N/A',
+            'factores_riesgo_evaluados': exam.factores_riesgo_evaluados if exam and exam.factores_riesgo_evaluados else [],
+            'categorias_riesgo': sorted(list(set(f.get('categoria') for f in (exam.factores_riesgo_evaluados or []) if f.get('categoria'))))
         }
         
         # Datos del seguimiento
@@ -138,29 +161,54 @@ class MedicalRecommendationGenerator:
         except Exception as e:
             raise Exception(f"Error generando PDF desde HTML: {str(e)}")
     
-    def _calculate_next_exam_date(self, exam) -> Optional[str]:
+    def _calculate_next_exam_date(self, exam, worker=None) -> Optional[str]:
         """
-        Calcula la fecha del próximo examen basado en el tipo de examen actual
+        Calcula la fecha del próximo examen basado en el tipo de examen actual y la periodicidad del cargo
         """
         if not exam or not exam.exam_date:
             return None
         
         from dateutil.relativedelta import relativedelta
+        from datetime import timedelta, datetime
         
-        # Definir intervalos según el tipo de examen
-        intervals = {
-            'examen_ingreso': 12,  # 1 año
-            'examen_periodico': 12,  # 1 año
-            'examen_reintegro': 12,  # 1 año
-            'examen_retiro': None  # No aplica próximo examen
-        }
+        # Manejar exam_date si es string
+        exam_date_obj = exam.exam_date
+        if isinstance(exam_date_obj, str):
+            try:
+                exam_date_obj = datetime.strptime(exam_date_obj, '%Y-%m-%d').date()
+            except ValueError:
+                return None
         
-        exam_type = exam.exam_type
-        if exam_type not in intervals or intervals[exam_type] is None:
+        # Obtener nombre del tipo de examen
+        exam_type_name = ""
+        if exam.tipo_examen:
+            exam_type_name = exam.tipo_examen.nombre.lower()
+            
+        # Si es retiro, no hay próximo examen
+        if "retiro" in exam_type_name:
             return None
+            
+        # Calcular basado en periodicidad del cargo si está disponible
+        periodicidad = "anual"
+        if worker:
+            cargo = None
+            if getattr(worker, "cargo_id", None):
+                cargo = self.db.query(Cargo).filter(Cargo.id == worker.cargo_id).first()
+            if not cargo and worker.position:
+                cargo = self.db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
+            
+            if cargo:
+                periodicidad = cargo.periodicidad_emo or "anual"
         
         try:
-            next_date = exam.exam_date + relativedelta(months=intervals[exam_type])
+            next_date = None
+            if periodicidad == "semestral":
+                next_date = exam_date_obj + timedelta(days=180)  # 6 meses
+            elif periodicidad == "bianual":
+                next_date = exam_date_obj + timedelta(days=730)  # 2 años
+            else:  # anual por defecto
+                next_date = exam_date_obj + timedelta(days=365)  # 1 año
+                
             return next_date.strftime('%d/%m/%Y')
         except Exception:
             return None

@@ -2,7 +2,7 @@ from datetime import datetime, date
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, DateTime, Date, Enum as SQLEnum, Integer, String, Text, ForeignKey
+from sqlalchemy import Boolean, Column, DateTime, Date, Enum as SQLEnum, Integer, String, Text, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -28,9 +28,19 @@ class OccupationalExam(Base):
     worker_id = Column(Integer, ForeignKey("workers.id"), nullable=False)
     
     # Información del Examen
-    exam_type = Column(SQLEnum(ExamType), nullable=False)
+    tipo_examen_id = Column(Integer, ForeignKey('tipos_examen.id'), nullable=False)
     exam_date = Column(Date, nullable=False)
+    departamento = Column(String(50), nullable=True)
+    ciudad = Column(String(50), nullable=True)
     programa = Column(String(200), nullable=True)  # Programa opcional
+
+    afiliacion_eps_momento = Column(String(100), nullable=True)
+    afiliacion_afp_momento = Column(String(100), nullable=True)
+    afiliacion_arl_momento = Column(String(100), nullable=True)
+
+    duracion_cargo_actual_meses = Column(Integer, nullable=True)
+    factores_riesgo_evaluados = Column(JSON, nullable=True)
+    cargo_id_momento_examen = Column(Integer, ForeignKey("cargos.id"), nullable=True)
     
     # Conclusiones y Recomendaciones
     occupational_conclusions = Column(Text)  # Conclusiones ocupacionales
@@ -63,9 +73,11 @@ class OccupationalExam(Base):
     
     # Relationships
     worker = relationship("Worker", back_populates="occupational_exams")
+    tipo_examen = relationship("TipoExamen")
+    cargo_momento = relationship("Cargo", foreign_keys=[cargo_id_momento_examen])
     supplier = relationship("Supplier", back_populates="occupational_exams")
     doctor = relationship("Doctor", back_populates="occupational_exams")
     seguimientos = relationship("Seguimiento", back_populates="occupational_exam")
     
     def __repr__(self):
-        return f"<OccupationalExam(id={self.id}, worker_id={self.worker_id}, type='{self.exam_type}', date='{self.exam_date}')>"
+        return f"<OccupationalExam(id={self.id}, worker_id={self.worker_id}, tipo_examen_id={self.tipo_examen_id}, date='{self.exam_date}')>"

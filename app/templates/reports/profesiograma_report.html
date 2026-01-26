@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="pdf-engine" content="WeasyPrint">
+  <title>Profesiograma por Cargo</title>
+  <link rel="stylesheet" href="css/profesiograma_report.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo-container">
+        {% if logo_base64 %}
+        <img class="logo" src="data:image/png;base64,{{ logo_base64 }}" alt="Logo">
+        {% else %}
+        <div class="logo-fallback">Logo no disponible</div>
+        {% endif %}
+      </div>
+      <div class="header-info">
+        <h1>Profesiograma por Cargo</h1>
+        <div class="muted">Generado: {{ generated_at }}</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">Identificación</h2>
+      <div class="grid-2">
+        <div class="kv"><span class="k">Cargo:</span><span class="v">{{ cargo.nombre_cargo }}</span></div>
+        <div class="kv"><span class="k">Versión:</span><span class="v">{{ profesiograma.version }}</span></div>
+        <div class="kv"><span class="k">Estado:</span><span class="v">{{ profesiograma.estado }}</span></div>
+        <div class="kv"><span class="k">Nivel riesgo cargo:</span><span class="v">{{ profesiograma.nivel_riesgo_cargo }}</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">Cabecera</h2>
+      <div class="grid-2">
+        <div class="kv"><span class="k">Empresa:</span><span class="v">{{ profesiograma.empresa or 'ROWL UNITED COLOMBIA SAS' }}</span></div>
+        <div class="kv"><span class="k">Nº trabajadores expuestos:</span><span class="v">{{ profesiograma.numero_trabajadores_expuestos or '' }}</span></div>
+        <div class="kv"><span class="k">Fecha elaboración:</span><span class="v">{{ profesiograma.fecha_elaboracion or '' }}</span></div>
+        <div class="kv"><span class="k">Vigencia (meses):</span><span class="v">{{ profesiograma.vigencia_meses or '12' }}</span></div>
+        <div class="kv"><span class="k">Elaborado por:</span><span class="v">{{ profesiograma.elaborado_por or 'Bernardino de Aguas' }}</span></div>
+        <div class="kv"><span class="k">Revisado por:</span><span class="v">{{ profesiograma.revisado_por or '' }}</span></div>
+        <div class="kv"><span class="k">Aprobado por:</span><span class="v">{{ profesiograma.aprobado_por or '' }}</span></div>
+        <div class="kv"><span class="k">Fecha aprobación:</span><span class="v">{{ profesiograma.fecha_aprobacion or '' }}</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">EMO</h2>
+      <div class="grid-2">
+        <div class="kv"><span class="k">Periodicidad EMO (meses):</span><span class="v">{{ profesiograma.periodicidad_emo_meses }}</span></div>
+        <div class="kv"><span class="k">Última revisión:</span><span class="v">{{ profesiograma.fecha_ultima_revision }}</span></div>
+      </div>
+      {% if profesiograma.justificacion_periodicidad_emo %}
+      <div class="block">
+        <div class="k">Justificación técnica</div>
+        <div class="text">{{ profesiograma.justificacion_periodicidad_emo }}</div>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">Descripción del cargo</h2>
+      <div class="grid-2">
+        <div class="kv"><span class="k">Posición predominante:</span><span class="v">{{ profesiograma.posicion_predominante }}</span></div>
+      </div>
+      <div class="block">
+        <div class="k">Actividades</div>
+        <div class="text">{{ profesiograma.descripcion_actividades }}</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">Exámenes Ocupacionales</h2>
+      {% if examenes %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Examen</th>
+            <th>Tipo Evaluación</th>
+            <th>Obligatorio</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in examenes %}
+          <tr>
+            <td class="center">{{ loop.index }}</td>
+            <td>{{ e.nombre }}</td>
+            <td>{{ e.tipo_evaluacion }}</td>
+            <td class="center">{{ 'Sí' if e.obligatorio else 'No' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p>No hay exámenes registrados.</p>
+      {% endif %}
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">Matriz GTC 45 (Peligros)</h2>
+      {% if factores %}
+      <table class="table table-tight">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Factor</th>
+            <th>Categoría</th>
+            <th>Proceso</th>
+            <th>Actividad</th>
+            <th>Tarea</th>
+            <th>Nivel</th>
+            <th>Horas</th>
+            <th>ND</th>
+            <th>NE</th>
+            <th>NP</th>
+            <th>Interp NP</th>
+            <th>NC</th>
+            <th>NR</th>
+            <th>Nivel Riesgo</th>
+            <th>Color</th>
+            <th>Acción</th>
+            <th>Aceptabilidad</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in factores %}
+          <tr>
+            <td class="center">{{ loop.index }}</td>
+            <td>{{ f.factor_nombre }}</td>
+            <td>{{ f.factor_categoria }}</td>
+            <td>{{ f.proceso or '' }}</td>
+            <td>{{ f.actividad or '' }}</td>
+            <td>{{ f.tarea or '' }}</td>
+            <td class="center">{{ f.nivel_exposicion or '' }}</td>
+            <td class="center">{{ f.tiempo_exposicion_horas or '' }}</td>
+            <td class="center">{{ f.nd if f.nd is not none else '' }}</td>
+            <td class="center">{{ f.ne if f.ne is not none else '' }}</td>
+            <td class="center">{{ f.np if f.np is not none else '' }}</td>
+            <td class="center">{{ f.interpretacion_np or '' }}</td>
+            <td class="center">{{ f.nc if f.nc is not none else '' }}</td>
+            <td class="center">{{ f.nr if f.nr is not none else '' }}</td>
+            <td class="center">{{ f.nivel_riesgo or '' }}</td>
+            <td class="center">{{ f.color_riesgo or '' }}</td>
+            <td>{{ f.accion_riesgo or '' }}</td>
+            <td class="center">{{ f.aceptabilidad or '' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div class="spacer"></div>
+
+      <table class="table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Zona/Lugar</th>
+            <th>Tipo</th>
+            <th>Clasificación</th>
+            <th>Descripción</th>
+            <th>Controles existentes</th>
+            <th>Fuente</th>
+            <th>Medio</th>
+            <th>Individuo</th>
+            <th>Peor consecuencia</th>
+            <th>Requisito legal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for f in factores %}
+          <tr>
+            <td class="center">{{ loop.index }}</td>
+            <td>{{ f.zona_lugar or '' }}</td>
+            <td>{{ f.tipo_peligro or '' }}</td>
+            <td>{{ f.clasificacion_peligro or '' }}</td>
+            <td>{{ f.descripcion_peligro or '' }}</td>
+            <td>{{ f.controles_existentes or '' }}</td>
+            <td>{{ f.fuente or '' }}</td>
+            <td>{{ f.medio or '' }}</td>
+            <td>{{ f.individuo or '' }}</td>
+            <td>{{ f.peor_consecuencia or '' }}</td>
+            <td>{{ f.requisito_legal or '' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      {% for f in factores %}
+        {% if f.controles_esiae and f.controles_esiae|length > 0 %}
+        <div class="subsection">
+          <h3 class="subsection-title">ESIAE - {{ loop.index }}. {{ f.factor_nombre }}</h3>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Nivel</th>
+                <th>Medida</th>
+                <th>Descripción</th>
+                <th>Estado actual</th>
+                <th>Meta</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in f.controles_esiae %}
+              <tr>
+                <td class="center">{{ c.nivel }}</td>
+                <td>{{ c.medida }}</td>
+                <td>{{ c.descripcion }}</td>
+                <td>{{ c.estado_actual }}</td>
+                <td>{{ c.meta }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+
+        {% if f.intervenciones and f.intervenciones|length > 0 %}
+        <div class="subsection">
+          <h3 class="subsection-title">Intervenciones - {{ loop.index }}. {{ f.factor_nombre }}</h3>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Tipo control</th>
+                <th>Descripción</th>
+                <th>Responsable</th>
+                <th>Plazo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for i in f.intervenciones %}
+              <tr>
+                <td>{{ i.tipo_control }}</td>
+                <td>{{ i.descripcion }}</td>
+                <td>{{ i.responsable }}</td>
+                <td>{{ i.plazo }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+      {% endfor %}
+      {% else %}
+      <p>No hay factores registrados.</p>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>
+

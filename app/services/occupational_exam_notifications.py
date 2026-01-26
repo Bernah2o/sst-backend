@@ -2,12 +2,13 @@ from datetime import date, datetime, timedelta
 from typing import List, Dict, Any
 from pathlib import Path
 from jinja2 import Template
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_
 
 from app.database import get_db
 from app.models.worker import Worker
 from app.models.occupational_exam import OccupationalExam
+from app.models.tipo_examen import TipoExamen
 from app.models.cargo import Cargo
 from app.models.user import User
 from app.models.notification_acknowledgment import NotificationAcknowledgment
@@ -50,8 +51,9 @@ class OccupationalExamNotificationService:
             self.db.query(
                 OccupationalExam.worker_id,
                 OccupationalExam.exam_date.label('last_exam_date'),
-                OccupationalExam.exam_type
+                TipoExamen.nombre.label('exam_type_name')
             )
+            .join(TipoExamen, OccupationalExam.tipo_examen_id == TipoExamen.id)
             .distinct(OccupationalExam.worker_id)
             .order_by(OccupationalExam.worker_id, OccupationalExam.exam_date.desc())
             .subquery()
@@ -63,16 +65,22 @@ class OccupationalExamNotificationService:
                 Worker,
                 Cargo,
                 latest_exams.c.last_exam_date,
-                latest_exams.c.exam_type
+                latest_exams.c.exam_type_name
             )
-            .join(Cargo, Worker.position == Cargo.nombre_cargo)
+            .join(
+                Cargo,
+                or_(
+                    Worker.cargo_id == Cargo.id,
+                    and_(Worker.cargo_id.is_(None), Worker.position == Cargo.nombre_cargo),
+                ),
+            )
             .outerjoin(latest_exams, Worker.id == latest_exams.c.worker_id)
             .filter(Worker.is_active == True)
         )
         
         workers_with_pending_exams = []
         
-        for worker, cargo, last_exam_date, exam_type in workers_query.all():
+        for worker, cargo, last_exam_date, exam_type_name in workers_query.all():
             # Si no tiene exámenes previos, necesita uno inmediatamente
             if not last_exam_date:
                 next_exam_date = today
@@ -103,7 +111,8 @@ class OccupationalExamNotificationService:
                 "last_exam_date": last_exam_date,
                 "next_exam_date": next_exam_date,
                 "days_until_exam": days_until_exam,
-                "status": status
+                "status": status,
+                "exam_type_name": exam_type_name
             })
         
         return workers_with_pending_exams
@@ -162,7 +171,9 @@ Sistema de Gestión SST
             
             # Verificar si el trabajador ya confirmó la recepción de notificaciones para este examen
             # Buscar el examen más reciente del trabajador
-            latest_exam = self.db.query(OccupationalExam).filter(
+            latest_exam = self.db.query(OccupationalExam).options(
+                joinedload(OccupationalExam.tipo_examen)
+            ).filter(
                 OccupationalExam.worker_id == worker.id
             ).order_by(OccupationalExam.exam_date.desc()).first()
             
@@ -204,17 +215,10 @@ Sistema de Gestión SST
             template_content, is_html = self._load_email_template()
             template = Template(template_content)
             
-            # Mapear el tipo de examen a texto legible
-            exam_type_labels = {
-                "examen_ingreso": "Examen de Ingreso",
-                "examen_periodico": "Examen Periódico",
-                "examen_reintegro": "Examen de Reintegro",
-                "examen_retiro": "Examen de Retiro"
-            }
-            
             # Determinar el tipo de examen (por defecto periódico)
-            exam_type_value = latest_exam.exam_type.value if latest_exam and latest_exam.exam_type else "examen_periodico"
-            exam_type_label = exam_type_labels.get(exam_type_value, "Examen Periódico")
+            exam_type_label = "Examen Periódico"
+            if latest_exam and latest_exam.tipo_examen:
+                exam_type_label = latest_exam.tipo_examen.nombre
             
             # Preparar los datos para la plantilla
             template_data = {

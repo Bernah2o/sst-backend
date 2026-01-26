@@ -1,0 +1,488 @@
+/* ==========================================
+   Autoevaluación Trabajo en Casa - SST
+   Estilos para PDF
+   ========================================== */
+
+/* Reset y configuración base */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+@page {
+    size: Letter;
+    margin: 1.5cm 1.5cm 2cm 1.5cm;
+}
+
+body {
+    font-family: 'Arial', 'Helvetica', sans-serif;
+    font-size: 10pt;
+    line-height: 1.4;
+    color: #2c3e50;
+    background: white;
+}
+
+/* ==========================================
+   Encabezado del Documento
+   ========================================== */
+
+.document-header {
+    display: table;
+    width: 100%;
+    margin-bottom: 20px;
+    border-bottom: 3px solid #1976d2;
+    padding-bottom: 15px;
+}
+
+.logo-container {
+    display: table-cell;
+    width: 20%;
+    vertical-align: middle;
+    text-align: left;
+}
+
+.company-logo {
+    max-width: 100px;
+    max-height: 80px;
+    height: auto;
+}
+
+.title-container {
+    display: table-cell;
+    width: 60%;
+    vertical-align: middle;
+    text-align: center;
+    padding: 0 10px;
+}
+
+.main-title {
+    font-size: 16pt;
+    font-weight: bold;
+    color: #1976d2;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.subtitle {
+    font-size: 11pt;
+    color: #34495e;
+    margin-bottom: 3px;
+    font-weight: 600;
+}
+
+.company-name {
+    font-size: 12pt;
+    color: #2c3e50;
+    font-weight: bold;
+    margin-top: 5px;
+}
+
+.document-code {
+    display: table-cell;
+    width: 20%;
+    vertical-align: middle;
+    text-align: right;
+    font-size: 8pt;
+    color: #7f8c8d;
+}
+
+.document-code p {
+    margin: 2px 0;
+    line-height: 1.3;
+}
+
+/* ==========================================
+   Títulos de Sección
+   ========================================== */
+
+.section-title {
+    background: linear-gradient(to right, #1976d2, #2196f3);
+    color: white;
+    font-size: 11pt;
+    font-weight: bold;
+    padding: 8px 15px;
+    margin: 18px 0 10px 0;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* ==========================================
+   Cajas de Contenido
+   ========================================== */
+
+.instructions-box,
+.observations-box,
+.declaration-box {
+    background-color: #f8f9fa;
+    border-left: 4px solid #1976d2;
+    padding: 12px 15px;
+    margin-bottom: 15px;
+    border-radius: 3px;
+}
+
+.instructions-box p,
+.observations-box p {
+    font-size: 9pt;
+    line-height: 1.5;
+    color: #34495e;
+}
+
+.declaration-text {
+    font-size: 9.5pt;
+    text-align: justify;
+    line-height: 1.5;
+    margin-bottom: 10px;
+}
+
+.commitments {
+    margin-top: 10px;
+}
+
+.commitments p {
+    font-size: 10pt;
+    font-weight: bold;
+    margin-bottom: 5px;
+    color: #2c3e50;
+}
+
+.commitments ul {
+    margin-left: 20px;
+    margin-top: 5px;
+}
+
+.commitments li {
+    font-size: 9pt;
+    line-height: 1.6;
+    margin-bottom: 4px;
+    color: #34495e;
+}
+
+/* ==========================================
+   Tablas
+   ========================================== */
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 15px;
+    page-break-inside: auto;
+}
+
+thead {
+    display: table-header-group;
+}
+
+tbody {
+    display: table-row-group;
+}
+
+tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+}
+
+th, td {
+    border: 1px solid #bdc3c7;
+    padding: 7px 10px;
+    text-align: left;
+    vertical-align: top;
+}
+
+th {
+    background-color: #34495e;
+    color: white;
+    font-weight: bold;
+    font-size: 9.5pt;
+    text-align: center;
+}
+
+/* Tabla de Información */
+.info-table {
+    border: 2px solid #34495e;
+}
+
+.info-table .label-cell {
+    background-color: #ecf0f1;
+    font-weight: bold;
+    width: 18%;
+    font-size: 9pt;
+    color: #2c3e50;
+}
+
+.info-table .data-cell {
+    background-color: white;
+    width: 32%;
+    font-size: 9.5pt;
+    color: #34495e;
+}
+
+/* Tabla de Checklist */
+.checklist-table {
+    border: 2px solid #34495e;
+}
+
+.checklist-table .aspect-col {
+    width: 45%;
+}
+
+.checklist-table .check-col {
+    width: 8%;
+    text-align: center;
+}
+
+.checklist-table .obs-col {
+    width: 39%;
+}
+
+.checklist-table tbody .aspect-cell {
+    font-size: 9pt;
+    line-height: 1.4;
+}
+
+.checklist-table tbody .check-cell {
+    text-align: center;
+    font-family: 'Courier New', monospace;
+    font-size: 12pt;
+    font-weight: bold;
+    background-color: #f8f9fa;
+}
+
+.checklist-table tbody .obs-cell {
+    font-size: 8.5pt;
+    color: #555;
+    font-style: italic;
+}
+
+/* Resaltar filas según cumplimiento */
+.checklist-table tbody tr.compliant {
+    background-color: #e8f5e9;
+}
+
+.checklist-table tbody tr.non-compliant {
+    background-color: #ffebee;
+}
+
+.item-number {
+    display: inline-block;
+    min-width: 20px;
+    font-weight: bold;
+    color: #1976d2;
+}
+
+/* ==========================================
+   Sección de Firmas
+   ========================================== */
+
+.signatures-section {
+    display: table;
+    width: 100%;
+    margin-top: 40px;
+    page-break-inside: avoid;
+}
+
+.signature-box {
+    display: table-cell;
+    width: 48%;
+    text-align: center;
+    vertical-align: top;
+    padding: 0 10px;
+}
+
+.signature-space {
+    height: 60px;
+    margin-bottom: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.signature-img {
+    max-height: 55px;
+    max-width: 200px;
+    height: auto;
+}
+
+.signature-line {
+    border-top: 2px solid #2c3e50;
+    margin: 0 20px 8px 20px;
+}
+
+.signature-label {
+    font-size: 10pt;
+    font-weight: bold;
+    color: #2c3e50;
+    margin: 5px 0 3px 0;
+}
+
+.signature-detail {
+    font-size: 8.5pt;
+    color: #7f8c8d;
+    margin: 2px 0;
+}
+
+/* ==========================================
+   Evidencias Fotográficas
+   ========================================== */
+
+.page-break {
+    page-break-before: always;
+}
+
+/* Tabla de fotos */
+.photos-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+    border: 2px solid #34495e;
+}
+
+.photos-table tr {
+    page-break-inside: avoid;
+}
+
+.photos-table .photo-cell {
+    width: 50%;
+    padding: 15px;
+    text-align: center;
+    vertical-align: top;
+    border: 1px solid #bdc3c7;
+    background-color: white;
+}
+
+.photos-table .photo-cell-empty {
+    width: 50%;
+    border: none;
+    background-color: white;
+}
+
+.photo-wrapper {
+    border: 2px solid #bdc3c7;
+    padding: 8px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    min-height: 220px;
+    max-height: 280px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+.photo-img {
+    max-width: 100%;
+    max-height: 260px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: 2px;
+}
+
+.photo-caption {
+    font-size: 9.5pt;
+    color: #2c3e50;
+    margin-top: 5px;
+    font-weight: bold;
+    text-align: center;
+    line-height: 1.3;
+}
+
+/* Grid alternativo para más de 4 fotos */
+.photos-grid {
+    display: table;
+    width: 100%;
+    margin-top: 15px;
+}
+
+.photo-container {
+    display: table-cell;
+    width: 50%;
+    padding: 10px;
+    text-align: center;
+    vertical-align: top;
+    page-break-inside: avoid;
+}
+
+/* ==========================================
+   Pie de Página
+   ========================================== */
+
+.document-footer {
+    margin-top: 40px;
+    padding-top: 15px;
+    page-break-inside: avoid;
+}
+
+.footer-line {
+    border-top: 2px solid #bdc3c7;
+    margin-bottom: 10px;
+}
+
+.footer-text {
+    font-size: 8pt;
+    color: #7f8c8d;
+    text-align: center;
+    line-height: 1.4;
+    margin: 3px 0;
+}
+
+.footer-text strong {
+    color: #34495e;
+}
+
+/* ==========================================
+   Utilidades
+   ========================================== */
+
+.text-center {
+    text-align: center;
+}
+
+.text-right {
+    text-align: right;
+}
+
+.font-bold {
+    font-weight: bold;
+}
+
+.text-uppercase {
+    text-transform: uppercase;
+}
+
+/* Prevenir quiebres de página inapropiados */
+.no-break {
+    page-break-inside: avoid;
+}
+
+/* ==========================================
+   Ajustes de Impresión
+   ========================================== */
+
+@media print {
+    body {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .section-title {
+        break-after: avoid;
+    }
+
+    table {
+        break-inside: auto;
+    }
+
+    tr {
+        break-inside: avoid;
+        break-after: auto;
+    }
+
+    .signatures-section,
+    .photo-container {
+        break-inside: avoid;
+    }
+}

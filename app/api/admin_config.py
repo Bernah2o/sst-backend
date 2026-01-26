@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
 from app.database import get_db
-from app.models.admin_config import AdminConfig, Programas
+from app.models.admin_config import AdminConfig, Programas, Ocupacion
 from app.models.cargo import Cargo
 from app.models.seguridad_social import SeguridadSocial
 from app.schemas.admin_config import (
@@ -14,12 +14,16 @@ from app.schemas.admin_config import (
     AdminConfigList,
     ProgramasCreate,
     ProgramasUpdate,
-    Programas as ProgramasSchema
+    Programas as ProgramasSchema,
+    OcupacionCreate,
+    OcupacionUpdate,
+    Ocupacion as OcupacionSchema,
 )
 from app.schemas.cargo import CargoCreate, CargoUpdate, Cargo as CargoSchema
 from app.schemas.seguridad_social import SeguridadSocialCreate, SeguridadSocialUpdate, SeguridadSocial as SeguridadSocialSchema
 from app.dependencies import require_admin, get_current_active_user
 from app.models.user import User
+from app.models.worker import Worker
 from app.models.worker_document import WorkerDocument
 from app.models.contractor import ContractorDocument
 from app.models.occupational_exam import OccupationalExam
@@ -487,6 +491,8 @@ def update_cargo(
                 detail="Ya existe un cargo con este nombre"
             )
     
+    old_nombre_cargo = cargo.nombre_cargo
+
     # Actualizar campos
     update_data = cargo_data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -494,6 +500,15 @@ def update_cargo(
     
     db.commit()
     db.refresh(cargo)
+
+    if cargo_data.nombre_cargo and cargo_data.nombre_cargo != old_nombre_cargo:
+        db.query(Worker).filter(
+            or_(
+                Worker.cargo_id == cargo.id,
+                and_(Worker.cargo_id.is_(None), Worker.position == old_nombre_cargo),
+            )
+        ).update({Worker.position: cargo.nombre_cargo})
+        db.commit()
     
     return cargo
 
@@ -711,4 +726,147 @@ async def delete_programa(
     db.delete(db_programa)
     db.commit()
     
+    return None
+
+
+# Ocupaciones endpoints
+@router.get("/ocupaciones{trailing_slash:path}", response_model=List[OcupacionSchema])
+async def get_all_ocupaciones(
+    trailing_slash: str = "",
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Get all occupations"""
+    ocupaciones = db.query(Ocupacion).order_by(Ocupacion.nombre).all()
+    return ocupaciones
+
+
+@router.get("/ocupaciones/active", response_model=List[OcupacionSchema])
+async def get_active_ocupaciones(
+    db: Session = Depends(get_db),
+):
+    """Get all active occupations (public endpoint)"""
+    ocupaciones = (
+        db.query(Ocupacion)
+        .filter(Ocupacion.activo == True)
+        .order_by(Ocupacion.nombre)
+        .all()
+    )
+    return ocupaciones
+
+
+@router.get("/ocupaciones/search", response_model=List[dict])
+async def search_ocupaciones(
+    search: str = Query("", min_length=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """Search occupations for autocomplete (public endpoint)"""
+    query = db.query(Ocupacion).filter(Ocupacion.activo == True)
+    if search:
+        query = query.filter(Ocupacion.nombre.ilike(f"%{search}%"))
+    ocupaciones = query.order_by(Ocupacion.nombre).limit(limit).all()
+    return [
+        {
+            "id": o.id,
+            "name": o.nombre,
+            "description": o.descripcion,
+        }
+        for o in ocupaciones
+    ]
+
+
+@router.get("/ocupaciones/{ocupacion_id}", response_model=OcupacionSchema)
+async def get_ocupacion(
+    ocupacion_id: int,
+    trailing_slash: str = "",
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Get a specific occupation by ID"""
+    ocupacion = db.query(Ocupacion).filter(Ocupacion.id == ocupacion_id).first()
+    if not ocupacion:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ocupación no encontrada",
+        )
+    return ocupacion
+
+
+@router.post(
+    "/ocupaciones{trailing_slash:path}",
+    response_model=OcupacionSchema,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_ocupacion(
+    ocupacion: OcupacionCreate,
+    trailing_slash: str = "",
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Create a new occupation"""
+    existing = db.query(Ocupacion).filter(Ocupacion.nombre == ocupacion.nombre).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ya existe una ocupación con este nombre",
+        )
+    db_ocupacion = Ocupacion(**ocupacion.dict())
+    db.add(db_ocupacion)
+    db.commit()
+    db.refresh(db_ocupacion)
+    return db_ocupacion
+
+
+@router.put("/ocupaciones/{ocupacion_id}{trailing_slash:path}", response_model=OcupacionSchema)
+async def update_ocupacion(
+    ocupacion_id: int,
+    ocupacion_update: OcupacionUpdate,
+    trailing_slash: str = "",
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Update an occupation"""
+    db_ocupacion = db.query(Ocupacion).filter(Ocupacion.id == ocupacion_id).first()
+    if not db_ocupacion:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ocupación no encontrada",
+        )
+
+    if ocupacion_update.nombre and ocupacion_update.nombre != db_ocupacion.nombre:
+        existing = db.query(Ocupacion).filter(
+            and_(Ocupacion.nombre == ocupacion_update.nombre, Ocupacion.id != ocupacion_id)
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ya existe una ocupación con este nombre",
+            )
+
+    update_data = ocupacion_update.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_ocupacion, field, value)
+
+    db.commit()
+    db.refresh(db_ocupacion)
+    return db_ocupacion
+
+
+@router.delete("/ocupaciones/{ocupacion_id}{trailing_slash:path}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_ocupacion(
+    ocupacion_id: int,
+    trailing_slash: str = "",
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Delete an occupation"""
+    db_ocupacion = db.query(Ocupacion).filter(Ocupacion.id == ocupacion_id).first()
+    if not db_ocupacion:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ocupación no encontrada",
+        )
+    db.delete(db_ocupacion)
+    db.commit()
     return None

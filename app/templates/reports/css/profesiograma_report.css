@@ -1,0 +1,143 @@
+@page {
+  size: A4 landscape;
+  margin: 12mm;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  font-size: 10px;
+  color: #111;
+}
+
+.container {
+  width: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 2px solid #1f4e79;
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+}
+
+.logo-container {
+  width: 90px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo {
+  max-width: 90px;
+  max-height: 60px;
+}
+
+.logo-fallback {
+  font-size: 10px;
+  color: #666;
+}
+
+.header-info h1 {
+  margin: 0;
+  font-size: 18px;
+  color: #1f4e79;
+}
+
+.muted {
+  color: #666;
+  margin-top: 2px;
+}
+
+.section {
+  margin-bottom: 10px;
+}
+
+.section-title {
+  font-size: 12px;
+  margin: 0 0 6px 0;
+  padding: 4px 6px;
+  background: #eef3f8;
+  border-left: 3px solid #1f4e79;
+}
+
+.subsection {
+  margin-top: 8px;
+}
+
+.subsection-title {
+  font-size: 11px;
+  margin: 0 0 4px 0;
+  color: #1f4e79;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 16px;
+}
+
+.kv {
+  display: flex;
+  gap: 6px;
+}
+
+.k {
+  font-weight: 700;
+  min-width: 150px;
+}
+
+.v {
+  flex: 1;
+}
+
+.block {
+  margin-top: 6px;
+}
+
+.text {
+  white-space: pre-wrap;
+  line-height: 1.35;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  border: 1px solid #c7d1dd;
+  padding: 3px 4px;
+  vertical-align: top;
+}
+
+.table th {
+  background: #f3f6fa;
+  font-weight: 700;
+  text-align: left;
+}
+
+.table-tight th,
+.table-tight td {
+  padding: 2px 3px;
+}
+
+.center {
+  text-align: center;
+}
+
+tr {
+  page-break-inside: avoid;
+}
+
+.spacer {
+  height: 8px;
+}
+

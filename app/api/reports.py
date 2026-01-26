@@ -936,7 +936,10 @@ async def get_occupational_exam_reports(
         # Calculate next exam date based on periodicity
         # For INGRESO exams, calculate when the first PERIODICO exam should be
         # For PERIODICO exams, calculate the next PERIODICO exam
-        if periodicity and (exam.exam_type == ExamType.PERIODICO or exam.exam_type == ExamType.INGRESO):
+        # Use tipo_examen relationship instead of exam_type field
+        exam_type_name = exam.tipo_examen.nombre.upper() if exam.tipo_examen else "INGRESO"
+        
+        if periodicity and ("PERIODICO" in exam_type_name or "INGRESO" in exam_type_name):
             if periodicity == "anual":
                 # Add exactly one year to the exam date
                 try:
@@ -954,7 +957,7 @@ async def get_occupational_exam_reports(
                 try:
                     next_exam_date = date(year, month, exam.exam_date.day)
                 except ValueError:
-                    # Handle month with fewer days (e.g., Jan 31 + 6 months = Jul 31, but if it was Jan 31 -> Jul 31 is fine, but Jan 31 -> Jun 31 doesn't exist)
+                    # Handle month with fewer days
                     import calendar
                     last_day = calendar.monthrange(year, month)[1]
                     next_exam_date = date(year, month, min(exam.exam_date.day, last_day))
@@ -1012,7 +1015,7 @@ async def get_occupational_exam_reports(
                             template="exam_notification",
                             context={
                                 "worker_name": worker.full_name,
-                                "exam_type": exam.exam_type.value,
+                                "exam_type": exam_type_name,
                                 "exam_date": next_exam_date.strftime('%d/%m/%Y'),
                                 "is_overdue": is_overdue
                             }
@@ -1036,7 +1039,7 @@ async def get_occupational_exam_reports(
              worker_name=worker.full_name,
              document_number=worker.document_number,
              position=worker.position,
-             exam_type=exam.exam_type.value,
+             exam_type=exam_type_name,
              exam_date=exam.exam_date,
              next_exam_date=next_exam_date,
              periodicity=periodicity,
@@ -1124,12 +1127,15 @@ async def generate_occupational_exam_report_pdf(
         for exam in exams:
             worker = exam.worker
             
+            # Use tipo_examen relationship instead of exam_type field
+            exam_type_name = exam.tipo_examen.nombre.upper() if exam.tipo_examen else "INGRESO"
+            
             # Calculate next exam date based on exam type
-            if exam.exam_type == ExamType.INGRESO:
+            if "INGRESO" in exam_type_name:
                 next_exam_date = exam.exam_date + timedelta(days=365)  # Annual
-            elif exam.exam_type == ExamType.PERIODICO:
+            elif "PERIODICO" in exam_type_name:
                 next_exam_date = exam.exam_date + timedelta(days=365)  # Annual
-            elif exam.exam_type == ExamType.RETIRO:
+            elif "RETIRO" in exam_type_name:
                 next_exam_date = None  # No next exam for exit exams
             else:
                 next_exam_date = exam.exam_date + timedelta(days=365)  # Default annual
@@ -1138,7 +1144,7 @@ async def generate_occupational_exam_report_pdf(
                 'employee_name': worker.full_name,
                 'document': worker.document_number or 'N/A',
                 'position': worker.position or 'N/A',
-                'exam_type': exam.exam_type.value,
+                'exam_type': exam_type_name,
                 'exam_date': exam.exam_date.strftime('%d/%m/%Y'),
                 'due_date': next_exam_date.strftime('%d/%m/%Y') if next_exam_date else 'N/A'
             }

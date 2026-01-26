@@ -36,12 +36,16 @@ from .committee_permissions import router as committee_permissions_router
 from .candidate_voting import router as candidate_voting_router
 from .areas import router as areas_router
 from .contractors import router as contractors_router
+from .profesiogramas import router as profesiogramas_router
+from .restricciones_medicas import router as restricciones_medicas_router
+from .assessments import router as assessments_router
 
 
 
 api_router = APIRouter()
 
 # Include available routers
+api_router.include_router(assessments_router, prefix="/assessments", tags=["assessments"])
 api_router.include_router(auth_router, prefix="/auth", tags=["authentication"])
 api_router.include_router(users_router, prefix="/users", tags=["users"])
 api_router.include_router(workers_router, prefix="/workers", tags=["workers"])
@@ -79,3 +83,5 @@ api_router.include_router(committee_permissions_router, prefix="/committee-permi
 api_router.include_router(candidate_voting_router, prefix="/candidate-voting", tags=["candidate-voting"])
 api_router.include_router(areas_router, prefix="/areas", tags=["areas"])
 api_router.include_router(contractors_router, prefix="/contractors", tags=["contractors"])
+api_router.include_router(profesiogramas_router, prefix="/profesiogramas", tags=["profesiogramas"])
+api_router.include_router(restricciones_medicas_router, prefix="/restricciones-medicas", tags=["restricciones-medicas"])

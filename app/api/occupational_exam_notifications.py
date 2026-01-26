@@ -323,7 +323,7 @@ async def generate_occupational_exam_report(
                 "next_exam_date": worker_data["next_exam_date"].isoformat(),
                 "days_until_exam": worker_data["days_until_exam"],
                 "status": worker_data["status"],
-                "exam_type": worker_data["exam_type"].value if worker_data.get("exam_type") else None
+                "exam_type": worker_data.get("exam_type_name")
             })
         
         # Formatear datos de exámenes vencidos
@@ -345,7 +345,7 @@ async def generate_occupational_exam_report(
                     "next_exam_date": worker_data["next_exam_date"].isoformat(),
                     "days_overdue": abs(worker_data["days_until_exam"]),
                     "status": worker_data["status"],
-                    "exam_type": worker_data["exam_type"].value if worker_data.get("exam_type") else None
+                    "exam_type": worker_data.get("exam_type_name")
                 })
         
         # Construir respuesta

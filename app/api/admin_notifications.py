@@ -103,7 +103,13 @@ async def get_exam_notifications(
                 latest_exams_subq.c.last_exam_date,
                 User.email
             )
-            .join(Cargo, Worker.position == Cargo.nombre_cargo)
+            .join(
+                Cargo,
+                or_(
+                    Worker.cargo_id == Cargo.id,
+                    and_(Worker.cargo_id.is_(None), Worker.position == Cargo.nombre_cargo),
+                ),
+            )
             .outerjoin(latest_exams_subq, Worker.id == latest_exams_subq.c.worker_id)
             .outerjoin(User, Worker.document_number == User.document_number)
             .filter(Worker.is_active == True)
@@ -302,7 +308,11 @@ async def send_notifications(
                         continue
             
             # Obtener datos del trabajador para el envío
-            cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
+            cargo = None
+            if getattr(worker, "cargo_id", None):
+                cargo = db.query(Cargo).filter(Cargo.id == worker.cargo_id).first()
+            if not cargo:
+                cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
             if not cargo:
                 stats["invalid_workers"] += 1
                 stats["details"].append({

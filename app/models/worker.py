@@ -122,6 +122,7 @@ class Worker(Base):
     profession = Column(String(100))
     risk_level = Column(SQLEnum(RiskLevel), nullable=False)
     position = Column(String(100), nullable=False)
+    cargo_id = Column(Integer, ForeignKey("cargos.id"), nullable=True, index=True)
     occupation = Column(String(100))
     salary_ibc = Column(Numeric(12, 2))  # Salario/IBC
     fecha_de_ingreso = Column(Date, nullable=True)  # Fecha de ingreso del trabajador
@@ -149,6 +150,7 @@ class Worker(Base):
     
     # Estado
     is_active = Column(Boolean, default=True, nullable=False)
+    tiene_restricciones_activas = Column(Boolean, default=False, nullable=False, index=True)
     
     # Rol asignado por el admin
     assigned_role = Column(SQLEnum(UserRole), default=UserRole.EMPLOYEE, nullable=False)
@@ -166,6 +168,7 @@ class Worker(Base):
     # Relationships
     contracts = relationship("WorkerContract", back_populates="worker", cascade="all, delete-orphan")
     occupational_exams = relationship("OccupationalExam", back_populates="worker", cascade="all, delete-orphan")
+    restricciones_medicas = relationship("RestriccionMedica", back_populates="trabajador", cascade="all, delete-orphan")
     reinduction_records = relationship("ReinductionRecord", back_populates="worker", cascade="all, delete-orphan")
     seguimientos = relationship("Seguimiento", back_populates="worker", cascade="all, delete-orphan")
     absenteeism_records = relationship("Absenteeism", back_populates="worker", cascade="all, delete-orphan")
@@ -174,6 +177,7 @@ class Worker(Base):
     vacation_balance = relationship("VacationBalance", back_populates="worker", uselist=False, cascade="all, delete-orphan")
     user = relationship("User", foreign_keys=[user_id])
     area_obj = relationship("Area", back_populates="workers")
+    cargo_obj = relationship("Cargo")
     
     @hybrid_property
     def age(self) -> int:

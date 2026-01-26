@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Autoevaluación Trabajo en Casa - SST</title>
+    <link rel="stylesheet" href="css/homework_assessment.css">
+</head>
+<body>
+    <!-- Encabezado con Logo -->
+    <div class="document-header">
+        <div class="logo-container">
+            {% if logo_base64 %}
+            <img src="data:image/png;base64,{{ logo_base64 }}" alt="Logo Empresa" class="company-logo">
+            {% endif %}
+        </div>
+        <div class="title-container">
+            <h1 class="main-title">Autoevaluación Condiciones Trabajo en Casa</h1>
+            <h2 class="subtitle">Sistema de Gestión de Seguridad y Salud en el Trabajo (SG-SST)</h2>
+            <h3 class="company-name">ROWL UNITED COLOMBIA S.A.S.</h3>
+        </div>
+        <div class="document-code">
+            <p>Código: SST-FRM-021</p>
+            <p>Versión: 1.0</p>
+            <p>Fecha: {{ evaluation_date }}</p>
+        </div>
+    </div>
+
+    <!-- Instrucciones -->
+    <div class="section-title">Instrucciones</div>
+    <div class="instructions-box">
+        <p>Lea cuidadosamente cada ítem y marque con una <strong>X</strong> si cumple (Sí) o no cumple (No). En la columna de observaciones, describa el estado actual, deficiencias identificadas y acciones correctivas que implementará. Esta evaluación es confidencial y forma parte del registro SST del trabajador.</p>
+    </div>
+
+    <!-- Información del Trabajador -->
+    <div class="section-title">Información del Trabajador</div>
+    <table class="info-table">
+        <tr>
+            <td class="label-cell">Nombre Completo:</td>
+            <td class="data-cell">{{ worker.full_name }}</td>
+            <td class="label-cell">Cédula:</td>
+            <td class="data-cell">{{ worker.document_number }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Cargo/Área:</td>
+            <td class="data-cell">{{ worker.position }}</td>
+            <td class="label-cell">Fecha Evaluación:</td>
+            <td class="data-cell">{{ evaluation_date }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Dirección Trabajo en Casa:</td>
+            <td colspan="3" class="data-cell">{{ assessment.home_address or worker.address or 'No especificada' }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Teléfono:</td>
+            <td class="data-cell">{{ worker.phone or 'No especificado' }}</td>
+            <td class="label-cell">Email:</td>
+            <td class="data-cell">{{ worker.email or 'No especificado' }}</td>
+        </tr>
+    </table>
+
+    <!-- Evaluación de Condiciones -->
+    <div class="section-title">Evaluación de Condiciones Ergonómicas y de Seguridad</div>
+    <table class="checklist-table">
+        <thead>
+            <tr>
+                <th class="aspect-col">Aspecto Evaluado</th>
+                <th class="check-col">Sí</th>
+                <th class="check-col">No</th>
+                <th class="obs-col">Observaciones / Acciones Correctivas</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr class="{{ 'compliant' if assessment.lighting_check else 'non-compliant' }}">
+                <td class="aspect-cell"><span class="item-number">1.</span> <strong>Iluminación:</strong> Adecuada (natural/artificial, sin reflejos en pantalla)</td>
+                <td class="check-cell">{{ 'X' if assessment.lighting_check else '' }}</td>
+                <td class="check-cell">{{ 'X' if not assessment.lighting_check else '' }}</td>
+                <td class="obs-cell">{{ assessment.lighting_obs or '-' }}</td>
+            </tr>
+            <tr class="{{ 'compliant' if assessment.ventilation_check else 'non-compliant' }}">
+                <td class="aspect-cell"><span class="item-number">2.</span> <strong>Ventilación:</strong> Aire fresco circulante, temperatura confortable</td>
+                <td class="check-cell">{{ 'X' if assessment.ventilation_check else '' }}</td>
+                <td class="check-cell">{{ 'X' if not assessment.ventilation_check else '' }}</td>
+                <td class="obs-cell">{{ assessment.ventilation_obs or '-' }}</td>
+            </tr>
+            <tr class="{{ 'compliant' if assessment.desk_check else 'non-compliant' }}">
+                <td class="aspect-cell"><span class="item-number">3.</span> <strong>Mesa de Trabajo:</strong> Altura adecuada (70-80 cm), superficie estable</td>
+                <td class="check-cell">{{ 'X' if assessment.desk_check else '' }}</td>
+                <td class="check-cell">{{ 'X' if not assessment.desk_check else '' }}</td>
+                <td class="obs-cell">{{ assessment.desk_obs or '-' }}</td>
+            </tr>
+            <tr class="{{ 'compliant' if assessment.chair_check else 'non-compliant' }}">
+                <td class="aspect-cell"><span class="item-number">4.</span> <strong>Silla:</strong> Ergonómica con respaldo lumbar ajustable</td>
+                <td class="check-cell">{{ 'X' if assessment.chair_check else '' }}</td>
+                <td class="check-cell">{{ 'X' if not assessment.chair_check else '' }}</td>
+                <td class="obs-cell">{{ assessment.chair_obs or '-' }}</td>
+            </tr>
+            <tr class="{{ 'compliant' if assessment.screen_check else 'non-compliant' }}">
+                <td class="aspect-cell"><span class="item-number">5.</span> <strong>Posición Pantalla:</strong> A nivel de ojos, distancia 50-60 cm</td>
+                <td class="check-cell">{{ 'X' if assessment.screen_check else '' }}</td>
+                <td class="check-cell">{{ 'X' if not assessment.screen_check else '' }}</td>
+                <td class="obs-cell">{{ assessment.screen_obs or '-' }}</td>
+            </tr>
+            <tr class="{{ 'compliant' if assessment.mouse_keyboard_check else 'non-compliant' }}">
+                <td class="aspect-cell"><span class="item-number">6.</span> <strong>Teclado y Ratón:</strong> Cercanos, muñecas rectas, sin torsiones</td>
+                <td class="check-cell">{{ 'X' if assessment.mouse_keyboard_check else '' }}</td>
+                <td class="check-cell">{{ 'X' if not assessment.mouse_keyboard_check else '' }}</td>
+                <td class="obs-cell">{{ assessment.mouse_keyboard_obs or '-' }}</td>
+            </tr>
+            <tr class="{{ 'compliant' if assessment.space_check else 'non-compliant' }}">
+                <td class="aspect-cell"><span class="item-number">7.</span> <strong>Espacio Disponible:</strong> Libre para pies y movimiento</td>
+                <td class="check-cell">{{ 'X' if assessment.space_check else '' }}</td>
+                <td class="check-cell">{{ 'X' if not assessment.space_check else '' }}</td>
+                <td class="obs-cell">{{ assessment.space_obs or '-' }}</td>
+            </tr>
+            <tr class="{{ 'compliant' if assessment.floor_check else 'non-compliant' }}">
+                <td class="aspect-cell"><span class="item-number">8.</span> <strong>Piso:</strong> Antideslizante, sin obstáculos, cables organizados</td>
+                <td class="check-cell">{{ 'X' if assessment.floor_check else '' }}</td>
+                <td class="check-cell">{{ 'X' if not assessment.floor_check else '' }}</td>
+                <td class="obs-cell">{{ assessment.floor_obs or '-' }}</td>
+            </tr>
+            <tr class="{{ 'compliant' if assessment.noise_check else 'non-compliant' }}">
+                <td class="aspect-cell"><span class="item-number">9.</span> <strong>Ruido Ambiental:</strong> Nivel bajo (< 55 dB), sin distracciones</td>
+                <td class="check-cell">{{ 'X' if assessment.noise_check else '' }}</td>
+                <td class="check-cell">{{ 'X' if not assessment.noise_check else '' }}</td>
+                <td class="obs-cell">{{ assessment.noise_obs or '-' }}</td>
+            </tr>
+            <tr class="{{ 'compliant' if assessment.connectivity_check else 'non-compliant' }}">
+                <td class="aspect-cell"><span class="item-number">10.</span> <strong>Conectividad:</strong> Internet estable y suficiente</td>
+                <td class="check-cell">{{ 'X' if assessment.connectivity_check else '' }}</td>
+                <td class="check-cell">{{ 'X' if not assessment.connectivity_check else '' }}</td>
+                <td class="obs-cell">{{ assessment.connectivity_obs or '-' }}</td>
+            </tr>
+            <tr class="{{ 'compliant' if assessment.equipment_check else 'non-compliant' }}">
+                <td class="aspect-cell"><span class="item-number">11.</span> <strong>Seguridad Equipos:</strong> Asegurados, instalación eléctrica adecuada</td>
+                <td class="check-cell">{{ 'X' if assessment.equipment_check else '' }}</td>
+                <td class="check-cell">{{ 'X' if not assessment.equipment_check else '' }}</td>
+                <td class="obs-cell">{{ assessment.equipment_obs or '-' }}</td>
+            </tr>
+            <tr class="{{ 'compliant' if assessment.confidentiality_check else 'non-compliant' }}">
+                <td class="aspect-cell"><span class="item-number">12.</span> <strong>Confidencialidad:</strong> Espacio privado para trabajo con datos sensibles</td>
+                <td class="check-cell">{{ 'X' if assessment.confidentiality_check else '' }}</td>
+                <td class="check-cell">{{ 'X' if not assessment.confidentiality_check else '' }}</td>
+                <td class="obs-cell">{{ assessment.confidentiality_obs or '-' }}</td>
+            </tr>
+            <tr class="{{ 'compliant' if assessment.active_breaks_check else 'non-compliant' }}">
+                <td class="aspect-cell"><span class="item-number">13.</span> <strong>Pausas Activas:</strong> Compromiso de realizar pausas de 5 min cada hora</td>
+                <td class="check-cell">{{ 'X' if assessment.active_breaks_check else '' }}</td>
+                <td class="check-cell">{{ 'X' if not assessment.active_breaks_check else '' }}</td>
+                <td class="obs-cell">{{ assessment.active_breaks_obs or '-' }}</td>
+            </tr>
+            <tr class="{{ 'compliant' if assessment.psychosocial_check else 'non-compliant' }}">
+                <td class="aspect-cell"><span class="item-number">14.</span> <strong>Riesgos Psicosociales:</strong> Manejo de estrés, aislamiento social, límites trabajo-vida</td>
+                <td class="check-cell">{{ 'X' if assessment.psychosocial_check else '' }}</td>
+                <td class="check-cell">{{ 'X' if not assessment.psychosocial_check else '' }}</td>
+                <td class="obs-cell">{{ assessment.psychosocial_obs or '-' }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Observaciones Generales SST -->
+    {% if assessment.sst_observations %}
+    <div class="section-title">Observaciones y Recomendaciones SST</div>
+    <div class="observations-box">
+        <p>{{ assessment.sst_observations }}</p>
+    </div>
+    {% endif %}
+
+    <!-- Declaración del Trabajador -->
+    <div class="section-title">Declaración del Trabajador</div>
+    <div class="declaration-box">
+        <p class="declaration-text">
+            Declaro que he revisado y evaluado las condiciones de mi puesto de trabajo en casa. Confirmo que las condiciones descritas en este documento corresponden a mi espacio de trabajo remoto y me comprometo a mantener los estándares de SST establecidos por ROWL UNITED COLOMBIA S.A.S.
+        </p>
+        <div class="commitments">
+            <p><strong>Me comprometo a:</strong></p>
+            <ul>
+                <li>Mantener el puesto de trabajo en condiciones seguras y ergonómicas</li>
+                <li>Realizar pausas activas y estiramientos regularmente</li>
+                <li>Reportar de inmediato cualquier cambio de condiciones o incidente laboral</li>
+                <li>Usar correctamente los equipos asignados por la empresa</li>
+                <li>Mantener la confidencialidad de la información de la empresa</li>
+                <li>Seguir las indicaciones y recomendaciones del área de SST</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Firmas -->
+    <div class="signatures-section">
+        <div class="signature-box">
+            <div class="signature-space">
+                {% if assessment.worker_signature %}
+                <img src="{{ assessment.worker_signature }}" alt="Firma Trabajador" class="signature-img">
+                {% endif %}
+            </div>
+            <div class="signature-line"></div>
+            <p class="signature-label"><strong>Firma del Trabajador</strong></p>
+            <p class="signature-detail">CC: {{ worker.document_number }}</p>
+            <p class="signature-detail">Nombre: {{ worker.full_name }}</p>
+        </div>
+
+        <div class="signature-box">
+            <div class="signature-space">
+                {% if assessment.sst_signature %}
+                <img src="{{ assessment.sst_signature }}" alt="Firma SST" class="signature-img">
+                {% endif %}
+            </div>
+            <div class="signature-line"></div>
+            <p class="signature-label"><strong>Firma Responsable SST</strong></p>
+            <p class="signature-detail">Fecha de Revisión: {{ evaluation_date }}</p>
+        </div>
+    </div>
+
+    <!-- Evidencias Fotográficas -->
+    {% if photos %}
+    <div class="page-break"></div>
+    <div class="section-title">Evidencias Fotográficas del Puesto de Trabajo</div>
+    <p style="font-size: 9pt; margin: 10px 0 15px; color: #555;">
+        Las siguientes fotografías documentan las condiciones del espacio de trabajo remoto evaluado.
+    </p>
+
+    <table class="photos-table">
+        {% set photo_items = photos.items()|list %}
+        {% for i in range(0, photo_items|length, 2) %}
+        <tr>
+            {% for j in range(2) %}
+                {% if i + j < photo_items|length %}
+                    {% set key, photo_data = photo_items[i + j] %}
+                    <td class="photo-cell">
+                        <div class="photo-wrapper">
+                            <img src="{{ photo_data }}" alt="{{ key }}" class="photo-img">
+                        </div>
+                        <p class="photo-caption">
+                            <strong>{{ key|capitalize|replace('_', ' ') }}</strong>
+                        </p>
+                    </td>
+                {% else %}
+                    <td class="photo-cell-empty"></td>
+                {% endif %}
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </table>
+    {% endif %}
+
+    <!-- Pie de página -->
+    <div class="document-footer">
+        <div class="footer-line"></div>
+        <p class="footer-text">
+            <strong>Marco Normativo:</strong> Ley 2088 de 2021, Decreto 649 de 2022, Resolución 4179 de 2007, Circular 041 de 2020
+        </p>
+        <p class="footer-text">
+            Generado automáticamente por el Sistema de Gestión SST - ROWL UNITED COLOMBIA S.A.S.
+        </p>
+        <p class="footer-text">
+            Fecha de generación: {{ evaluation_date }}
+        </p>
+    </div>
+</body>
+</html>

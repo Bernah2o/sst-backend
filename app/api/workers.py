@@ -20,6 +20,8 @@ from app.services.s3_storage import s3_service
 from app.utils.storage import storage_manager
 from app.config import settings
 from app.models.occupational_exam import OccupationalExam
+from app.models.cargo import Cargo
+from app.models.profesiograma import Profesiograma, ProfesiogramaEstado
 from app.models.seguimiento import Seguimiento, EstadoSeguimiento
 from app.models.reinduction import ReinductionRecord
 from app.schemas.worker import (
@@ -58,6 +60,7 @@ from app.schemas.occupational_exam import (
     OccupationalExamListResponse
 )
 from app.schemas.common import MessageResponse
+from app.schemas.profesiograma import Profesiograma as ProfesiogramaSchema
 from app.models.enrollment import Enrollment
 from app.models.course import Course
 from app.models.survey import Survey, UserSurvey
@@ -65,6 +68,25 @@ from app.models.evaluation import Evaluation, UserEvaluation
 from app.models.reinduction import ReinductionRecord
 
 router = APIRouter()
+
+
+def _resolve_cargo_id_and_position(db: Session, cargo_id: int | None, position: str | None):
+    if cargo_id is not None:
+        cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
+        if not cargo:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cargo_id inválido")
+        return cargo.id, cargo.nombre_cargo
+
+    if position:
+        cargo = db.query(Cargo).filter(Cargo.nombre_cargo == position).first()
+        if cargo:
+            return cargo.id, position
+        return None, position
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Debe enviar cargo_id o position",
+    )
 
 
 # ==================== ESTADÍSTICAS DE TRABAJADORES ====================
@@ -122,6 +144,22 @@ async def get_worker_stats(
         "percent_by_modality": percent_by_modality,
     }
 
+
+@router.get("/profile", response_model=WorkerSchema)
+def get_worker_profile(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Obtener el perfil del trabajador asociado al usuario actual.
+    Permite a los empleados ver sus propios datos.
+    """
+    worker = db.query(Worker).filter(Worker.user_id == current_user.id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Perfil de trabajador no encontrado para este usuario")
+    return worker
+
+
 @router.get("/", response_model=List[WorkerList])
 @router.get("", response_model=List[WorkerList])
 async def get_workers(
@@ -155,6 +193,102 @@ async def get_workers(
     return workers
 
 
+@router.get("/export/excel")
+async def export_workers_excel(
+    search: str = Query(None, description="Buscar por nombre, documento o email"),
+    is_active: bool = Query(None, description="Filtrar por estado activo"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+) -> StreamingResponse:
+    """
+    Exportar lista de trabajadores a Excel con filtros opcionales
+    """
+    query = db.query(Worker)
+    
+    # Filtro de búsqueda
+    if search:
+        search_filter = or_(
+            Worker.first_name.ilike(f"%{search}%"),
+            Worker.last_name.ilike(f"%{search}%"),
+            Worker.document_number.ilike(f"%{search}%"),
+            Worker.email.ilike(f"%{search}%")
+        )
+        query = query.filter(search_filter)
+    
+    # Filtro por estado activo
+    if is_active is not None:
+        query = query.filter(Worker.is_active == is_active)
+    
+    workers = query.order_by(Worker.last_name, Worker.first_name).all()
+    
+    # Crear libro de Excel
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Trabajadores"
+    
+    # Estilos
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="333333", end_color="333333", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center")
+    
+    # Encabezados
+    headers = [
+        "Tipo Documento", "Número Documento", "Nombres", "Apellidos", "Email", "Teléfono",
+        "Género", "Fecha Nacimiento", "Tipo Contrato", "Modalidad", "Cargo", "Ocupación",
+        "Departamento", "Ciudad", "Dirección", "EPS", "AFP", "ARL", "Tipo Sangre",
+        "Fecha Ingreso", "Fecha Retiro", "Estado", "Registrado"
+    ]
+    
+    for col_idx, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        
+    # Datos
+    for row_idx, worker in enumerate(workers, 2):
+        ws.cell(row=row_idx, column=1, value=worker.document_type.value if worker.document_type else "")
+        ws.cell(row=row_idx, column=2, value=worker.document_number)
+        ws.cell(row=row_idx, column=3, value=worker.first_name)
+        ws.cell(row=row_idx, column=4, value=worker.last_name)
+        ws.cell(row=row_idx, column=5, value=worker.email)
+        ws.cell(row=row_idx, column=6, value=worker.phone)
+        ws.cell(row=row_idx, column=7, value=worker.gender.value if worker.gender else "")
+        ws.cell(row=row_idx, column=8, value=worker.birth_date)
+        ws.cell(row=row_idx, column=9, value=worker.contract_type.value if worker.contract_type else "")
+        ws.cell(row=row_idx, column=10, value=worker.work_modality.value if worker.work_modality else "")
+        ws.cell(row=row_idx, column=11, value=worker.position)
+        ws.cell(row=row_idx, column=12, value=worker.occupation)
+        ws.cell(row=row_idx, column=13, value=worker.department)
+        ws.cell(row=row_idx, column=14, value=worker.city)
+        ws.cell(row=row_idx, column=15, value=worker.direccion)
+        ws.cell(row=row_idx, column=16, value=worker.eps)
+        ws.cell(row=row_idx, column=17, value=worker.afp)
+        ws.cell(row=row_idx, column=18, value=worker.arl)
+        ws.cell(row=row_idx, column=19, value=worker.blood_type.value if worker.blood_type else "")
+        ws.cell(row=row_idx, column=20, value=worker.fecha_de_ingreso)
+        ws.cell(row=row_idx, column=21, value=worker.fecha_de_retiro)
+        ws.cell(row=row_idx, column=22, value="Activo" if worker.is_active else "Inactivo")
+        ws.cell(row=row_idx, column=23, value="Sí" if worker.is_registered else "No")
+        
+    # Ajustar ancho de columnas
+    for column_cells in ws.columns:
+        length = max(len(str(cell.value) or "") for cell in column_cells)
+        ws.column_dimensions[column_cells[0].column_letter].width = min(length + 2, 50)
+        
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    
+    filename = f"trabajadores_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
 @router.post("/", response_model=WorkerSchema)
 @router.post("", response_model=WorkerSchema)
 async def create_worker(
@@ -186,7 +320,11 @@ async def create_worker(
             )
     
     # Crear el trabajador
-    worker = Worker(**worker_data.dict())
+    payload = worker_data.dict()
+    cargo_id, position = _resolve_cargo_id_and_position(db, payload.get("cargo_id"), payload.get("position"))
+    payload["cargo_id"] = cargo_id
+    payload["position"] = position
+    worker = Worker(**payload)
     db.add(worker)
     db.commit()
     db.refresh(worker)
@@ -262,6 +400,55 @@ async def get_worker(
             detail="Trabajador no encontrado"
         )
     return worker
+
+
+@router.get("/{worker_id}/profesiograma", response_model=ProfesiogramaSchema)
+def get_worker_profesiograma(
+    worker_id: int,
+    version: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin),
+) -> Any:
+    worker = db.query(Worker).filter(Worker.id == worker_id).first()
+    if not worker:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Trabajador no encontrado",
+        )
+
+    if not worker.position:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El trabajador no tiene cargo/position asignado",
+        )
+
+    cargo = None
+    if getattr(worker, "cargo_id", None):
+        cargo = db.query(Cargo).filter(Cargo.id == worker.cargo_id).first()
+    if not cargo:
+        cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
+    if not cargo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No existe un cargo asociado al position del trabajador",
+        )
+
+    query = db.query(Profesiograma).filter(
+        Profesiograma.cargo_id == cargo.id,
+        Profesiograma.estado == ProfesiogramaEstado.ACTIVO,
+    )
+    if version:
+        query = query.filter(Profesiograma.version == version)
+    profesiograma = query.order_by(Profesiograma.fecha_creacion.desc()).first()
+    if not profesiograma:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No hay profesiograma activo para este cargo",
+        )
+
+    from app.api.profesiogramas import _serialize_profesiograma
+
+    return _serialize_profesiograma(profesiograma)
 
 
 @router.get("/{worker_id}/detailed-info")
@@ -385,6 +572,15 @@ async def update_worker(
     
     # Verificar duplicados si se actualiza documento o email
     update_data = worker_data.dict(exclude_unset=True)
+
+    if "cargo_id" in update_data or "position" in update_data:
+        resolved_cargo_id, resolved_position = _resolve_cargo_id_and_position(
+            db,
+            update_data.get("cargo_id", worker.cargo_id),
+            update_data.get("position", worker.position),
+        )
+        update_data["cargo_id"] = resolved_cargo_id
+        update_data["position"] = resolved_position
     
     if "document_number" in update_data or "email" in update_data:
         existing_worker = db.query(Worker).filter(

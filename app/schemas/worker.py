@@ -102,6 +102,7 @@ class WorkerBase(BaseModel):
     profession: Optional[str] = None
     risk_level: RiskLevel
     position: str
+    cargo_id: Optional[int] = None
     occupation: Optional[str] = None
     salary_ibc: Optional[float] = None
     fecha_de_ingreso: Optional[date] = None
@@ -153,6 +154,7 @@ class WorkerUpdate(BaseModel):
     profession: Optional[str] = None
     risk_level: Optional[RiskLevel] = None
     position: Optional[str] = None
+    cargo_id: Optional[int] = None
     occupation: Optional[str] = None
     salary_ibc: Optional[float] = None
     fecha_de_ingreso: Optional[date] = None
@@ -207,6 +209,7 @@ class WorkerList(BaseModel):
     document_number: str
     email: str
     position: str
+    cargo_id: Optional[int] = None
     department: Optional[str] = None
     direccion: Optional[str] = None
     age: int

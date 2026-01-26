@@ -31,3 +31,18 @@ class Programas(Base):
     
     def __repr__(self):
         return f"<Programas(nombre_programa='{self.nombre_programa}', activo={self.activo})>"
+
+
+class Ocupacion(Base):
+    """Model for occupations catalog"""
+    __tablename__ = "ocupaciones"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(100), unique=True, nullable=False, index=True)
+    descripcion = Column(String(255), nullable=True)
+    activo = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<Ocupacion(nombre='{self.nombre}', activo={self.activo})>"

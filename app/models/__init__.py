@@ -19,10 +19,28 @@ from .contractor import Contractor, ContractorContract, ContractorDocument
 from .worker_novedad import WorkerNovedad, NovedadType, NovedadStatus
 from .worker_vacation import VacationBalance
 from .cargo import Cargo
+from .profesiograma import (
+    Profesiograma,
+    ProfesiogramaEstado,
+    NivelRiesgoCargo,
+    NivelExposicion,
+    TipoEvaluacionExamen,
+    ProfesiogramaExamen,
+    ProfesiogramaFactor,
+    ProfesiogramaControlESIAE,
+    ProfesiogramaIntervencion,
+)
+from .factor_riesgo import FactorRiesgo, CategoriaFactorRiesgo
+from .tipo_examen import TipoExamen
+from .criterio_exclusion import CriterioExclusion
+from .inmunizacion import Inmunizacion
+from .profesiograma_inmunizacion import ProfesiogramaInmunizacion
+from .programa_sve import ProgramaSVE
 from .seguridad_social import SeguridadSocial
 from .area import Area
 from .absenteeism import Absenteeism, EventMonth, EventType
 from .occupational_exam import OccupationalExam, ExamType, MedicalAptitude
+from .restriccion_medica import RestriccionMedica, TipoRestriccion, EstadoImplementacion
 from .supplier import Supplier, Doctor, SupplierType, SupplierStatus
 from .seguimiento import Seguimiento, EstadoSeguimiento, ValoracionRiesgo
 from .seguimiento_actividad import SeguimientoActividad
@@ -38,6 +56,8 @@ from .audit import AuditLog
 from .enrollment import Enrollment, EnrollmentStatus
 from .user_progress import UserMaterialProgress, UserModuleProgress, MaterialProgressStatus
 from .notification_acknowledgment import NotificationAcknowledgment
+from .admin_config import AdminConfig, Programas, Ocupacion
+from .assessment import HomeworkAssessment
 
 __all__ = [
     "User",
@@ -93,6 +113,22 @@ __all__ = [
     "ReinductionRecord",
     "ReinductionStatus",
     "Cargo",
+    "Profesiograma",
+    "ProfesiogramaEstado",
+    "NivelRiesgoCargo",
+    "NivelExposicion",
+    "TipoEvaluacionExamen",
+    "ProfesiogramaExamen",
+    "ProfesiogramaFactor",
+    "ProfesiogramaControlESIAE",
+    "ProfesiogramaIntervencion",
+    "FactorRiesgo",
+    "CategoriaFactorRiesgo",
+    "TipoExamen",
+    "CriterioExclusion",
+    "Inmunizacion",
+    "ProfesiogramaInmunizacion",
+    "ProgramaSVE",
     "SeguridadSocial",
     "Area",
     "Absenteeism",
@@ -131,4 +167,8 @@ __all__ = [
     "CandidateVote",
     "CandidateVotingResult",
     "CandidateVotingStatus",
+    "AdminConfig",
+    "Programas",
+    "Ocupacion",
+    "HomeworkAssessment",
 ]

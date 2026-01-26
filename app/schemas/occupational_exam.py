@@ -1,14 +1,23 @@
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
-from app.models.occupational_exam import ExamType, MedicalAptitude
+from app.models.occupational_exam import MedicalAptitude
+from app.schemas.tipo_examen import TipoExamen as TipoExamenSchema
 
 
 class OccupationalExamBase(BaseModel):
-    exam_type: ExamType = Field(..., description="Tipo de examen ocupacional")
+    tipo_examen_id: Optional[int] = Field(None, description="ID del tipo de examen ocupacional")
     exam_date: date = Field(..., description="Fecha del examen")
+    departamento: Optional[str] = Field(None, description="Departamento (Art. 15)")
+    ciudad: Optional[str] = Field(None, description="Ciudad (Art. 15)")
     programa: Optional[str] = Field(None, description="Programa asociado al examen")
+    afiliacion_eps_momento: Optional[str] = Field(None, description="EPS al momento del examen (Art. 15)")
+    afiliacion_afp_momento: Optional[str] = Field(None, description="AFP al momento del examen (Art. 15)")
+    afiliacion_arl_momento: Optional[str] = Field(None, description="ARL al momento del examen (Art. 15)")
+    duracion_cargo_actual_meses: Optional[int] = Field(None, description="Duración cargo actual en meses (Art. 15)")
+    factores_riesgo_evaluados: Optional[List[Dict[str, Any]]] = Field(None, description="Factores de riesgo evaluados (JSON) (Art. 15)")
+    cargo_id_momento_examen: Optional[int] = Field(None, description="Cargo (ID) al momento del examen (Art. 15)")
     occupational_conclusions: Optional[str] = Field(None, description="Conclusiones ocupacionales")
     preventive_occupational_behaviors: Optional[str] = Field(None, description="Conductas ocupacionales a prevenir")
     general_recommendations: Optional[str] = Field(None, description="Recomendaciones generales")
@@ -27,9 +36,17 @@ class OccupationalExamCreate(OccupationalExamBase):
 
 
 class OccupationalExamUpdate(BaseModel):
-    exam_type: Optional[ExamType] = Field(None, description="Tipo de examen ocupacional")
+    tipo_examen_id: Optional[int] = Field(None, description="ID del tipo de examen ocupacional")
     exam_date: Optional[date] = Field(None, description="Fecha del examen")
+    departamento: Optional[str] = Field(None, description="Departamento (Art. 15)")
+    ciudad: Optional[str] = Field(None, description="Ciudad (Art. 15)")
     programa: Optional[str] = Field(None, description="Programa asociado al examen")
+    afiliacion_eps_momento: Optional[str] = Field(None, description="EPS al momento del examen (Art. 15)")
+    afiliacion_afp_momento: Optional[str] = Field(None, description="AFP al momento del examen (Art. 15)")
+    afiliacion_arl_momento: Optional[str] = Field(None, description="ARL al momento del examen (Art. 15)")
+    duracion_cargo_actual_meses: Optional[int] = Field(None, description="Duración cargo actual en meses (Art. 15)")
+    factores_riesgo_evaluados: Optional[List[Dict[str, Any]]] = Field(None, description="Factores de riesgo evaluados (JSON) (Art. 15)")
+    cargo_id_momento_examen: Optional[int] = Field(None, description="Cargo (ID) al momento del examen (Art. 15)")
     occupational_conclusions: Optional[str] = Field(None, description="Conclusiones ocupacionales")
     preventive_occupational_behaviors: Optional[str] = Field(None, description="Conductas ocupacionales a prevenir")
     general_recommendations: Optional[str] = Field(None, description="Recomendaciones generales")
@@ -44,6 +61,7 @@ class OccupationalExamUpdate(BaseModel):
 
 
 class OccupationalExamResponse(OccupationalExamBase):
+    tipo_examen: Optional[TipoExamenSchema] = None
     id: int
     worker_id: int
     worker_name: Optional[str] = Field(None, description="Nombre completo del trabajador")
@@ -66,7 +84,8 @@ class OccupationalExamResponse(OccupationalExamBase):
 
 class OccupationalExamListResponse(BaseModel):
     id: int
-    exam_type: ExamType
+    tipo_examen_id: Optional[int] = None
+    tipo_examen: Optional[TipoExamenSchema] = None
     exam_date: date
     medical_aptitude_concept: MedicalAptitude
     examining_doctor: Optional[str]
