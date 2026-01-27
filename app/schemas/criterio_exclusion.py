@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class CriterioExclusionBase(BaseModel):
     nombre: str = Field(..., max_length=200)
     descripcion: Optional[str] = None
+    activo: bool = True
 
 
 class CriterioExclusionCreate(CriterioExclusionBase):
@@ -15,6 +16,7 @@ class CriterioExclusionCreate(CriterioExclusionBase):
 class CriterioExclusionUpdate(BaseModel):
     nombre: Optional[str] = Field(None, max_length=200)
     descripcion: Optional[str] = None
+    activo: Optional[bool] = None
 
 
 class CriterioExclusion(CriterioExclusionBase):

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text
+from sqlalchemy import Column, Integer, String, Text, Boolean
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -10,6 +10,7 @@ class CriterioExclusion(Base):
     id = Column(Integer, primary_key=True, index=True)
     nombre = Column(String(200), unique=True, index=True, nullable=False)
     descripcion = Column(Text)
+    activo = Column(Boolean, default=True, nullable=False)
 
     profesiogramas = relationship(
         "Profesiograma",
