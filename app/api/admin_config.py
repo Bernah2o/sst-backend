@@ -36,6 +36,9 @@ import httpx
 from app.config import settings
 import logging
 from datetime import datetime
+import pandas as pd
+import io
+from fastapi.responses import StreamingResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -381,6 +384,85 @@ def delete_seguridad_social(
 
 
 # Endpoints específicos para cargos bajo /admin/config/cargos
+# IMPORTANT: Export endpoint must come BEFORE the generic path-capturing endpoint
+@router.get("/cargos/export/excel")
+def export_cargos_excel(
+    activo: Optional[bool] = Query(None, description="Filtrar por estado activo"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """Exportar lista de cargos a archivo Excel"""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from io import BytesIO
+    
+    query = db.query(Cargo)
+    
+    if activo is not None:
+        query = query.filter(Cargo.activo == activo)
+    
+    cargos = query.order_by(Cargo.nombre_cargo).all()
+    
+    # Crear el archivo Excel
+    workbook = openpyxl.Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Cargos"
+    
+    # Definir estilos
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center")
+    
+    # Encabezados
+    headers = [
+        "ID", "Nombre del Cargo", "Periodicidad EMO", "Estado", 
+        "Fecha de Creación", "Última Actualización"
+    ]
+    
+    # Escribir encabezados
+    for col, header in enumerate(headers, 1):
+        cell = worksheet.cell(row=1, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+    
+    # Escribir datos de cargos
+    for row, cargo in enumerate(cargos, 2):
+        worksheet.cell(row=row, column=1, value=cargo.id)
+        worksheet.cell(row=row, column=2, value=cargo.nombre_cargo)
+        worksheet.cell(row=row, column=3, value=cargo.periodicidad_emo or "No especificada")
+        worksheet.cell(row=row, column=4, value="Activo" if cargo.activo else "Inactivo")
+        worksheet.cell(row=row, column=5, value=cargo.created_at.strftime("%Y-%m-%d %H:%M:%S") if cargo.created_at else "")
+        worksheet.cell(row=row, column=6, value=cargo.updated_at.strftime("%Y-%m-%d %H:%M:%S") if cargo.updated_at else "")
+    
+    # Ajustar ancho de columnas
+    for column in worksheet.columns:
+        max_length = 0
+        column_letter = column[0].column_letter
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = min(max_length + 2, 50)
+        worksheet.column_dimensions[column_letter].width = adjusted_width
+    
+    # Guardar en memoria
+    excel_buffer = BytesIO()
+    workbook.save(excel_buffer)
+    excel_buffer.seek(0)
+    
+    # Generar nombre de archivo con timestamp
+    filename = f"cargos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    
+    return StreamingResponse(
+        excel_buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
 @router.get("/cargos{trailing_slash:path}", response_model=List[CargoSchema])
 def get_cargos(
     trailing_slash: str = "",
@@ -535,6 +617,8 @@ def delete_cargo(
     db.commit()
     
     return None
+
+
 
 
 @router.post("/seed", status_code=status.HTTP_201_CREATED)
