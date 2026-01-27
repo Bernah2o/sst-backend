@@ -641,6 +641,41 @@ class ContaboStorageService:
             logger.error(f"Error al listar archivos en Contabo: {e}")
             return []
 
+    def get_presigned_url(self, file_key: str, expiration: int = 3600) -> Optional[str]:
+        """
+        Genera una URL firmada para acceso temporal al archivo.
+
+        Args:
+            file_key: Clave del archivo en el bucket
+            expiration: Tiempo de expiración en segundos (default: 1 hora)
+
+        Returns:
+            URL firmada o None si hay error
+        """
+        try:
+            # Verificar si el archivo existe
+            try:
+                self.s3_client.head_object(Bucket=self.bucket_name, Key=file_key)
+            except Exception as head_error:
+                logger.error(f"Archivo no encontrado en Contabo: {file_key}, Error: {head_error}")
+                return None
+
+            # Generar URL firmada
+            url = self.s3_client.generate_presigned_url(
+                'get_object',
+                Params={
+                    'Bucket': self.bucket_name,
+                    'Key': file_key,
+                    'ResponseContentDisposition': 'inline'
+                },
+                ExpiresIn=expiration
+            )
+            logger.info(f"URL firmada generada para Contabo: {file_key}")
+            return url
+        except Exception as e:
+            logger.error(f"Error al generar URL firmada en Contabo para {file_key}: {e}")
+            return None
+
 
 # Instancia global del servicio
 s3_service = S3StorageService()

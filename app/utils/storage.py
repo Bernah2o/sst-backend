@@ -259,14 +259,41 @@ class StorageManager:
                     local_dir = Path("static")
                 else:
                     local_dir = Path(settings.upload_dir)
-                
+
                 if local_dir.exists():
                     return [f.name for f in local_dir.iterdir() if f.is_file()]
                 return []
-                
+
         except Exception as e:
             logger.error(f"Error al listar archivos: {str(e)}")
             return []
+
+    def get_presigned_url(self, file_path: str, expiration: int = 3600, storage_type: str = None) -> Optional[str]:
+        """
+        Obtiene una URL firmada para acceso temporal al archivo.
+
+        Args:
+            file_path: Ruta o URL del archivo
+            expiration: Tiempo de expiración en segundos (default: 1 hora)
+            storage_type: Tipo de almacenamiento (opcional)
+
+        Returns:
+            URL firmada o la ruta local si es almacenamiento local
+        """
+        try:
+            resolved_type, resolved_path = self._resolve_storage_target(file_path, storage_type)
+            if resolved_type == "contabo":
+                if not contabo_service:
+                    logger.error("Contabo service no está disponible")
+                    return None
+                return contabo_service.get_presigned_url(resolved_path, expiration)
+            else:
+                # Para archivos locales, devolver la ruta relativa
+                return resolved_path
+
+        except Exception as e:
+            logger.error(f"Error al obtener URL firmada: {str(e)}")
+            return None
 
 # Instancia global del gestor de almacenamiento
 storage_manager = StorageManager()

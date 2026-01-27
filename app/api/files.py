@@ -289,14 +289,18 @@ async def upload_course_material(
         db.add(course_material)
         db.commit()
         db.refresh(course_material)
-        
+
+        # Get presigned URL for the uploaded file
+        presigned_url = storage_manager.get_presigned_url(course_material.file_url, expiration=3600)
+        file_url = presigned_url if presigned_url else course_material.file_url
+
         # Create response manually to avoid serialization issues with SQLAlchemy relationships
         return CourseMaterialResponse(
             id=course_material.id,
             title=course_material.title,
             description=course_material.description,
             material_type=course_material.material_type,
-            file_url=course_material.file_url,
+            file_url=file_url,
             order_index=course_material.order_index,
             is_downloadable=course_material.is_downloadable,
             is_required=course_material.is_required,
@@ -437,8 +441,13 @@ async def view_course_material(
         )
     
     # For LINK type materials, return the URL as-is (external links like YouTube)
-    # For other types (PDF, VIDEO), use the stored URL directly
-    file_url = material.file_url
+    # For other types (PDF, VIDEO), generate presigned URL for secure access
+    if material.material_type.value == "link":
+        file_url = material.file_url
+    else:
+        # Use presigned URL for Contabo/S3 storage to avoid "Unauthorized" errors
+        presigned_url = storage_manager.get_presigned_url(material.file_url, expiration=3600)
+        file_url = presigned_url if presigned_url else material.file_url
     
     # Agregar un campo para indicar si el usuario puede descargar el material
     # Solo los administradores, capacitadores y creadores del curso pueden descargar

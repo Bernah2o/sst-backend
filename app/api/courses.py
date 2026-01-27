@@ -805,6 +805,13 @@ async def get_module_materials(
                 .first()
             )
 
+            # Get presigned URL for non-link materials
+            if material.material_type.value == "link":
+                file_url = material.file_url
+            else:
+                presigned_url = storage_manager.get_presigned_url(material.file_url, expiration=3600)
+                file_url = presigned_url if presigned_url else material.file_url
+
             # Crear objeto de respuesta manualmente
             material_response = CourseMaterialWithProgressResponse(
                 id=material.id,
@@ -812,7 +819,7 @@ async def get_module_materials(
                 title=material.title,
                 description=material.description,
                 material_type=material.material_type,
-                file_url=material.file_url,
+                file_url=file_url,
                 order_index=material.order_index,
                 is_downloadable=material.is_downloadable,
                 is_required=material.is_required,
@@ -831,13 +838,20 @@ async def get_module_materials(
     # Para administradores, convertir a CourseMaterialResponse
     result = []
     for material in materials:
+        # Get presigned URL for non-link materials
+        if material.material_type.value == "link":
+            file_url = material.file_url
+        else:
+            presigned_url = storage_manager.get_presigned_url(material.file_url, expiration=3600)
+            file_url = presigned_url if presigned_url else material.file_url
+
         material_response = CourseMaterialResponse(
             id=material.id,
             module_id=material.module_id,
             title=material.title,
             description=material.description,
             material_type=material.material_type,
-            file_url=material.file_url,
+            file_url=file_url,
             order_index=material.order_index,
             is_downloadable=material.is_downloadable,
             is_required=material.is_required,
@@ -880,13 +894,20 @@ async def create_course_material(
     db.commit()
     db.refresh(material)
 
+    # Get presigned URL for non-link materials
+    if material.material_type.value == "link":
+        file_url = material.file_url
+    else:
+        presigned_url = storage_manager.get_presigned_url(material.file_url, expiration=3600)
+        file_url = presigned_url if presigned_url else material.file_url
+
     # Create response manually to avoid serialization issues with SQLAlchemy relationships
     return CourseMaterialResponse(
         id=material.id,
         title=material.title,
         description=material.description,
         material_type=material.material_type,
-        file_url=material.file_url,
+        file_url=file_url,
         order_index=material.order_index,
         is_downloadable=material.is_downloadable,
         is_required=material.is_required,
@@ -926,13 +947,20 @@ async def update_course_material(
     db.commit()
     db.refresh(material)
 
+    # Get presigned URL for non-link materials
+    if material.material_type.value == "link":
+        file_url = material.file_url
+    else:
+        presigned_url = storage_manager.get_presigned_url(material.file_url, expiration=3600)
+        file_url = presigned_url if presigned_url else material.file_url
+
     # Create response manually to avoid serialization issues with SQLAlchemy relationships
     return CourseMaterialResponse(
         id=material.id,
         title=material.title,
         description=material.description,
         material_type=material.material_type,
-        file_url=material.file_url,
+        file_url=file_url,
         order_index=material.order_index,
         is_downloadable=material.is_downloadable,
         is_required=material.is_required,
