@@ -1,5 +1,5 @@
 from typing import Any, List, Dict, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, logger, status, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
@@ -11,7 +11,7 @@ import os
 import uuid
 
 from app.database import get_db
-from app.dependencies import get_current_user, get_current_active_user, require_admin, require_supervisor_or_admin
+from app.dependencies import get_current_user, get_current_active_user, require_admin, require_supervisor_or_admin, has_permission
 from app.models.user import User, UserRole
 from app.models.worker import Worker, WorkerContract
 from app.models.worker_document import WorkerDocument, DocumentCategory
@@ -3011,9 +3011,8 @@ async def check_vacation_availability(
     current_user: User = Depends(get_current_user)
 ) -> Any:
     """Verificar disponibilidad de fechas para vacaciones"""
-    from app.models.worker_vacation import WorkerVacation, VacationStatus
+    from app.models.worker_vacation import WorkerVacation, VacationStatus, VacationBalance
     from app.schemas.worker_vacation import VacationAvailability, VacationConflict
-    from app.models.vacation_balance import VacationBalance
     
     # Calcular días solicitados (solo días laborales)
     requested_days = 0

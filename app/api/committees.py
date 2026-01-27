@@ -32,18 +32,22 @@ async def get_committee_types(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     is_active: Optional[bool] = Query(None),
+    search: Optional[str] = Query(None, description="Buscar por nombre del tipo de comité"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Obtener tipos de comités"""
     query = db.query(CommitteeType)
-    
+
     if is_active is not None:
         query = query.filter(CommitteeType.is_active == is_active)
-    
+
+    if search:
+        query = query.filter(CommitteeType.name.ilike(f"%{search}%"))
+
     query = query.order_by(CommitteeType.name)
     committee_types = query.offset(skip).limit(limit).all()
-    
+
     return committee_types
 
 @router.post("/types", response_model=CommitteeTypeSchema, status_code=status.HTTP_201_CREATED)

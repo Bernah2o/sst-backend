@@ -206,9 +206,10 @@ class PermissionChecker:
                 "certificates": ["view", "read", "download"],
                 "attendance": ["view", "read"],
                 "reports": ["view", "read"],
-                "users": ["view", "read"],
+                "users": ["view", "read", "update"],
                 "notifications": ["view", "read"],
-                "suppliers": ["view", "read"]
+                "suppliers": ["view", "read"],
+                "workers": ["view", "read", "create", "update", "delete"]
             },
             UserRole.EMPLOYEE: {
                 "dashboard": ["view"],
@@ -234,3 +235,12 @@ can_manage_users = PermissionChecker("user", "update")
 can_create_courses = PermissionChecker("course", "create")
 can_manage_evaluations = PermissionChecker("evaluation", "create")
 can_view_reports = PermissionChecker("report", "read")
+
+
+def has_permission(user: User, resource_type: str, action: str) -> bool:
+    """
+    Check if user has permission for specific resource and action.
+    This is a standalone function that can be used without dependency injection.
+    """
+    checker = PermissionChecker(resource_type, action)
+    return checker._has_permission(user, resource_type, action)

@@ -5,6 +5,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app.database import engine
 from app.services.reinduction_service import ReinductionService
+from app.utils.scheduler_settings import is_scheduler_enabled
+from app.models.admin_config import SystemSettings
 
 # Crear session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -17,16 +19,23 @@ def run_daily_reinduction_check():
     """Función que ejecuta la verificación diaria de reinducciones"""
     db = SessionLocal()
     try:
+        # Verificar si el scheduler está habilitado
+        if not is_scheduler_enabled(db, SystemSettings.REINDUCTION_SCHEDULER_ENABLED):
+            print("Scheduler de reinducciones deshabilitado por administrador. No se ejecutará.")
+            return {"status": "disabled", "message": "Scheduler deshabilitado por administrador"}
+
         print("Iniciando verificación diaria de reinducciones")
-        
+
         service = ReinductionService(db)
         results = service.run_daily_check()
-        
+
         print(f"Verificación diaria completada: {results}")
-        
+        return results
+
     except Exception as e:
         print(f"Error en verificación diaria de reinducciones: {str(e)}")
         db.rollback()
+        return {"status": "error", "message": str(e)}
     finally:
         db.close()
 

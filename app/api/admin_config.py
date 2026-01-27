@@ -602,11 +602,23 @@ async def seed_initial_data(
 @router.get("/programas{trailing_slash:path}", response_model=List[ProgramasSchema])
 async def get_all_programas(
     trailing_slash: str = "",
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    activo: Optional[bool] = Query(None, description="Filtrar por estado activo"),
+    search: Optional[str] = Query(None, description="Buscar por nombre del programa"),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
-    """Get all programs"""
-    programas = db.query(Programas).order_by(Programas.nombre_programa).all()
+    """Get all programs with optional filters"""
+    query = db.query(Programas)
+
+    if activo is not None:
+        query = query.filter(Programas.activo == activo)
+
+    if search:
+        query = query.filter(Programas.nombre_programa.ilike(f"%{search}%"))
+
+    programas = query.order_by(Programas.nombre_programa).offset(skip).limit(limit).all()
     return programas
 
 
@@ -730,22 +742,14 @@ async def delete_programa(
 
 
 # Ocupaciones endpoints
-@router.get("/ocupaciones{trailing_slash:path}", response_model=List[OcupacionSchema])
-async def get_all_ocupaciones(
-    trailing_slash: str = "",
-    current_user: User = Depends(require_admin),
-    db: Session = Depends(get_db),
-):
-    """Get all occupations"""
-    ocupaciones = db.query(Ocupacion).order_by(Ocupacion.nombre).all()
-    return ocupaciones
-
+# IMPORTANT: Specific routes (/active, /search) must be defined BEFORE generic routes
+# to prevent the generic route from capturing them
 
 @router.get("/ocupaciones/active", response_model=List[OcupacionSchema])
 async def get_active_ocupaciones(
     db: Session = Depends(get_db),
 ):
-    """Get all active occupations (public endpoint)"""
+    """Get all active occupations (public endpoint for supervisors and admins)"""
     ocupaciones = (
         db.query(Ocupacion)
         .filter(Ocupacion.activo == True)
@@ -761,7 +765,7 @@ async def search_ocupaciones(
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
-    """Search occupations for autocomplete (public endpoint)"""
+    """Search occupations for autocomplete (public endpoint for supervisors and admins)"""
     query = db.query(Ocupacion).filter(Ocupacion.activo == True)
     if search:
         query = query.filter(Ocupacion.nombre.ilike(f"%{search}%"))
@@ -774,6 +778,17 @@ async def search_ocupaciones(
         }
         for o in ocupaciones
     ]
+
+
+@router.get("/ocupaciones{trailing_slash:path}", response_model=List[OcupacionSchema])
+async def get_all_ocupaciones(
+    trailing_slash: str = "",
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Get all occupations (admin only)"""
+    ocupaciones = db.query(Ocupacion).order_by(Ocupacion.nombre).all()
+    return ocupaciones
 
 
 @router.get("/ocupaciones/{ocupacion_id}", response_model=OcupacionSchema)
