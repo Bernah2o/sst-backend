@@ -18,6 +18,22 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def is_notification_trigger_enabled(db: Session) -> bool:
+    """Verifica si el disparador de notificaciones está habilitado"""
+    from app.models.admin_config import SystemSettings
+
+    setting = db.query(SystemSettings).filter(
+        SystemSettings.key == SystemSettings.EXAM_NOTIFICATIONS_ENABLED
+    ).first()
+
+    # Si no existe la configuración, asumimos que está habilitado por defecto
+    if not setting:
+        return True
+
+    return setting.is_enabled
+
+
 class OccupationalExamNotificationService:
     """Servicio para notificaciones automáticas de exámenes ocupacionales"""
     
@@ -37,11 +53,11 @@ class OccupationalExamNotificationService:
             # Por defecto anual si no se especifica
             return exam_date + timedelta(days=365)
     
-    def get_workers_with_pending_exams(self, days_ahead: int = 15) -> List[Dict[str, Any]]:
+    def get_workers_with_pending_exams(self, days_ahead: int = 30) -> List[Dict[str, Any]]:
         """Obtiene trabajadores que necesitan exámenes ocupacionales
-        
+
         Args:
-            days_ahead: Días de anticipación para enviar notificaciones (por defecto 15 días)
+            days_ahead: Días de anticipación para enviar notificaciones (por defecto 30 días = 1 mes)
         """
         today = date.today()
         notification_date = today + timedelta(days=days_ahead)
@@ -279,9 +295,23 @@ Sistema de Gestión SST
     def send_daily_notifications(self) -> Dict[str, int]:
         """Envía notificaciones diarias de exámenes ocupacionales"""
         logger.info("Iniciando envío de notificaciones diarias de exámenes ocupacionales")
-        
-        # Obtener trabajadores con exámenes pendientes (15 días de anticipación)
-        workers_with_pending_exams = self.get_workers_with_pending_exams(days_ahead=15)
+
+        # Verificar si el disparador de notificaciones está habilitado
+        if not is_notification_trigger_enabled(self.db):
+            logger.info("Disparador de notificaciones deshabilitado por administrador. No se enviarán notificaciones.")
+            return {
+                "total_workers": 0,
+                "emails_sent": 0,
+                "emails_failed": 0,
+                "sin_examenes": 0,
+                "vencidos": 0,
+                "proximos_a_vencer": 0,
+                "status": "disabled",
+                "message": "Disparador de notificaciones deshabilitado por administrador"
+            }
+
+        # Obtener trabajadores con exámenes pendientes (30 días de anticipación = 1 mes)
+        workers_with_pending_exams = self.get_workers_with_pending_exams(days_ahead=30)
         
         stats = {
             "total_workers": len(workers_with_pending_exams),
@@ -329,8 +359,8 @@ Sistema de Gestión SST
         workers_with_pending_exams = self.get_workers_with_pending_exams(days_ahead=0)
         exams_overdue = sum(1 for worker_data in workers_with_pending_exams if worker_data["status"] == "vencido")
         
-        # Exámenes próximos a vencer (15 días)
-        workers_with_upcoming_exams = self.get_workers_with_pending_exams(days_ahead=15)
+        # Exámenes próximos a vencer (30 días = 1 mes)
+        workers_with_upcoming_exams = self.get_workers_with_pending_exams(days_ahead=30)
         exams_upcoming = sum(1 for worker_data in workers_with_upcoming_exams if worker_data["status"] == "proximo_a_vencer")
         
         return {

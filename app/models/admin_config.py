@@ -46,3 +46,26 @@ class Ocupacion(Base):
 
     def __repr__(self):
         return f"<Ocupacion(nombre='{self.nombre}', activo={self.activo})>"
+
+
+class SystemSettings(Base):
+    """Model for system-wide configuration settings"""
+    __tablename__ = "system_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(100), unique=True, nullable=False, index=True)
+    value = Column(String(500), nullable=True)
+    description = Column(Text, nullable=True)
+    is_enabled = Column(Boolean, default=True, nullable=False)
+    updated_by = Column(Integer, nullable=True)  # User ID who last updated
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<SystemSettings(key='{self.key}', is_enabled={self.is_enabled})>"
+
+    # Claves predefinidas del sistema
+    EXAM_NOTIFICATIONS_ENABLED = "exam_notifications_enabled"
+    REINDUCTION_SCHEDULER_ENABLED = "reinduction_scheduler_enabled"
+    BIRTHDAY_SCHEDULER_ENABLED = "birthday_scheduler_enabled"
+    COURSE_REMINDER_SCHEDULER_ENABLED = "course_reminder_scheduler_enabled"

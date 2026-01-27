@@ -8,6 +8,8 @@ from app.database import engine
 from app.models.worker import Worker
 from app.utils.email import send_email
 from app.config import settings
+from app.utils.scheduler_settings import is_scheduler_enabled
+from app.models.admin_config import SystemSettings
 
 
 # Crear session factory
@@ -21,6 +23,11 @@ def run_daily_birthday_greetings():
     """Envía correos de cumpleaños a los trabajadores que cumplen hoy"""
     db = SessionLocal()
     try:
+        # Verificar si el scheduler está habilitado
+        if not is_scheduler_enabled(db, SystemSettings.BIRTHDAY_SCHEDULER_ENABLED):
+            print("Scheduler de cumpleaños deshabilitado por administrador. No se ejecutará.")
+            return {"status": "disabled", "message": "Scheduler deshabilitado por administrador"}
+
         today = date.today()
         print(f"Iniciando saludo de cumpleaños diario para {today.strftime('%d/%m')}…")
 

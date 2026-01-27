@@ -5,6 +5,8 @@ import asyncio
 
 from app.services.course_notifications import CourseNotificationService
 from app.database import get_db
+from app.utils.scheduler_settings import is_scheduler_enabled
+from app.models.admin_config import SystemSettings
 
 logger = logging.getLogger(__name__)
 
@@ -19,20 +21,27 @@ class CourseReminderScheduler:
         """Tarea diaria para enviar recordatorios de cursos"""
         try:
             logger.info("Iniciando tarea diaria de recordatorios de cursos")
-            
+
             # Use a fresh DB session
             db = next(get_db())
             try:
+                # Verificar si el scheduler está habilitado
+                if not is_scheduler_enabled(db, SystemSettings.COURSE_REMINDER_SCHEDULER_ENABLED):
+                    logger.info("Scheduler de recordatorios de cursos deshabilitado por administrador. No se ejecutará.")
+                    return {"status": "disabled", "message": "Scheduler deshabilitado por administrador"}
+
                 service = CourseNotificationService(db)
                 # Run in executor if it's blocking (email sending is blocking)
                 loop = asyncio.get_event_loop()
                 stats = await loop.run_in_executor(None, service.run_daily_course_reminders)
                 logger.info(f"Tarea diaria de recordatorios completada. Estadísticas: {stats}")
+                return stats
             finally:
                 db.close()
-            
+
         except Exception as e:
             logger.error(f"Error en tarea diaria de recordatorios: {str(e)}")
+            return {"status": "error", "message": str(e)}
     
     def start(self):
         """Iniciar el programador de tareas"""

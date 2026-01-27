@@ -28,8 +28,29 @@ from app.schemas.admin_notifications import (
 )
 from app.services.occupational_exam_notifications import OccupationalExamNotificationService
 from app.schemas.common import MessageResponse, PaginatedResponse
+from app.models.admin_config import SystemSettings
 
 router = APIRouter(prefix="/admin/notifications", tags=["Admin Notifications"])
+
+
+def get_or_create_notification_setting(db: Session) -> SystemSettings:
+    """Obtiene o crea la configuración del disparador de notificaciones"""
+    setting = db.query(SystemSettings).filter(
+        SystemSettings.key == SystemSettings.EXAM_NOTIFICATIONS_ENABLED
+    ).first()
+
+    if not setting:
+        setting = SystemSettings(
+            key=SystemSettings.EXAM_NOTIFICATIONS_ENABLED,
+            value="true",
+            description="Habilitar/deshabilitar el envío automático de notificaciones de exámenes ocupacionales",
+            is_enabled=True
+        )
+        db.add(setting)
+        db.commit()
+        db.refresh(setting)
+
+    return setting
 
 
 def verify_admin_permissions(current_user: User):
@@ -693,3 +714,170 @@ async def bulk_notification_action(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Acción '{action.action}' no soportada"
         )
+
+
+@router.get("/settings/notification-trigger")
+async def get_notification_trigger_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Obtiene el estado actual del disparador automático de notificaciones.
+    """
+    verify_admin_permissions(current_user)
+
+    setting = get_or_create_notification_setting(db)
+
+    return {
+        "key": setting.key,
+        "is_enabled": setting.is_enabled,
+        "description": setting.description,
+        "updated_at": setting.updated_at,
+        "updated_by": setting.updated_by
+    }
+
+
+@router.put("/settings/notification-trigger")
+async def toggle_notification_trigger(
+    enabled: bool,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Activa o desactiva el disparador automático de notificaciones de exámenes ocupacionales.
+
+    - **enabled**: True para activar, False para desactivar
+    """
+    verify_admin_permissions(current_user)
+
+    setting = get_or_create_notification_setting(db)
+    setting.is_enabled = enabled
+    setting.updated_by = current_user.id
+    setting.value = "true" if enabled else "false"
+
+    db.commit()
+    db.refresh(setting)
+
+    status_text = "activado" if enabled else "desactivado"
+
+    return {
+        "message": f"Disparador de notificaciones {status_text} exitosamente",
+        "is_enabled": setting.is_enabled,
+        "updated_at": setting.updated_at,
+        "updated_by": current_user.email
+    }
+
+
+# ============================================================================
+# ENDPOINTS PARA GESTIÓN DE TODOS LOS SCHEDULERS
+# ============================================================================
+
+SCHEDULER_CONFIG = {
+    SystemSettings.EXAM_NOTIFICATIONS_ENABLED: {
+        "name": "Notificaciones de Exámenes Ocupacionales",
+        "description": "Envío automático de recordatorios de exámenes ocupacionales (30 días antes)",
+        "schedule": "Diario a las 8:00 AM"
+    },
+    SystemSettings.REINDUCTION_SCHEDULER_ENABLED: {
+        "name": "Verificación de Reinducciones",
+        "description": "Verificación automática de trabajadores que requieren reinducción",
+        "schedule": "Diario a las 8:00 AM y Lunes a las 9:00 AM"
+    },
+    SystemSettings.BIRTHDAY_SCHEDULER_ENABLED: {
+        "name": "Saludos de Cumpleaños",
+        "description": "Envío automático de correos de felicitación de cumpleaños",
+        "schedule": "Diario a las 8:10 AM"
+    },
+    SystemSettings.COURSE_REMINDER_SCHEDULER_ENABLED: {
+        "name": "Recordatorios de Cursos",
+        "description": "Envío automático de recordatorios de cursos pendientes",
+        "schedule": "Diario a las 7:00 AM"
+    }
+}
+
+
+def get_or_create_scheduler_setting(db: Session, key: str) -> SystemSettings:
+    """Obtiene o crea la configuración de un scheduler"""
+    setting = db.query(SystemSettings).filter(SystemSettings.key == key).first()
+
+    if not setting:
+        config = SCHEDULER_CONFIG.get(key, {})
+        setting = SystemSettings(
+            key=key,
+            value="true",
+            description=config.get("description", f"Configuración del scheduler {key}"),
+            is_enabled=True
+        )
+        db.add(setting)
+        db.commit()
+        db.refresh(setting)
+
+    return setting
+
+
+@router.get("/settings/schedulers")
+async def get_all_scheduler_settings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Obtiene el estado de todos los schedulers del sistema.
+    """
+    verify_admin_permissions(current_user)
+
+    schedulers = []
+    for key, config in SCHEDULER_CONFIG.items():
+        setting = get_or_create_scheduler_setting(db, key)
+        schedulers.append({
+            "key": key,
+            "name": config["name"],
+            "description": config["description"],
+            "schedule": config["schedule"],
+            "is_enabled": setting.is_enabled,
+            "updated_at": setting.updated_at,
+            "updated_by": setting.updated_by
+        })
+
+    return {"schedulers": schedulers}
+
+
+@router.put("/settings/schedulers/{scheduler_key}")
+async def toggle_scheduler(
+    scheduler_key: str,
+    enabled: bool,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Activa o desactiva un scheduler específico.
+
+    - **scheduler_key**: Clave del scheduler (ej: exam_notifications_enabled)
+    - **enabled**: True para activar, False para desactivar
+    """
+    verify_admin_permissions(current_user)
+
+    if scheduler_key not in SCHEDULER_CONFIG:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Scheduler '{scheduler_key}' no encontrado"
+        )
+
+    setting = get_or_create_scheduler_setting(db, scheduler_key)
+    setting.is_enabled = enabled
+    setting.updated_by = current_user.id
+    setting.value = "true" if enabled else "false"
+
+    db.commit()
+    db.refresh(setting)
+
+    config = SCHEDULER_CONFIG[scheduler_key]
+    status_text = "activado" if enabled else "desactivado"
+
+    return {
+        "message": f"Scheduler '{config['name']}' {status_text} exitosamente",
+        "key": scheduler_key,
+        "name": config["name"],
+        "is_enabled": setting.is_enabled,
+        "updated_at": setting.updated_at,
+        "updated_by": current_user.email
+    }
