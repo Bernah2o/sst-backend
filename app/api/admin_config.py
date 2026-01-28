@@ -609,13 +609,18 @@ def delete_cargo(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Cargo no encontrado"
         )
-    
-    # TODO: Verificar si el cargo está siendo usado por trabajadores
-    # antes de permitir la eliminación
-    
+
+    # Verificar si el cargo está siendo usado por trabajadores
+    workers_count = db.query(Worker).filter(Worker.cargo_id == cargo_id).count()
+    if workers_count > 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No se puede eliminar el cargo porque está asignado a {workers_count} trabajador(es)"
+        )
+
     db.delete(cargo)
     db.commit()
-    
+
     return None
 
 
