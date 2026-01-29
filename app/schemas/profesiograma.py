@@ -19,8 +19,8 @@ class ProfesiogramaFactorBase(BaseModel):
     factor_riesgo_id: int
     nivel_exposicion: NivelExposicion
     tiempo_exposicion_horas: Decimal = Field(..., description="Horas/día")
-    valor_medido: Optional[Decimal] = None
-    valor_limite_permisible: Optional[Decimal] = None
+    valor_medido: Optional[str] = None  # Puede ser numérico o texto descriptivo
+    valor_limite_permisible: Optional[str] = None  # Puede ser numérico o texto como "No aplica"
     unidad_medida: Optional[str] = None
     proceso: Optional[str] = Field(None, max_length=100)
     actividad: Optional[str] = Field(None, max_length=150)

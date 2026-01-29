@@ -91,8 +91,8 @@ class ProfesiogramaFactor(Base):
         nullable=False,
     )
     tiempo_exposicion_horas = Column(Numeric(4, 2), nullable=False)
-    valor_medido = Column(Numeric(10, 2))
-    valor_limite_permisible = Column(Numeric(10, 2))
+    valor_medido = Column(String(255))  # Puede ser numérico o texto (ej: "No aplica", "Contacto directo con agua")
+    valor_limite_permisible = Column(String(255))  # Puede ser numérico o texto (ej: "No aplica (evaluación cualitativa)")
     unidad_medida = Column(String(50))
 
     nd = Column(Integer)
