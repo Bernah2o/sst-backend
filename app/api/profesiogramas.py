@@ -1391,8 +1391,8 @@ def export_profesiograma_matriz_excel(
             pf.accion_riesgo,
             pf.aceptabilidad,
             float(pf.tiempo_exposicion_horas) if pf.tiempo_exposicion_horas is not None else None,
-            float(pf.valor_medido) if pf.valor_medido is not None else None,
-            float(pf.valor_limite_permisible) if pf.valor_limite_permisible is not None else None,
+            pf.valor_medido or "",  # Ahora es string (puede ser numérico o texto)
+            pf.valor_limite_permisible or "",  # Ahora es string (puede ser numérico o texto)
             pf.unidad_medida or "",
             pf.peor_consecuencia or "",
             pf.requisito_legal or "",
