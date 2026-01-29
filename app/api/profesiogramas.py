@@ -38,6 +38,8 @@ from app.schemas.factor_riesgo import (
 from app.schemas.profesiograma import (
     Profesiograma as ProfesiogramaSchema,
     ProfesiogramaCreate,
+    ProfesiogramaDuplicateRequest,
+    ProfesiogramaDuplicateResult,
     ProfesiogramaEmoSuggestion,
     ProfesiogramaEmoJustificacionRequest,
     ProfesiogramaUpdate,
@@ -669,6 +671,194 @@ def delete_profesiograma(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=f"No se puede eliminar el profesiograma: {str(e)}")
+
+
+@router.post("/{profesiograma_id}/duplicate", response_model=List[ProfesiogramaDuplicateResult])
+def duplicate_profesiograma(
+    profesiograma_id: int,
+    payload: ProfesiogramaDuplicateRequest,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Duplica un profesiograma existente a uno o más cargos destino.
+    Crea copias completas incluyendo factores, exámenes, criterios e inmunizaciones.
+    """
+    # Obtener profesiograma fuente con todas sus relaciones
+    source = db.query(Profesiograma).filter(Profesiograma.id == profesiograma_id).first()
+    if not source:
+        raise HTTPException(status_code=404, detail="Profesiograma fuente no encontrado")
+
+    # Verificar que los cargos destino existen
+    target_cargos = db.query(Cargo).filter(Cargo.id.in_(payload.cargo_ids)).all()
+    cargo_map = {c.id: c for c in target_cargos}
+
+    missing_cargos = set(payload.cargo_ids) - set(cargo_map.keys())
+    if missing_cargos:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Los siguientes cargos no existen: {list(missing_cargos)}"
+        )
+
+    results = []
+
+    for cargo_id in payload.cargo_ids:
+        cargo = cargo_map[cargo_id]
+
+        # Determinar la siguiente versión para este cargo
+        existing_versions = (
+            db.query(Profesiograma.version)
+            .filter(Profesiograma.cargo_id == cargo_id)
+            .all()
+        )
+        version_numbers = []
+        for (v,) in existing_versions:
+            try:
+                version_numbers.append(float(v))
+            except (ValueError, TypeError):
+                pass
+        next_version = f"{max(version_numbers, default=0) + 1.0:.1f}"
+
+        try:
+            # Crear nuevo profesiograma
+            new_p = Profesiograma(
+                cargo_id=cargo_id,
+                version=next_version,
+                estado=payload.estado,
+                empresa=source.empresa,
+                departamento=source.departamento,
+                codigo_cargo=cargo.codigo if hasattr(cargo, 'codigo') else source.codigo_cargo,
+                numero_trabajadores_expuestos=source.numero_trabajadores_expuestos,
+                fecha_elaboracion=None,  # Nueva fecha será establecida al aprobar
+                validado_por=None,
+                proxima_revision=None,
+                elaborado_por=None,
+                revisado_por=None,
+                aprobado_por=None,
+                fecha_aprobacion=None,
+                vigencia_meses=source.vigencia_meses,
+                posicion_predominante=source.posicion_predominante,
+                descripcion_actividades=source.descripcion_actividades,
+                periodicidad_emo_meses=source.periodicidad_emo_meses,
+                justificacion_periodicidad_emo=source.justificacion_periodicidad_emo,
+                fecha_ultima_revision=source.fecha_ultima_revision,
+                nivel_riesgo_cargo=source.nivel_riesgo_cargo,
+                creado_por=current_user.id,
+                modificado_por=None,
+            )
+            db.add(new_p)
+            db.flush()
+
+            # Copiar factores con sus controles e intervenciones
+            for src_factor in source.profesiograma_factores:
+                new_factor = ProfesiogramaFactor(
+                    profesiograma_id=new_p.id,
+                    factor_riesgo_id=src_factor.factor_riesgo_id,
+                    proceso=src_factor.proceso,
+                    actividad=src_factor.actividad,
+                    tarea=src_factor.tarea,
+                    rutinario=src_factor.rutinario,
+                    descripcion_peligro=src_factor.descripcion_peligro,
+                    efectos_posibles=src_factor.efectos_posibles,
+                    zona_lugar=src_factor.zona_lugar,
+                    tipo_peligro=src_factor.tipo_peligro,
+                    clasificacion_peligro=src_factor.clasificacion_peligro,
+                    controles_existentes=src_factor.controles_existentes,
+                    fuente=src_factor.fuente,
+                    medio=src_factor.medio,
+                    individuo=src_factor.individuo,
+                    peor_consecuencia=src_factor.peor_consecuencia,
+                    requisito_legal=src_factor.requisito_legal,
+                    nivel_exposicion=src_factor.nivel_exposicion,
+                    tiempo_exposicion_horas=src_factor.tiempo_exposicion_horas,
+                    valor_medido=src_factor.valor_medido,
+                    valor_limite_permisible=src_factor.valor_limite_permisible,
+                    unidad_medida=src_factor.unidad_medida,
+                    nd=src_factor.nd,
+                    ne=src_factor.ne,
+                    nc=src_factor.nc,
+                    eliminacion=src_factor.eliminacion,
+                    sustitucion=src_factor.sustitucion,
+                    controles_ingenieria=src_factor.controles_ingenieria,
+                    controles_administrativos=src_factor.controles_administrativos,
+                    senalizacion=src_factor.senalizacion,
+                    epp_requerido=src_factor.epp_requerido,
+                    registrado_por=current_user.id,
+                )
+                db.add(new_factor)
+
+                # Copiar controles ESIAE
+                for ctrl in src_factor.controles_esiae:
+                    db.add(ProfesiogramaControlESIAE(
+                        profesiograma_id=new_p.id,
+                        factor_riesgo_id=src_factor.factor_riesgo_id,
+                        nivel=ctrl.nivel,
+                        medida=ctrl.medida,
+                        descripcion=ctrl.descripcion,
+                        estado_actual=ctrl.estado_actual,
+                        meta=ctrl.meta,
+                    ))
+
+                # Copiar intervenciones
+                for interv in src_factor.intervenciones:
+                    db.add(ProfesiogramaIntervencion(
+                        profesiograma_id=new_p.id,
+                        factor_riesgo_id=src_factor.factor_riesgo_id,
+                        tipo_control=interv.tipo_control,
+                        descripcion=interv.descripcion,
+                        responsable=interv.responsable,
+                        plazo=interv.plazo,
+                    ))
+
+            # Copiar exámenes
+            for src_exam in source.examenes:
+                db.add(ProfesiogramaExamen(
+                    profesiograma_id=new_p.id,
+                    tipo_examen_id=src_exam.tipo_examen_id,
+                    tipo_evaluacion=src_exam.tipo_evaluacion,
+                    periodicidad_meses=src_exam.periodicidad_meses,
+                    justificacion_periodicidad=src_exam.justificacion_periodicidad,
+                    obligatorio=src_exam.obligatorio,
+                    orden_realizacion=src_exam.orden_realizacion,
+                    normativa_base=src_exam.normativa_base,
+                ))
+
+            # Copiar inmunizaciones
+            for src_inmun in source.inmunizaciones:
+                db.add(ProfesiogramaInmunizacion(
+                    profesiograma_id=new_p.id,
+                    inmunizacion_id=src_inmun.inmunizacion_id,
+                ))
+
+            # Copiar criterios de exclusión
+            new_p.criterios_exclusion = list(source.criterios_exclusion)
+
+            db.flush()
+
+            results.append(ProfesiogramaDuplicateResult(
+                cargo_id=cargo_id,
+                cargo_nombre=cargo.nombre_cargo,
+                profesiograma_id=new_p.id,
+                version=next_version,
+                success=True,
+                message=f"Profesiograma duplicado exitosamente al cargo '{cargo.nombre_cargo}'"
+            ))
+
+        except Exception as e:
+            results.append(ProfesiogramaDuplicateResult(
+                cargo_id=cargo_id,
+                cargo_nombre=cargo.nombre_cargo,
+                profesiograma_id=0,
+                version="",
+                success=False,
+                message=f"Error al duplicar: {str(e)}"
+            ))
+
+    # Solo hacer commit si al menos uno fue exitoso
+    if any(r.success for r in results):
+        db.commit()
+
+    return results
 
 
 @router.post("/cargos/{cargo_id}", response_model=ProfesiogramaSchema, status_code=status.HTTP_201_CREATED)

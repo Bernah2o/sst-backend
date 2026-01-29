@@ -24,7 +24,7 @@ class ProfesiogramaFactorBase(BaseModel):
     unidad_medida: Optional[str] = None
     proceso: Optional[str] = Field(None, max_length=100)
     actividad: Optional[str] = Field(None, max_length=150)
-    tarea: Optional[str] = Field(None, max_length=150)
+    tarea: Optional[str] = Field(None, max_length=300)
     rutinario: Optional[bool] = None
     descripcion_peligro: Optional[str] = None
     efectos_posibles: Optional[str] = None
@@ -311,4 +311,21 @@ class ProfesiogramaEmoJustificacionRequest(BaseModel):
     periodicidad_emo_meses: int
     formato: str = "breve"
     factores: List[ProfesiogramaEmoFactorInput] = Field(default_factory=list)
+
+
+class ProfesiogramaDuplicateRequest(BaseModel):
+    cargo_ids: List[int] = Field(..., min_length=1, description="Lista de IDs de cargos destino")
+    estado: ProfesiogramaEstado = Field(
+        default=ProfesiogramaEstado.BORRADOR,
+        description="Estado del nuevo profesiograma (por defecto borrador)"
+    )
+
+
+class ProfesiogramaDuplicateResult(BaseModel):
+    cargo_id: int
+    cargo_nombre: str
+    profesiograma_id: int
+    version: str
+    success: bool
+    message: str
 

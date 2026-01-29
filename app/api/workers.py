@@ -1,7 +1,7 @@
 from typing import Any, List, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, logger, status, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, Response
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func
 from io import BytesIO
 import openpyxl
@@ -203,7 +203,7 @@ async def export_workers_excel(
     """
     Exportar lista de trabajadores a Excel con filtros opcionales
     """
-    query = db.query(Worker)
+    query = db.query(Worker).options(joinedload(Worker.area_obj))
     
     # Filtro de búsqueda
     if search:
@@ -235,16 +235,17 @@ async def export_workers_excel(
     headers = [
         "Tipo Documento", "Número Documento", "Nombres", "Apellidos", "Email", "Teléfono",
         "Género", "Fecha Nacimiento", "Tipo Contrato", "Modalidad", "Cargo", "Ocupación",
-        "Departamento", "Ciudad", "Dirección", "EPS", "AFP", "ARL", "Tipo Sangre",
-        "Fecha Ingreso", "Fecha Retiro", "Estado", "Registrado"
+        "Profesión", "Área", "Nivel de Riesgo", "Salario IBC", "País", "Departamento",
+        "Ciudad", "Dirección", "EPS", "AFP", "ARL", "Tipo Sangre",
+        "Fecha Ingreso", "Fecha Retiro", "Estado", "Registrado", "Observaciones"
     ]
-    
+
     for col_idx, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col_idx, value=header)
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = header_alignment
-        
+
     # Datos
     for row_idx, worker in enumerate(workers, 2):
         ws.cell(row=row_idx, column=1, value=worker.document_type.value if worker.document_type else "")
@@ -259,17 +260,23 @@ async def export_workers_excel(
         ws.cell(row=row_idx, column=10, value=worker.work_modality.value if worker.work_modality else "")
         ws.cell(row=row_idx, column=11, value=worker.position)
         ws.cell(row=row_idx, column=12, value=worker.occupation)
-        ws.cell(row=row_idx, column=13, value=worker.department)
-        ws.cell(row=row_idx, column=14, value=worker.city)
-        ws.cell(row=row_idx, column=15, value=worker.direccion)
-        ws.cell(row=row_idx, column=16, value=worker.eps)
-        ws.cell(row=row_idx, column=17, value=worker.afp)
-        ws.cell(row=row_idx, column=18, value=worker.arl)
-        ws.cell(row=row_idx, column=19, value=worker.blood_type.value if worker.blood_type else "")
-        ws.cell(row=row_idx, column=20, value=worker.fecha_de_ingreso)
-        ws.cell(row=row_idx, column=21, value=worker.fecha_de_retiro)
-        ws.cell(row=row_idx, column=22, value="Activo" if worker.is_active else "Inactivo")
-        ws.cell(row=row_idx, column=23, value="Sí" if worker.is_registered else "No")
+        ws.cell(row=row_idx, column=13, value=worker.profession)
+        ws.cell(row=row_idx, column=14, value=worker.area_obj.nombre if worker.area_obj else "")
+        ws.cell(row=row_idx, column=15, value=worker.risk_level.value if worker.risk_level else "")
+        ws.cell(row=row_idx, column=16, value=float(worker.salary_ibc) if worker.salary_ibc else "")
+        ws.cell(row=row_idx, column=17, value=worker.country)
+        ws.cell(row=row_idx, column=18, value=worker.department)
+        ws.cell(row=row_idx, column=19, value=worker.city)
+        ws.cell(row=row_idx, column=20, value=worker.direccion)
+        ws.cell(row=row_idx, column=21, value=worker.eps)
+        ws.cell(row=row_idx, column=22, value=worker.afp)
+        ws.cell(row=row_idx, column=23, value=worker.arl)
+        ws.cell(row=row_idx, column=24, value=worker.blood_type.value if worker.blood_type else "")
+        ws.cell(row=row_idx, column=25, value=worker.fecha_de_ingreso)
+        ws.cell(row=row_idx, column=26, value=worker.fecha_de_retiro)
+        ws.cell(row=row_idx, column=27, value="Activo" if worker.is_active else "Inactivo")
+        ws.cell(row=row_idx, column=28, value="Sí" if worker.is_registered else "No")
+        ws.cell(row=row_idx, column=29, value=worker.observations)
         
     # Ajustar ancho de columnas
     for column_cells in ws.columns:
