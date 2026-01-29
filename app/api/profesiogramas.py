@@ -3,6 +3,7 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from datetime import datetime
 from io import BytesIO
 import openpyxl
@@ -25,6 +26,7 @@ from app.models.profesiograma_inmunizacion import ProfesiogramaInmunizacion
 from app.models.inmunizacion import Inmunizacion
 from app.models.tipo_examen import TipoExamen
 from app.models.user import User
+from app.models.worker import Worker
 from app.schemas.criterio_exclusion import (
     CriterioExclusion as CriterioExclusionSchema,
     CriterioExclusionCreate,
@@ -37,11 +39,15 @@ from app.schemas.factor_riesgo import (
 )
 from app.schemas.profesiograma import (
     Profesiograma as ProfesiogramaSchema,
+    ProfesiogramaAdminItem,
+    ProfesiogramaBulkAction,
+    ProfesiogramaBulkResult,
     ProfesiogramaCreate,
     ProfesiogramaDuplicateRequest,
     ProfesiogramaDuplicateResult,
     ProfesiogramaEmoSuggestion,
     ProfesiogramaEmoJustificacionRequest,
+    ProfesiogramaStatusUpdate,
     ProfesiogramaUpdate,
 )
 from app.schemas.tipo_examen import TipoExamen as TipoExamenSchema, TipoExamenCreate, TipoExamenUpdate
@@ -859,6 +865,329 @@ def duplicate_profesiograma(
         db.commit()
 
     return results
+
+
+# ==================== ADMIN PANEL ENDPOINTS ====================
+
+@router.get("/admin/list", response_model=PaginatedResponse[ProfesiogramaAdminItem])
+def list_profesiogramas_admin(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    estado: Optional[str] = Query(None, description="Filtrar por estado: activo, inactivo, borrador"),
+    cargo_id: Optional[int] = Query(None, description="Filtrar por cargo"),
+    search: Optional[str] = Query(None, description="Buscar por nombre de cargo"),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Lista todos los profesiogramas con información de administración.
+    Incluye conteo de trabajadores y factores.
+    """
+    query = db.query(Profesiograma).join(Cargo)
+
+    # Filtros
+    if estado:
+        try:
+            estado_enum = ProfesiogramaEstado(estado)
+            query = query.filter(Profesiograma.estado == estado_enum)
+        except ValueError:
+            pass
+
+    if cargo_id:
+        query = query.filter(Profesiograma.cargo_id == cargo_id)
+
+    if search:
+        query = query.filter(Cargo.nombre_cargo.ilike(f"%{search}%"))
+
+    # Conteo total
+    total = query.count()
+
+    # Paginación
+    offset = (page - 1) * size
+    profesiogramas = query.order_by(
+        Cargo.nombre_cargo.asc(),
+        Profesiograma.version.desc()
+    ).offset(offset).limit(size).all()
+
+    # Construir respuesta con conteos
+    items = []
+    for p in profesiogramas:
+        # Contar trabajadores del cargo
+        trabajadores_count = db.query(func.count(Worker.id)).filter(
+            Worker.cargo_id == p.cargo_id,
+            Worker.is_active == True
+        ).scalar() or 0
+
+        # Contar factores
+        factores_count = len(p.profesiograma_factores) if p.profesiograma_factores else 0
+
+        items.append(ProfesiogramaAdminItem(
+            id=p.id,
+            cargo_id=p.cargo_id,
+            cargo_nombre=p.cargo.nombre_cargo if p.cargo else "Sin cargo",
+            version=p.version,
+            estado=p.estado,
+            fecha_creacion=p.fecha_creacion,
+            fecha_ultima_revision=p.fecha_ultima_revision,
+            nivel_riesgo_cargo=p.nivel_riesgo_cargo.value if p.nivel_riesgo_cargo else None,
+            trabajadores_count=trabajadores_count,
+            factores_count=factores_count,
+        ))
+
+    pages = (total + size - 1) // size
+
+    return PaginatedResponse(
+        items=items,
+        total=total,
+        page=page,
+        size=size,
+        pages=pages,
+        has_next=page < pages,
+        has_prev=page > 1,
+    )
+
+
+@router.patch("/admin/{profesiograma_id}/status", response_model=MessageResponse)
+def update_profesiograma_status(
+    profesiograma_id: int,
+    payload: ProfesiogramaStatusUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Actualiza el estado de un profesiograma.
+    Si se activa, inactiva otros profesiogramas activos del mismo cargo.
+    """
+    profesiograma = db.query(Profesiograma).filter(Profesiograma.id == profesiograma_id).first()
+    if not profesiograma:
+        raise HTTPException(status_code=404, detail="Profesiograma no encontrado")
+
+    old_estado = profesiograma.estado
+
+    # Si se está activando, inactivar otros activos del mismo cargo
+    if payload.estado == ProfesiogramaEstado.ACTIVO and old_estado != ProfesiogramaEstado.ACTIVO:
+        db.query(Profesiograma).filter(
+            Profesiograma.cargo_id == profesiograma.cargo_id,
+            Profesiograma.estado == ProfesiogramaEstado.ACTIVO,
+            Profesiograma.id != profesiograma_id,
+        ).update({
+            Profesiograma.estado: ProfesiogramaEstado.INACTIVO,
+            Profesiograma.modificado_por: current_user.id,
+            Profesiograma.fecha_modificacion: datetime.utcnow(),
+        })
+
+    profesiograma.estado = payload.estado
+    profesiograma.modificado_por = current_user.id
+    profesiograma.fecha_modificacion = datetime.utcnow()
+
+    db.commit()
+
+    return MessageResponse(
+        message=f"Estado actualizado de '{old_estado.value}' a '{payload.estado.value}'"
+    )
+
+
+@router.post("/admin/bulk-action", response_model=ProfesiogramaBulkResult)
+def bulk_action_profesiogramas(
+    payload: ProfesiogramaBulkAction,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Ejecuta acciones masivas sobre profesiogramas.
+    Acciones: 'activar', 'inactivar', 'eliminar'
+    """
+    allowed_actions = ["activar", "inactivar", "eliminar"]
+    if payload.action not in allowed_actions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Acción no válida. Permitidas: {allowed_actions}"
+        )
+
+    results = []
+    success_count = 0
+    failed_count = 0
+
+    for pid in payload.profesiograma_ids:
+        profesiograma = db.query(Profesiograma).filter(Profesiograma.id == pid).first()
+
+        if not profesiograma:
+            results.append({"id": pid, "success": False, "message": "No encontrado"})
+            failed_count += 1
+            continue
+
+        try:
+            if payload.action == "eliminar":
+                cargo_nombre = profesiograma.cargo.nombre_cargo if profesiograma.cargo else "?"
+                db.delete(profesiograma)
+                results.append({
+                    "id": pid,
+                    "success": True,
+                    "message": f"Eliminado (cargo: {cargo_nombre})"
+                })
+
+            elif payload.action == "activar":
+                # Inactivar otros activos del mismo cargo
+                db.query(Profesiograma).filter(
+                    Profesiograma.cargo_id == profesiograma.cargo_id,
+                    Profesiograma.estado == ProfesiogramaEstado.ACTIVO,
+                    Profesiograma.id != pid,
+                ).update({
+                    Profesiograma.estado: ProfesiogramaEstado.INACTIVO,
+                    Profesiograma.modificado_por: current_user.id,
+                })
+                profesiograma.estado = ProfesiogramaEstado.ACTIVO
+                profesiograma.modificado_por = current_user.id
+                profesiograma.fecha_modificacion = datetime.utcnow()
+                results.append({"id": pid, "success": True, "message": "Activado"})
+
+            elif payload.action == "inactivar":
+                profesiograma.estado = ProfesiogramaEstado.INACTIVO
+                profesiograma.modificado_por = current_user.id
+                profesiograma.fecha_modificacion = datetime.utcnow()
+                results.append({"id": pid, "success": True, "message": "Inactivado"})
+
+            success_count += 1
+
+        except Exception as e:
+            results.append({"id": pid, "success": False, "message": str(e)})
+            failed_count += 1
+
+    db.commit()
+
+    return ProfesiogramaBulkResult(
+        total=len(payload.profesiograma_ids),
+        success=success_count,
+        failed=failed_count,
+        results=results,
+    )
+
+
+@router.get("/admin/export")
+def export_profesiogramas_admin(
+    estado: Optional[str] = Query(None),
+    cargo_id: Optional[int] = Query(None),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """
+    Exporta la lista de profesiogramas a Excel.
+    """
+    query = db.query(Profesiograma).join(Cargo)
+
+    if estado:
+        try:
+            estado_enum = ProfesiogramaEstado(estado)
+            query = query.filter(Profesiograma.estado == estado_enum)
+        except ValueError:
+            pass
+
+    if cargo_id:
+        query = query.filter(Profesiograma.cargo_id == cargo_id)
+
+    profesiogramas = query.order_by(Cargo.nombre_cargo.asc(), Profesiograma.version.desc()).all()
+
+    # Crear Excel
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Profesiogramas"
+
+    # Estilos
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="2E7D32", end_color="2E7D32", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center")
+
+    # Encabezados
+    headers = [
+        "ID", "Cargo", "Versión", "Estado", "Nivel Riesgo",
+        "Fecha Creación", "Última Revisión", "Trabajadores", "Factores"
+    ]
+
+    for col_idx, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_idx, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+
+    # Datos
+    for row_idx, p in enumerate(profesiogramas, 2):
+        trabajadores_count = db.query(func.count(Worker.id)).filter(
+            Worker.cargo_id == p.cargo_id,
+            Worker.is_active == True
+        ).scalar() or 0
+
+        factores_count = len(p.profesiograma_factores) if p.profesiograma_factores else 0
+
+        ws.cell(row=row_idx, column=1, value=p.id)
+        ws.cell(row=row_idx, column=2, value=p.cargo.nombre_cargo if p.cargo else "")
+        ws.cell(row=row_idx, column=3, value=p.version)
+        ws.cell(row=row_idx, column=4, value=p.estado.value if p.estado else "")
+        ws.cell(row=row_idx, column=5, value=p.nivel_riesgo_cargo.value if p.nivel_riesgo_cargo else "")
+        ws.cell(row=row_idx, column=6, value=p.fecha_creacion.strftime("%Y-%m-%d %H:%M") if p.fecha_creacion else "")
+        ws.cell(row=row_idx, column=7, value=str(p.fecha_ultima_revision) if p.fecha_ultima_revision else "")
+        ws.cell(row=row_idx, column=8, value=trabajadores_count)
+        ws.cell(row=row_idx, column=9, value=factores_count)
+
+    # Ajustar anchos
+    for column_cells in ws.columns:
+        length = max(len(str(cell.value) or "") for cell in column_cells)
+        ws.column_dimensions[column_cells[0].column_letter].width = min(length + 2, 40)
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    filename = f"profesiogramas_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@router.get("/admin/stats")
+def get_profesiogramas_stats(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Obtiene estadísticas generales de profesiogramas.
+    """
+    total = db.query(func.count(Profesiograma.id)).scalar() or 0
+    activos = db.query(func.count(Profesiograma.id)).filter(
+        Profesiograma.estado == ProfesiogramaEstado.ACTIVO
+    ).scalar() or 0
+    inactivos = db.query(func.count(Profesiograma.id)).filter(
+        Profesiograma.estado == ProfesiogramaEstado.INACTIVO
+    ).scalar() or 0
+    borradores = db.query(func.count(Profesiograma.id)).filter(
+        Profesiograma.estado == ProfesiogramaEstado.BORRADOR
+    ).scalar() or 0
+
+    # Cargos sin profesiograma activo
+    cargos_total = db.query(func.count(Cargo.id)).filter(Cargo.activo == True).scalar() or 0
+    cargos_con_profesiograma = db.query(func.count(func.distinct(Profesiograma.cargo_id))).filter(
+        Profesiograma.estado == ProfesiogramaEstado.ACTIVO
+    ).scalar() or 0
+    cargos_sin_profesiograma = cargos_total - cargos_con_profesiograma
+
+    return {
+        "total": total,
+        "por_estado": {
+            "activo": activos,
+            "inactivo": inactivos,
+            "borrador": borradores,
+        },
+        "cargos": {
+            "total": cargos_total,
+            "con_profesiograma_activo": cargos_con_profesiograma,
+            "sin_profesiograma_activo": cargos_sin_profesiograma,
+        }
+    }
+
+
+# ==================== END ADMIN PANEL ENDPOINTS ====================
 
 
 @router.post("/cargos/{cargo_id}", response_model=ProfesiogramaSchema, status_code=status.HTTP_201_CREATED)

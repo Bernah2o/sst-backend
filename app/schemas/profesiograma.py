@@ -329,3 +329,35 @@ class ProfesiogramaDuplicateResult(BaseModel):
     success: bool
     message: str
 
+
+class ProfesiogramaAdminItem(BaseModel):
+    id: int
+    cargo_id: int
+    cargo_nombre: str
+    version: str
+    estado: ProfesiogramaEstado
+    fecha_creacion: Optional[datetime] = None
+    fecha_ultima_revision: Optional[date] = None
+    nivel_riesgo_cargo: Optional[str] = None
+    trabajadores_count: int = 0
+    factores_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class ProfesiogramaStatusUpdate(BaseModel):
+    estado: ProfesiogramaEstado
+
+
+class ProfesiogramaBulkAction(BaseModel):
+    action: str = Field(..., description="Acción: 'activar', 'inactivar', 'eliminar'")
+    profesiograma_ids: List[int] = Field(..., min_length=1)
+
+
+class ProfesiogramaBulkResult(BaseModel):
+    total: int
+    success: int
+    failed: int
+    results: List[dict]
+
