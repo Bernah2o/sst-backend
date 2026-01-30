@@ -3,7 +3,7 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
 from datetime import datetime
 from io import BytesIO
 import openpyxl
@@ -671,7 +671,48 @@ def delete_profesiograma(
     if not p:
         raise HTTPException(status_code=404, detail="Profesiograma no encontrado")
     try:
-        db.delete(p)
+        # Eliminar relaciones explícitamente para evitar conflictos de StaleDataError
+        # ORDEN IMPORTANTE: primero tablas hijas, luego tablas padre
+
+        # 1. Eliminar controles e intervenciones (dependen de profesiograma_factores)
+        db.execute(
+            text("DELETE FROM profesiograma_controles_esiae WHERE profesiograma_id = :id"),
+            {"id": profesiograma_id}
+        )
+        db.execute(
+            text("DELETE FROM profesiograma_intervenciones WHERE profesiograma_id = :id"),
+            {"id": profesiograma_id}
+        )
+
+        # 2. Ahora eliminar profesiograma_factores
+        db.execute(
+            text("DELETE FROM profesiograma_factores WHERE profesiograma_id = :id"),
+            {"id": profesiograma_id}
+        )
+
+        # 3. Eliminar otras relaciones directas
+        db.execute(
+            text("DELETE FROM profesiograma_examenes WHERE profesiograma_id = :id"),
+            {"id": profesiograma_id}
+        )
+        db.execute(
+            text("DELETE FROM profesiograma_inmunizaciones WHERE profesiograma_id = :id"),
+            {"id": profesiograma_id}
+        )
+        db.execute(
+            text("DELETE FROM profesiograma_criterio_exclusion WHERE profesiograma_id = :id"),
+            {"id": profesiograma_id}
+        )
+        db.execute(
+            text("DELETE FROM programas_sve WHERE profesiograma_id = :id"),
+            {"id": profesiograma_id}
+        )
+
+        # 4. Finalmente eliminar el profesiograma
+        db.execute(
+            text("DELETE FROM profesiogramas WHERE id = :id"),
+            {"id": profesiograma_id}
+        )
         db.commit()
         return MessageResponse(message="Profesiograma eliminado exitosamente")
     except Exception as e:
@@ -1019,7 +1060,48 @@ def bulk_action_profesiogramas(
         try:
             if payload.action == "eliminar":
                 cargo_nombre = profesiograma.cargo.nombre_cargo if profesiograma.cargo else "?"
-                db.delete(profesiograma)
+                # Eliminar relaciones explícitamente para evitar StaleDataError
+                # ORDEN IMPORTANTE: primero tablas hijas, luego tablas padre
+
+                # 1. Eliminar controles e intervenciones (dependen de profesiograma_factores)
+                db.execute(
+                    text("DELETE FROM profesiograma_controles_esiae WHERE profesiograma_id = :id"),
+                    {"id": pid}
+                )
+                db.execute(
+                    text("DELETE FROM profesiograma_intervenciones WHERE profesiograma_id = :id"),
+                    {"id": pid}
+                )
+
+                # 2. Ahora eliminar profesiograma_factores
+                db.execute(
+                    text("DELETE FROM profesiograma_factores WHERE profesiograma_id = :id"),
+                    {"id": pid}
+                )
+
+                # 3. Eliminar otras relaciones directas
+                db.execute(
+                    text("DELETE FROM profesiograma_examenes WHERE profesiograma_id = :id"),
+                    {"id": pid}
+                )
+                db.execute(
+                    text("DELETE FROM profesiograma_inmunizaciones WHERE profesiograma_id = :id"),
+                    {"id": pid}
+                )
+                db.execute(
+                    text("DELETE FROM profesiograma_criterio_exclusion WHERE profesiograma_id = :id"),
+                    {"id": pid}
+                )
+                db.execute(
+                    text("DELETE FROM programas_sve WHERE profesiograma_id = :id"),
+                    {"id": pid}
+                )
+
+                # 4. Finalmente eliminar el profesiograma
+                db.execute(
+                    text("DELETE FROM profesiogramas WHERE id = :id"),
+                    {"id": pid}
+                )
                 results.append({
                     "id": pid,
                     "success": True,
