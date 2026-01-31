@@ -52,37 +52,43 @@ class AIService:
         if anio:
             norma_info += f" de {anio}"
 
-        context_parts = [f"Norma: {norma_info}"]
+        context_parts = [f"NORMA LEGAL: {norma_info}"]
 
         if clasificacion:
             context_parts.append(f"Clasificación: {clasificacion}")
         if tema_general:
-            context_parts.append(f"Tema: {tema_general}")
-        if descripcion_norma:
-            context_parts.append(f"Descripción: {descripcion_norma}")
+            context_parts.append(f"Tema General: {tema_general}")
         if articulo:
-            context_parts.append(f"Artículo: {articulo}")
+            context_parts.append(f"Artículo específico: {articulo}")
+
+        # La descripción y exigencias son los campos MÁS IMPORTANTES para generar sugerencias
+        if descripcion_norma:
+            context_parts.append(f"\n📋 DESCRIPCIÓN DE LA NORMA:\n{descripcion_norma}")
         if exigencias:
-            context_parts.append(f"Exigencias: {exigencias}")
+            context_parts.append(f"\n⚠️ EXIGENCIAS Y REQUISITOS ESPECÍFICOS:\n{exigencias}")
 
         context = "\n".join(context_parts)
 
         prompt = f"""Eres un experto en Seguridad y Salud en el Trabajo (SST) en Colombia.
-Basándote en la siguiente norma legal colombiana, genera sugerencias específicas y prácticas para documentar su cumplimiento.
 
+CONTEXTO DE LA NORMA:
 {context}
+
+INSTRUCCIONES:
+Basándote ESPECÍFICAMENTE en la DESCRIPCIÓN y las EXIGENCIAS de esta norma, genera sugerencias prácticas y concretas para documentar su cumplimiento.
 
 Proporciona EXACTAMENTE el siguiente formato JSON (sin texto adicional):
 {{
-    "evidencia": "Texto con evidencias específicas que demuestran el cumplimiento de esta norma. Lista los documentos, registros, actas o procedimientos concretos que se deben tener.",
-    "observaciones": "Observaciones relevantes sobre el estado de cumplimiento, aspectos a considerar o puntos de atención para esta norma específica.",
-    "plan_accion": "Acciones concretas y específicas a implementar para lograr o mantener el cumplimiento de esta norma. Incluye actividades, responsables sugeridos y frecuencias cuando aplique."
+    "evidencia": "Documentos, registros o procedimientos específicos que demuestren el cumplimiento de las exigencias descritas. Sé específico según lo que pide la norma.",
+    "observaciones": "Aspectos críticos a considerar, frecuencia de actualización, o puntos de atención basados en las exigencias específicas de esta norma.",
+    "plan_accion": "Acciones concretas para cumplir con las exigencias específicas de esta norma. Incluye qué hacer, quién lo debe hacer y con qué frecuencia."
 }}
 
-Importante:
-- Las sugerencias deben ser específicas para esta norma, no genéricas
-- Usa terminología técnica de SST en Colombia
-- Los textos deben ser concisos pero completos (máximo 300 caracteres cada uno)
+IMPORTANTE:
+- Basa tus sugerencias en las EXIGENCIAS ESPECÍFICAS de la norma, no en generalidades
+- Si la norma habla de documentación específica, menciona esos documentos
+- Si la norma establece periodicidades, inclúyelas en el plan de acción
+- Los textos deben ser concisos (máximo 500 caracteres cada uno)
 - Responde SOLO con el JSON, sin explicaciones adicionales"""
 
         try:
