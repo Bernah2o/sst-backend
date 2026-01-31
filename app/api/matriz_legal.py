@@ -948,3 +948,62 @@ def export_todas_normas(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+# ==================== SUGERENCIAS IA ====================
+
+@router.post("/normas/{norma_id}/sugerencias-ia")
+async def generar_sugerencias_ia(
+    norma_id: int,
+    current_user: User = Depends(require_supervisor_or_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Genera sugerencias de cumplimiento usando IA (Perplexity).
+
+    Retorna sugerencias para:
+    - Evidencia de cumplimiento
+    - Observaciones
+    - Plan de acción
+    """
+    from app.services.ai_service import ai_service
+
+    # Verificar que el servicio de IA esté configurado
+    if not ai_service.is_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Servicio de IA no configurado. Configure PERPLEXITY_API_KEY en las variables de entorno."
+        )
+
+    # Obtener la norma
+    norma = db.query(MatrizLegalNorma).filter(MatrizLegalNorma.id == norma_id).first()
+    if not norma:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Norma no encontrada"
+        )
+
+    try:
+        sugerencias = await ai_service.generate_compliance_suggestions(
+            tipo_norma=norma.tipo_norma,
+            numero_norma=norma.numero_norma,
+            anio=norma.anio,
+            descripcion_norma=norma.descripcion_norma,
+            articulo=norma.articulo,
+            exigencias=norma.descripcion_articulo_exigencias,
+            tema_general=norma.tema_general,
+            clasificacion=norma.clasificacion_norma,
+        )
+
+        return {
+            "success": True,
+            "norma_id": norma_id,
+            "sugerencias": sugerencias
+        }
+
+    except Exception as e:
+        logger.error(f"Error generando sugerencias IA para norma {norma_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al generar sugerencias: {str(e)}"
+        )

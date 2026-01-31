@@ -79,4 +79,9 @@ class Settings:
         self.contabo_public_base_url = public_base_url
         self.contabo_make_public = os.getenv("CONTABO_MAKE_PUBLIC", "True").lower() == "true"
 
+        # Configuración de Perplexity AI
+        # Modelos disponibles: sonar, sonar-pro, sonar-reasoning
+        self.perplexity_api_key = os.getenv("PERPLEXITY_API_KEY")
+        self.perplexity_model = os.getenv("PERPLEXITY_MODEL", "sonar")
+
 settings = Settings()
