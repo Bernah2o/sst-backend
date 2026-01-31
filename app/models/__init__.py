@@ -58,6 +58,19 @@ from .user_progress import UserMaterialProgress, UserModuleProgress, MaterialPro
 from .notification_acknowledgment import NotificationAcknowledgment
 from .admin_config import AdminConfig, Programas, Ocupacion
 from .assessment import HomeworkAssessment
+from .sector_economico import SectorEconomico
+from .empresa import Empresa
+from .matriz_legal import (
+    MatrizLegalImportacion,
+    MatrizLegalNorma,
+    MatrizLegalNormaHistorial,
+    MatrizLegalCumplimiento,
+    MatrizLegalCumplimientoHistorial,
+    AmbitoAplicacion,
+    EstadoNorma,
+    EstadoCumplimiento,
+    EstadoImportacion,
+)
 
 __all__ = [
     "User",
@@ -171,4 +184,17 @@ __all__ = [
     "Programas",
     "Ocupacion",
     "HomeworkAssessment",
+    # Matriz Legal models
+    "SectorEconomico",
+    "Empresa",
+    "MatrizLegalImportacion",
+    "MatrizLegalNorma",
+    "MatrizLegalNormaHistorial",
+    "MatrizLegalCumplimiento",
+    "MatrizLegalCumplimientoHistorial",
+    # Matriz Legal enums
+    "AmbitoAplicacion",
+    "EstadoNorma",
+    "EstadoCumplimiento",
+    "EstadoImportacion",
 ]
