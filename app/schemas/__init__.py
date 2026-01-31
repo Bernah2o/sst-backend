@@ -158,6 +158,38 @@ from .contractor import (
     ContractorContractUpdate,
     ContractorContractResponse,
 )
+from .sector_economico import (
+    SectorEconomicoCreate,
+    SectorEconomicoUpdate,
+    SectorEconomico,
+    SectorEconomicoSimple,
+)
+from .empresa import (
+    EmpresaCreate,
+    EmpresaUpdate,
+    Empresa,
+    EmpresaSimple,
+    EmpresaResumen,
+    EmpresaCaracteristicas,
+)
+from .matriz_legal import (
+    MatrizLegalNormaCreate,
+    MatrizLegalNormaUpdate,
+    MatrizLegalNorma,
+    MatrizLegalNormaSimple,
+    MatrizLegalNormaConCumplimiento,
+    MatrizLegalCumplimientoCreate,
+    MatrizLegalCumplimientoUpdate,
+    MatrizLegalCumplimiento,
+    MatrizLegalCumplimientoBulkUpdate,
+    MatrizLegalCumplimientoHistorial,
+    MatrizLegalImportacionPreview,
+    MatrizLegalImportacionResult,
+    MatrizLegalEstadisticas,
+    MatrizLegalDashboard,
+    PaginatedMatrizLegalNormas,
+    PaginatedMatrizLegalNormasConCumplimiento,
+)
 
 __all__ = [
     # User schemas
@@ -307,4 +339,33 @@ __all__ = [
     "ContractorContractCreate",
     "ContractorContractUpdate",
     "ContractorContractResponse",
+    # Sector Economico schemas
+    "SectorEconomicoCreate",
+    "SectorEconomicoUpdate",
+    "SectorEconomico",
+    "SectorEconomicoSimple",
+    # Empresa schemas
+    "EmpresaCreate",
+    "EmpresaUpdate",
+    "Empresa",
+    "EmpresaSimple",
+    "EmpresaResumen",
+    "EmpresaCaracteristicas",
+    # Matriz Legal schemas
+    "MatrizLegalNormaCreate",
+    "MatrizLegalNormaUpdate",
+    "MatrizLegalNorma",
+    "MatrizLegalNormaSimple",
+    "MatrizLegalNormaConCumplimiento",
+    "MatrizLegalCumplimientoCreate",
+    "MatrizLegalCumplimientoUpdate",
+    "MatrizLegalCumplimiento",
+    "MatrizLegalCumplimientoBulkUpdate",
+    "MatrizLegalCumplimientoHistorial",
+    "MatrizLegalImportacionPreview",
+    "MatrizLegalImportacionResult",
+    "MatrizLegalEstadisticas",
+    "MatrizLegalDashboard",
+    "PaginatedMatrizLegalNormas",
+    "PaginatedMatrizLegalNormasConCumplimiento",
 ]

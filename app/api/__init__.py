@@ -39,6 +39,9 @@ from .contractors import router as contractors_router
 from .profesiogramas import router as profesiogramas_router
 from .restricciones_medicas import router as restricciones_medicas_router
 from .assessments import router as assessments_router
+from .sectores_economicos import router as sectores_economicos_router
+from .empresas import router as empresas_router
+from .matriz_legal import router as matriz_legal_router
 
 
 
@@ -85,3 +88,6 @@ api_router.include_router(areas_router, prefix="/areas", tags=["areas"])
 api_router.include_router(contractors_router, prefix="/contractors", tags=["contractors"])
 api_router.include_router(profesiogramas_router, prefix="/profesiogramas", tags=["profesiogramas"])
 api_router.include_router(restricciones_medicas_router, prefix="/restricciones-medicas", tags=["restricciones-medicas"])
+api_router.include_router(sectores_economicos_router, prefix="/sectores-economicos", tags=["sectores-economicos"])
+api_router.include_router(empresas_router, prefix="/empresas", tags=["empresas"])
+api_router.include_router(matriz_legal_router, prefix="/matriz-legal", tags=["matriz-legal"])
