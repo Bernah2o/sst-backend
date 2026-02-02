@@ -1193,8 +1193,8 @@ async def submit_survey(
             detail="No inscrito en el curso asociado con esta encuesta"
         )
         
-        # Validate learning flow: course must be completed before taking surveys
-        if enrollment.progress < 100:
+        # Validate learning flow: course must be completed before taking surveys (95% means materials are done)
+        if enrollment.progress < 95:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Debe completar todo el material del curso antes de responder la encuesta"
