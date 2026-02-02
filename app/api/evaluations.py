@@ -429,8 +429,8 @@ async def submit_evaluation(
                 detail="Debe estar inscrito en el curso para realizar la evaluación"
             )
         
-        # Check if course is completed (100% progress)
-        if enrollment.progress < 100:
+        # Check if course is completed (95% means all materials are done)
+        if enrollment.progress < 95:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Debe completar todo el material del curso antes de realizar la evaluación"
@@ -490,8 +490,8 @@ async def submit_evaluation(
                     detail="Debe estar inscrito en el curso para realizar la evaluación"
                 )
             
-            # Check if course is completed (100% progress)
-            if enrollment.progress < 100:
+            # Check if course is completed (95% means all materials are done)
+            if enrollment.progress < 95:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Debe completar todo el material del curso antes de realizar la evaluación"
@@ -1256,8 +1256,8 @@ async def start_evaluation(
                 detail="Debe estar inscrito en el curso para realizar la evaluación"
             )
         
-        # Check if course is completed (100% progress)
-        if enrollment.progress < 100:
+        # Check if course is completed (95% means all materials are done)
+        if enrollment.progress < 95:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Debe completar todo el material del curso antes de realizar la evaluación"
