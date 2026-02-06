@@ -749,6 +749,9 @@ async def get_attendance_stats(
 async def generate_attendance_list_pdf(
     course_name: str = Query(..., description="Nombre del curso"),
     session_date: str = Query(..., description="Fecha de la sesión (YYYY-MM-DD)"),
+    attendance_type: Optional[str] = Query(
+        None, description="Tipo de asistencia a filtrar: 'in_person', 'virtual' o None para todos"
+    ),
     download: bool = Query(
         False, description="Set to true to download the file with a custom filename"
     ),
@@ -766,18 +769,25 @@ async def generate_attendance_list_pdf(
     try:
         # Parse session date
         session_date_obj = datetime.strptime(session_date, "%Y-%m-%d").date()
-        
-        # Get all attendance records for this course and date
-        attendances = (
+
+        # Build query with filters
+        query = (
             db.query(Attendance)
             .join(User, Attendance.user_id == User.id)
             .filter(
                 Attendance.course_name == course_name,
                 func.date(Attendance.session_date) == session_date_obj
             )
-            .order_by(User.first_name, User.last_name)
-            .all()
         )
+
+        # Filtrar por tipo de asistencia si se especifica
+        if attendance_type:
+            if attendance_type == "in_person":
+                query = query.filter(Attendance.attendance_type == AttendanceType.IN_PERSON)
+            elif attendance_type == "virtual":
+                query = query.filter(Attendance.attendance_type == AttendanceType.VIRTUAL)
+
+        attendances = query.order_by(User.first_name, User.last_name).all()
 
         if not attendances:
             raise HTTPException(
@@ -788,10 +798,17 @@ async def generate_attendance_list_pdf(
         # Get course information (try to find from the first attendance record)
         first_attendance = attendances[0]
         course = db.query(Course).filter(Course.title == course_name).first()
-        
+
+        # Determinar etiqueta de tipo de asistencia para el título
+        type_label = ""
+        if attendance_type == "in_person":
+            type_label = " (Presencial)"
+        elif attendance_type == "virtual":
+            type_label = " (Virtual)"
+
         # Construir datos de sesión para la plantilla
         session_data = {
-            "title": f"Lista de Asistencia - {course_name}",
+            "title": f"Lista de Asistencia{type_label} - {course_name}",
             "session_date": session_date_obj.strftime("%d/%m/%Y"),
             "course_title": course_name,
             "location": course.location if course else "No especificado",
