@@ -53,11 +53,11 @@ class OccupationalExamNotificationService:
             # Por defecto anual si no se especifica
             return exam_date + timedelta(days=365)
     
-    def get_workers_with_pending_exams(self, days_ahead: int = 30) -> List[Dict[str, Any]]:
+    def get_workers_with_pending_exams(self, days_ahead: int = 15) -> List[Dict[str, Any]]:
         """Obtiene trabajadores que necesitan exámenes ocupacionales
 
         Args:
-            days_ahead: Días de anticipación para enviar notificaciones (por defecto 30 días = 1 mes)
+            days_ahead: Días de anticipación para enviar notificaciones (por defecto 15 días)
         """
         today = date.today()
         notification_date = today + timedelta(days=days_ahead)
@@ -237,6 +237,7 @@ Sistema de Gestión SST
                 exam_type_label = latest_exam.tipo_examen.nombre
             
             # Preparar los datos para la plantilla
+            last_exam_date = worker_data.get("last_exam_date")
             template_data = {
                 "worker_name": worker.first_name,
                 "worker_full_name": worker.full_name,
@@ -246,6 +247,7 @@ Sistema de Gestión SST
                 "periodicidad": cargo.periodicidad_emo or 'Anual',
                 "exam_date": next_exam_date.strftime('%d/%m/%Y'),
                 "next_exam_date": next_exam_date.strftime('%d/%m/%Y'),
+                "last_exam_date": last_exam_date.strftime('%d/%m/%Y') if last_exam_date else 'Sin exámenes previos',
                 "days_until_exam": days_until_exam,
                 "status": status,
                 "urgency": urgency,
@@ -310,8 +312,8 @@ Sistema de Gestión SST
                 "message": "Disparador de notificaciones deshabilitado por administrador"
             }
 
-        # Obtener trabajadores con exámenes pendientes (30 días de anticipación = 1 mes)
-        workers_with_pending_exams = self.get_workers_with_pending_exams(days_ahead=30)
+        # Obtener trabajadores con exámenes pendientes (15 días de anticipación)
+        workers_with_pending_exams = self.get_workers_with_pending_exams(days_ahead=15)
         
         stats = {
             "total_workers": len(workers_with_pending_exams),
@@ -359,8 +361,8 @@ Sistema de Gestión SST
         workers_with_pending_exams = self.get_workers_with_pending_exams(days_ahead=0)
         exams_overdue = sum(1 for worker_data in workers_with_pending_exams if worker_data["status"] == "vencido")
         
-        # Exámenes próximos a vencer (30 días = 1 mes)
-        workers_with_upcoming_exams = self.get_workers_with_pending_exams(days_ahead=30)
+        # Exámenes próximos a vencer (15 días)
+        workers_with_upcoming_exams = self.get_workers_with_pending_exams(days_ahead=15)
         exams_upcoming = sum(1 for worker_data in workers_with_upcoming_exams if worker_data["status"] == "proximo_a_vencer")
         
         return {
