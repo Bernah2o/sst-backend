@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 from typing import Optional, BinaryIO
 from fastapi import UploadFile
@@ -35,23 +36,48 @@ class StorageManager:
         """Obtiene la extensión del archivo"""
         return Path(filename).suffix.lower()
     
+    # Extensiones permitidas para subida de archivos
+    ALLOWED_EXTENSIONS = {'.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.tiff', '.tif', '.webp', '.gif', '.xlsx', '.xls', '.csv'}
+    MAX_FILE_SIZE = 15 * 1024 * 1024  # 15 MB
+
+    def _sanitize_filename(self, filename: str) -> str:
+        """Sanitiza el nombre del archivo para prevenir path traversal"""
+        # Extraer solo el nombre base (elimina rutas como ../../)
+        filename = os.path.basename(filename)
+        # Reemplazar caracteres no seguros
+        name, ext = os.path.splitext(filename)
+        name = re.sub(r'[^a-zA-Z0-9._\-\s]', '_', name)
+        return f"{name}{ext.lower()}" if name else f"{uuid.uuid4()}{ext.lower()}"
+
     def _generate_unique_filename(self, original_filename: str) -> str:
         """Genera un nombre único para el archivo"""
         file_extension = self._get_file_extension(original_filename)
         unique_id = str(uuid.uuid4())
         return f"{unique_id}{file_extension}"
-    
+
+    def _validate_upload(self, filename: str, file_content: bytes) -> None:
+        """Valida extensión y tamaño del archivo antes de subir"""
+        ext = self._get_file_extension(filename)
+        if ext not in self.ALLOWED_EXTENSIONS:
+            raise ValueError(f"Extensión de archivo no permitida: {ext}. Permitidas: {', '.join(sorted(self.ALLOWED_EXTENSIONS))}")
+        if len(file_content) > self.MAX_FILE_SIZE:
+            size_mb = len(file_content) / (1024 * 1024)
+            raise ValueError(f"Archivo demasiado grande: {size_mb:.1f} MB. Máximo permitido: {self.MAX_FILE_SIZE // (1024 * 1024)} MB")
+
     async def upload_file(self, file: UploadFile, folder: str = "uploads", keep_original_name: bool = False) -> dict:
         """Sube un archivo usando Contabo Storage o almacenamiento local"""
         try:
-            # Generar nombre del archivo
+            # Generar nombre del archivo (siempre sanitizar)
             if keep_original_name:
-                filename = file.filename
+                filename = self._sanitize_filename(file.filename)
             else:
                 filename = self._generate_unique_filename(file.filename)
-            
+
             # Leer contenido del archivo
             file_content = await file.read()
+
+            # Validar extensión y tamaño
+            self._validate_upload(filename, file_content)
             
             if self.use_contabo:
                 return await self._upload_to_contabo(file_content, filename, folder, file.content_type)
@@ -65,7 +91,10 @@ class StorageManager:
     async def _upload_to_contabo(self, file_content: bytes, filename: str, folder: str, content_type: str) -> dict:
         if not contabo_service:
             raise ValueError("Contabo Storage no está configurado")
-        storage_path = f"{folder.strip('/')}/{filename}" if folder else filename
+        # Sanitizar folder y filename para prevenir path traversal
+        safe_folder = folder.strip('/').replace('..', '')
+        safe_filename = os.path.basename(filename)
+        storage_path = f"{safe_folder}/{safe_filename}" if safe_folder else safe_filename
         public_url = contabo_service.upload_bytes(file_content, storage_path, content_type or "application/octet-stream")
         return {
             "filename": filename,
@@ -83,12 +112,15 @@ class StorageManager:
                 local_dir = Path("static")
             else:
                 local_dir = Path(settings.upload_dir)
-            
+
             # Crear directorio si no existe
             local_dir.mkdir(exist_ok=True)
-            
-            # Ruta completa del archivo
-            file_path = local_dir / filename
+
+            # Sanitizar filename y verificar que no escape del directorio
+            safe_filename = os.path.basename(filename)
+            file_path = (local_dir / safe_filename).resolve()
+            if not str(file_path).startswith(str(local_dir.resolve())):
+                raise ValueError("Ruta de archivo no permitida")
             
             # Escribir archivo
             with open(file_path, "wb") as f:

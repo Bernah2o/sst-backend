@@ -3,6 +3,7 @@ Servicio de almacenamiento S3 para documentos de empleados y exámenes médicos.
 """
 
 import os
+import re
 import boto3
 import logging
 from typing import Optional, Dict, Any, BinaryIO

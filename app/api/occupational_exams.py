@@ -982,6 +982,11 @@ async def update_occupational_exam(
         "tipo_examen_id": exam.tipo_examen_id,
         "tipo_examen": exam.tipo_examen,
         "exam_date": exam.exam_date,
+        "departamento": exam.departamento,
+        "ciudad": exam.ciudad,
+        "duracion_cargo_actual_meses": exam.duracion_cargo_actual_meses,
+        "factores_riesgo_evaluados": exam.factores_riesgo_evaluados,
+        "cargo_id_momento_examen": exam.cargo_id_momento_examen,
         "programa": exam.programa,
         "occupational_conclusions": exam.occupational_conclusions,
         "preventive_occupational_behaviors": exam.preventive_occupational_behaviors,
@@ -990,8 +995,8 @@ async def update_occupational_exam(
         "observations": exam.observations,
         "examining_doctor": exam.examining_doctor,
         "medical_center": exam.medical_center,
-        "pdf_file_path": exam.pdf_file_path,  # Campo incluido
-        "requires_follow_up": exam.requires_follow_up,  # Campo agregado
+        "pdf_file_path": exam.pdf_file_path,
+        "requires_follow_up": exam.requires_follow_up,
         "supplier_id": exam.supplier_id,
         "doctor_id": exam.doctor_id,
         "worker_id": exam.worker_id,

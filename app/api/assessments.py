@@ -50,10 +50,10 @@ async def upload_assessment_photo(
     folder = f"Autoevaluacion_Trabajo_en_Casa/{worker_name}/fotos"
     
     try:
-        # Mantener nombre original o agregar tipo
+        # Renombrar archivo con el tipo de foto para organización
         extension = os.path.splitext(file.filename)[1]
-        filename = f"{photo_type}{extension}"
-        
+        file.filename = f"{photo_type}{extension}"
+
         # Subir archivo
         result = await storage_manager.upload_file(file, folder=folder, keep_original_name=True)
         
