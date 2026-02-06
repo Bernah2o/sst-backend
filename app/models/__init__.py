@@ -55,6 +55,24 @@ from .session import Session
 from .audit import AuditLog
 from .enrollment import Enrollment, EnrollmentStatus
 from .user_progress import UserMaterialProgress, UserModuleProgress, MaterialProgressStatus
+from .interactive_lesson import (
+    InteractiveLesson,
+    LessonSlide,
+    InlineQuiz,
+    InlineQuizAnswer,
+    InteractiveActivity,
+    LessonNavigationType,
+    LessonStatus,
+    SlideContentType,
+    ActivityType,
+    QuestionType as InlineQuestionType,
+)
+from .interactive_progress import (
+    UserLessonProgress,
+    UserSlideProgress,
+    UserActivityAttempt,
+    LessonProgressStatus,
+)
 from .notification_acknowledgment import NotificationAcknowledgment
 from .admin_config import AdminConfig, Programas, Ocupacion
 from .assessment import HomeworkAssessment
@@ -197,4 +215,21 @@ __all__ = [
     "EstadoNorma",
     "EstadoCumplimiento",
     "EstadoImportacion",
+    # Interactive Lessons models
+    "InteractiveLesson",
+    "LessonSlide",
+    "InlineQuiz",
+    "InlineQuizAnswer",
+    "InteractiveActivity",
+    # Interactive Lessons enums
+    "LessonNavigationType",
+    "LessonStatus",
+    "SlideContentType",
+    "ActivityType",
+    "InlineQuestionType",
+    # Interactive Progress models
+    "UserLessonProgress",
+    "UserSlideProgress",
+    "UserActivityAttempt",
+    "LessonProgressStatus",
 ]

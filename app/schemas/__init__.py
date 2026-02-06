@@ -190,6 +190,48 @@ from .matriz_legal import (
     PaginatedMatrizLegalNormas,
     PaginatedMatrizLegalNormasConCumplimiento,
 )
+from .interactive_lesson import (
+    # Enums
+    LessonNavigationType,
+    LessonStatus,
+    SlideContentType,
+    ActivityType,
+    InlineQuestionType,
+    LessonProgressStatus,
+    # Inline Quiz schemas
+    InlineQuizAnswerCreate,
+    InlineQuizAnswerUpdate,
+    InlineQuizAnswerResponse,
+    InlineQuizCreate,
+    InlineQuizUpdate,
+    InlineQuizResponse,
+    # Slide schemas
+    LessonSlideCreate,
+    LessonSlideUpdate,
+    LessonSlideResponse,
+    # Activity schemas
+    InteractiveActivityCreate,
+    InteractiveActivityUpdate,
+    InteractiveActivityResponse,
+    # Lesson schemas
+    InteractiveLessonCreate,
+    InteractiveLessonUpdate,
+    InteractiveLessonResponse,
+    InteractiveLessonListResponse,
+    # Progress schemas
+    UserSlideProgressResponse,
+    UserLessonProgressResponse,
+    UserActivityAttemptResponse,
+    # API Request/Response schemas
+    SlideViewRequest,
+    QuizSubmitRequest,
+    QuizSubmitResponse,
+    ActivitySubmitRequest,
+    ActivitySubmitResponse,
+    LessonProgressSummary,
+    SlideReorderRequest,
+    LessonWithProgressResponse,
+)
 
 __all__ = [
     # User schemas
@@ -368,4 +410,38 @@ __all__ = [
     "MatrizLegalDashboard",
     "PaginatedMatrizLegalNormas",
     "PaginatedMatrizLegalNormasConCumplimiento",
+    # Interactive Lesson schemas
+    "LessonNavigationType",
+    "LessonStatus",
+    "SlideContentType",
+    "ActivityType",
+    "InlineQuestionType",
+    "LessonProgressStatus",
+    "InlineQuizAnswerCreate",
+    "InlineQuizAnswerUpdate",
+    "InlineQuizAnswerResponse",
+    "InlineQuizCreate",
+    "InlineQuizUpdate",
+    "InlineQuizResponse",
+    "LessonSlideCreate",
+    "LessonSlideUpdate",
+    "LessonSlideResponse",
+    "InteractiveActivityCreate",
+    "InteractiveActivityUpdate",
+    "InteractiveActivityResponse",
+    "InteractiveLessonCreate",
+    "InteractiveLessonUpdate",
+    "InteractiveLessonResponse",
+    "InteractiveLessonListResponse",
+    "UserSlideProgressResponse",
+    "UserLessonProgressResponse",
+    "UserActivityAttemptResponse",
+    "SlideViewRequest",
+    "QuizSubmitRequest",
+    "QuizSubmitResponse",
+    "ActivitySubmitRequest",
+    "ActivitySubmitResponse",
+    "LessonProgressSummary",
+    "SlideReorderRequest",
+    "LessonWithProgressResponse",
 ]

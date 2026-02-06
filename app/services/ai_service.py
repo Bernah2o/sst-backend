@@ -167,5 +167,193 @@ IMPORTANTE:
             raise
 
 
+    async def generate_interactive_lesson_content(
+        self,
+        titulo: str,
+        tema: str,
+        descripcion: Optional[str] = None,
+        num_slides: int = 5,
+        incluir_quiz: bool = True,
+        incluir_actividad: bool = True,
+    ) -> dict:
+        """
+        Genera contenido para una lección interactiva sobre SST.
+
+        Args:
+            titulo: Título de la lección
+            tema: Tema principal (ej: "Uso de EPP", "Trabajo en alturas")
+            descripcion: Descripción adicional del contenido deseado
+            num_slides: Número de slides a generar (3-10)
+            incluir_quiz: Si debe incluir preguntas de quiz
+            incluir_actividad: Si debe incluir actividad interactiva
+
+        Returns:
+            dict con slides, quizzes y actividades generadas
+        """
+        if not self.is_configured():
+            raise ValueError("Perplexity API key no configurada")
+
+        num_slides = max(3, min(10, num_slides))  # Limitar entre 3 y 10
+
+        context = f"""TÍTULO DE LA LECCIÓN: {titulo}
+TEMA PRINCIPAL: {tema}"""
+        if descripcion:
+            context += f"\nDESCRIPCIÓN ADICIONAL: {descripcion}"
+
+        quiz_instruction = ""
+        if incluir_quiz:
+            quiz_instruction = """
+- Incluye 2-3 preguntas de quiz (tipo multiple_choice o true_false) distribuidas en slides tipo "quiz"
+- Cada quiz debe tener: question_text, question_type, points (1-3), options con is_correct"""
+
+        activity_instruction = ""
+        if incluir_actividad:
+            activity_instruction = """
+- Incluye 1 actividad interactiva al final (tipo: "matching" o "ordering")
+- Para "matching": pares de conceptos relacionados (izquierda-derecha)
+- Para "ordering": pasos de un procedimiento en orden correcto"""
+
+        prompt = f"""Eres un experto en Seguridad y Salud en el Trabajo (SST) y diseño instruccional.
+
+{context}
+
+INSTRUCCIONES:
+Genera contenido educativo para una lección interactiva con {num_slides} slides sobre este tema de SST.
+
+REQUISITOS:
+- Contenido práctico y aplicable al contexto laboral colombiano
+- Lenguaje claro y profesional
+- Incluir datos, estadísticas o normatividad relevante cuando sea apropiado
+{quiz_instruction}
+{activity_instruction}
+
+Responde EXACTAMENTE con este formato JSON:
+{{
+    "slides": [
+        {{
+            "order_index": 0,
+            "slide_type": "text",
+            "title": "Título del slide",
+            "content": {{
+                "html": "<h2>Título</h2><p>Contenido educativo aquí...</p><ul><li>Punto 1</li><li>Punto 2</li></ul>"
+            }}
+        }},
+        {{
+            "order_index": 1,
+            "slide_type": "text_image",
+            "title": "Título con imagen",
+            "content": {{
+                "text": "Descripción del contenido",
+                "image_url": "",
+                "image_description": "Descripción de la imagen sugerida",
+                "layout": "left"
+            }}
+        }},
+        {{
+            "order_index": 2,
+            "slide_type": "quiz",
+            "title": "Pregunta de verificación",
+            "content": {{}},
+            "quiz": {{
+                "question_text": "¿Cuál es la respuesta correcta?",
+                "question_type": "multiple_choice",
+                "points": 1,
+                "explanation": "Explicación de la respuesta correcta",
+                "options": [
+                    {{"text": "Opción A", "is_correct": false}},
+                    {{"text": "Opción B", "is_correct": true}},
+                    {{"text": "Opción C", "is_correct": false}}
+                ]
+            }}
+        }}
+    ],
+    "activity": {{
+        "title": "Actividad práctica",
+        "activity_type": "matching",
+        "instructions": "Une cada concepto con su definición",
+        "config": {{
+            "pairs": [
+                {{"left": "Concepto 1", "right": "Definición 1"}},
+                {{"left": "Concepto 2", "right": "Definición 2"}}
+            ]
+        }},
+        "points": 5
+    }}
+}}
+
+IMPORTANTE:
+- Genera exactamente {num_slides} slides
+- El contenido HTML debe ser válido y bien formateado
+- Los quizzes deben tener exactamente una respuesta correcta
+- Responde SOLO con el JSON, sin texto adicional"""
+
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    PERPLEXITY_API_URL,
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": self.model,
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": "Eres un experto en Seguridad y Salud en el Trabajo (SST) y diseño instruccional. Generas contenido educativo de alta calidad en formato JSON válido."
+                            },
+                            {
+                                "role": "user",
+                                "content": prompt
+                            }
+                        ],
+                        "temperature": 0.7,
+                        "max_tokens": 4000,
+                    }
+                )
+
+                if response.status_code != 200:
+                    error_detail = response.text
+                    try:
+                        error_json = response.json()
+                        error_detail = error_json.get("error", {}).get("message", response.text)
+                    except:
+                        pass
+                    logger.error(f"Error de Perplexity API: {response.status_code} - {error_detail}")
+                    raise Exception(f"Error de API ({response.status_code}): {error_detail}")
+
+                data = response.json()
+                content = data["choices"][0]["message"]["content"]
+
+                # Limpiar el contenido
+                import json
+                content = content.strip()
+                if content.startswith("```json"):
+                    content = content[7:]
+                if content.startswith("```"):
+                    content = content[3:]
+                if content.endswith("```"):
+                    content = content[:-3]
+                content = content.strip()
+
+                try:
+                    result = json.loads(content)
+                    return {
+                        "slides": result.get("slides", []),
+                        "activity": result.get("activity"),
+                        "success": True
+                    }
+                except json.JSONDecodeError as e:
+                    logger.warning(f"No se pudo parsear JSON de Perplexity: {content[:500]}")
+                    raise Exception(f"Error al procesar respuesta de IA: {str(e)}")
+
+        except httpx.TimeoutException:
+            logger.error("Timeout al conectar con Perplexity API")
+            raise Exception("Tiempo de espera agotado al conectar con el servicio de IA")
+        except Exception as e:
+            logger.error(f"Error al generar contenido de lección: {str(e)}")
+            raise
+
+
 # Instancia global del servicio
 ai_service = AIService()

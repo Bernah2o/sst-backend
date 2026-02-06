@@ -233,7 +233,7 @@ async def upload_course_material(
             detail="Curso no encontrado"
         )
     
-    if course.created_by != current_user.id and current_user.role.value not in ["admin", "capacitador"]:
+    if course.created_by != current_user.id and current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes para subir materiales a este curso"
@@ -338,7 +338,7 @@ async def delete_course_material(
     module = db.query(CourseModule).filter(CourseModule.id == material.module_id).first()
     course = db.query(Course).filter(Course.id == module.course_id).first()
     
-    if course.created_by != current_user.id and current_user.role.value not in ["admin", "capacitador"]:
+    if course.created_by != current_user.id and current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes para eliminar este material"
@@ -434,7 +434,7 @@ async def view_course_material(
         Enrollment.course_id == course.id
     ).first()
     
-    if not enrollment and course.created_by != current_user.id and current_user.role.value not in ["admin", "capacitador"]:
+    if not enrollment and course.created_by != current_user.id and current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No está inscrito en este curso"
