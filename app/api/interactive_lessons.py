@@ -268,7 +268,7 @@ def calculate_lesson_progress(
 
 # ==================== CRUD Lecciones ====================
 
-@router.get("/", response_model=PaginatedResponse[InteractiveLessonListResponse])
+@router.get("", response_model=PaginatedResponse[InteractiveLessonListResponse])
 async def get_lessons(
     module_id: Optional[int] = None,
     status: Optional[str] = None,
@@ -333,7 +333,7 @@ async def get_lessons(
     )
 
 
-@router.post("/", response_model=InteractiveLessonResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=InteractiveLessonResponse, status_code=status.HTTP_201_CREATED)
 async def create_lesson(
     lesson_data: InteractiveLessonCreate,
     db: Session = Depends(get_db),
