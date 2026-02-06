@@ -17,6 +17,7 @@ from starlette.background import BackgroundTask
 from app.dependencies import get_current_active_user
 from app.database import get_db
 from app.models.user import User
+from app.models.worker import Worker
 from app.models.attendance import Attendance, AttendanceStatus, AttendanceType, VirtualSession
 from app.models.course import Course
 from app.models.session import Session as SessionModel
@@ -802,11 +803,27 @@ async def generate_attendance_list_pdf(
         attendees = []
         for attendance in attendances:
             user = attendance.user
+            # Buscar el Worker asociado al User para obtener el cargo
+            worker = db.query(Worker).filter(Worker.user_id == user.id).first()
+            position = ""
+            area = ""
+            if worker:
+                position = worker.position or ""
+                # Obtener el área del worker si tiene relación con area_obj
+                if worker.area_obj:
+                    area = worker.area_obj.name or ""
+                else:
+                    area = worker.department or ""
+            else:
+                # Fallback al User si no hay Worker
+                position = user.position or ""
+                area = user.department or ""
+
             attendees.append({
                 "name": f"{user.first_name} {user.last_name}",
                 "document": user.document_number or "",
-                "position": user.position or "",
-                "area": user.department or "",  # Usar department como área
+                "position": position,
+                "area": area,
                 "signature": "",  # Campo vacío para firma física
             })
 
@@ -1881,12 +1898,28 @@ async def generate_attendance_list_pdf(
         # Construir lista de asistentes para la plantilla
         attendees = []
         for user in enrolled_users:
+            # Buscar el Worker asociado al User para obtener el cargo
+            worker = db.query(Worker).filter(Worker.user_id == user.id).first()
+            position = ""
+            area = ""
+            if worker:
+                position = worker.position or ""
+                # Obtener el área del worker si tiene relación con area_obj
+                if worker.area_obj:
+                    area = worker.area_obj.name or ""
+                else:
+                    area = worker.department or ""
+            else:
+                # Fallback al User si no hay Worker
+                position = getattr(user, "position", "") or ""
+                area = getattr(user, "department", "") or ""
+
             attendees.append(
                 {
                     "name": f"{user.first_name} {user.last_name}",
                     "document": getattr(user, "document_number", ""),
-                    "position": getattr(user, "position", ""),
-                    "area": getattr(user, "area", ""),
+                    "position": position,
+                    "area": area,
                 }
             )
 
