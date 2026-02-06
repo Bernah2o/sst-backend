@@ -398,7 +398,7 @@ async def get_enrollment_details(
     Get detailed pending items for a specific enrollment.
     Only accessible by admin, capacitador, or supervisor.
     """
-    if current_user.role.value not in ["admin", "capacitador", "supervisor"]:
+    if current_user.role.value not in ["admin", "trainer", "supervisor"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permisos para ver detalles de progreso de otros usuarios"
@@ -422,7 +422,7 @@ async def send_reminder(
     """
     Send a manual reminder to the user for a specific enrollment
     """
-    if current_user.role.value not in ["admin", "capacitador", "supervisor"]:
+    if current_user.role.value not in ["admin", "trainer", "supervisor"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permisos para enviar recordatorios"

@@ -11,9 +11,55 @@ from app.models.user import User
 from app.models.course import Course, CourseModule, CourseMaterial
 from app.models.enrollment import Enrollment
 from app.models.user_progress import UserMaterialProgress, UserModuleProgress, MaterialProgressStatus
+from app.models.interactive_lesson import InteractiveLesson, LessonStatus
+from app.models.interactive_progress import UserLessonProgress, LessonProgressStatus
 from app.schemas.common import MessageResponse
 
 router = APIRouter()
+
+
+def _calculate_module_progress_with_lessons(
+    db: Session, user_id: int, module_id: int, enrollment_id: int
+) -> tuple:
+    """
+    Calculate module progress including both materials and interactive lessons.
+    Returns (completed_items, total_items, progress_percentage)
+    """
+    # Count materials
+    module_materials = db.query(CourseMaterial).filter(
+        CourseMaterial.module_id == module_id
+    ).all()
+    completed_materials = db.query(UserMaterialProgress).filter(
+        and_(
+            UserMaterialProgress.user_id == user_id,
+            UserMaterialProgress.material_id.in_([m.id for m in module_materials]),
+            UserMaterialProgress.status == MaterialProgressStatus.COMPLETED
+        )
+    ).count() if module_materials else 0
+
+    # Count interactive lessons (only published ones)
+    module_lessons = db.query(InteractiveLesson).filter(
+        and_(
+            InteractiveLesson.module_id == module_id,
+            InteractiveLesson.status == LessonStatus.PUBLISHED
+        )
+    ).all()
+    completed_lessons = db.query(UserLessonProgress).filter(
+        and_(
+            UserLessonProgress.user_id == user_id,
+            UserLessonProgress.lesson_id.in_([l.id for l in module_lessons]),
+            UserLessonProgress.enrollment_id == enrollment_id,
+            UserLessonProgress.status == LessonProgressStatus.COMPLETED.value
+        )
+    ).count() if module_lessons else 0
+
+    # Calculate totals
+    total_items = len(module_materials) + len(module_lessons)
+    completed_items = completed_materials + completed_lessons
+
+    progress_percentage = (completed_items / total_items * 100) if total_items > 0 else 0
+
+    return completed_items, total_items, progress_percentage
 
 
 def _check_pending_requirements(db: Session, user_id: int, course_id: int):
@@ -186,19 +232,12 @@ async def complete_material(
     # Update module progress
     material = db.query(CourseMaterial).filter(CourseMaterial.id == material_id).first()
     module_id = material.module_id
-    
-    # Check if all materials in module are completed
-    module_materials = db.query(CourseMaterial).filter(CourseMaterial.module_id == module_id).all()
-    completed_materials = db.query(UserMaterialProgress).filter(
-        and_(
-            UserMaterialProgress.user_id == current_user.id,
-            UserMaterialProgress.material_id.in_([m.id for m in module_materials]),
-            UserMaterialProgress.status == MaterialProgressStatus.COMPLETED
-        )
-    ).count()
-    
-    module_progress_percentage = (completed_materials / len(module_materials)) * 100 if module_materials else 0
-    
+
+    # Calculate module progress including materials and interactive lessons
+    completed_items, total_items, module_progress_percentage = _calculate_module_progress_with_lessons(
+        db, current_user.id, module_id, progress.enrollment_id
+    )
+
     # Update or create module progress
     module_progress = db.query(UserModuleProgress).filter(
         and_(
@@ -206,7 +245,7 @@ async def complete_material(
             UserModuleProgress.module_id == module_id
         )
     ).first()
-    
+
     if not module_progress:
         module_progress = UserModuleProgress(
             user_id=current_user.id,
@@ -214,9 +253,9 @@ async def complete_material(
             enrollment_id=progress.enrollment_id
         )
         db.add(module_progress)
-    
-    module_progress.materials_completed = completed_materials
-    module_progress.total_materials = len(module_materials)
+
+    module_progress.materials_completed = completed_items
+    module_progress.total_materials = total_items
     module_progress.calculate_progress()
     
     # Update overall course progress
@@ -348,7 +387,20 @@ async def get_course_progress(
         if material.module_id not in materials_by_module:
             materials_by_module[material.module_id] = []
         materials_by_module[material.module_id].append(material)
-    
+
+    # Get all interactive lessons for all modules (only published)
+    all_lessons = db.query(InteractiveLesson).filter(
+        and_(
+            InteractiveLesson.module_id.in_(module_ids),
+            InteractiveLesson.status == LessonStatus.PUBLISHED
+        )
+    ).all()
+    lessons_by_module = {}
+    for lesson in all_lessons:
+        if lesson.module_id not in lessons_by_module:
+            lessons_by_module[lesson.module_id] = []
+        lessons_by_module[lesson.module_id].append(lesson)
+
     # Get all module progress in one query
     if current_user.role == "admin" and not enrollment.id:
         # For admins, get any completed modules
@@ -389,19 +441,40 @@ async def get_course_progress(
             )
         ).all()
         material_progress_dict = {mp.material_id: mp for mp in material_progress_data}
-    
+
+    # Get all interactive lesson progress in one query
+    lesson_ids = [lesson.id for lesson in all_lessons]
+    if current_user.role == "admin" and not enrollment.id:
+        # For admins, get any completed lessons
+        lesson_progress_data = db.query(UserLessonProgress).filter(
+            and_(
+                UserLessonProgress.lesson_id.in_(lesson_ids),
+                UserLessonProgress.status == LessonProgressStatus.COMPLETED.value
+            )
+        ).all() if lesson_ids else []
+        lesson_progress_dict = {lp.lesson_id: lp for lp in lesson_progress_data}
+    else:
+        # For regular users, get their specific progress
+        lesson_progress_data = db.query(UserLessonProgress).filter(
+            and_(
+                UserLessonProgress.user_id == current_user.id,
+                UserLessonProgress.lesson_id.in_(lesson_ids)
+            )
+        ).all() if lesson_ids else []
+        lesson_progress_dict = {lp.lesson_id: lp for lp in lesson_progress_data}
+
     # Build modules progress using cached data
     modules_progress = []
     for module in modules:
         module_progress = module_progress_dict.get(module.id)
-        
+
         # Get materials for this module
         module_materials = materials_by_module.get(module.id, [])
         materials_progress = []
-        
+
         for material in module_materials:
             material_progress = material_progress_dict.get(material.id)
-            
+
             materials_progress.append({
                 "material_id": material.id,
                 "title": material.title,
@@ -411,13 +484,32 @@ async def get_course_progress(
                 "time_spent_seconds": material_progress.time_spent_seconds if material_progress else 0,
                 "last_position": material_progress.last_position if material_progress else 0.0
             })
-        
+
+        # Get interactive lessons for this module
+        module_lessons = lessons_by_module.get(module.id, [])
+        lessons_progress = []
+
+        for lesson in module_lessons:
+            lesson_progress = lesson_progress_dict.get(lesson.id)
+
+            lessons_progress.append({
+                "lesson_id": lesson.id,
+                "title": lesson.title,
+                "description": lesson.description,
+                "estimated_duration_minutes": lesson.estimated_duration_minutes,
+                "progress_percentage": lesson_progress.progress_percentage if lesson_progress else 0,
+                "status": lesson_progress.status if lesson_progress else LessonProgressStatus.NOT_STARTED.value,
+                "time_spent_seconds": lesson_progress.time_spent_seconds if lesson_progress else 0,
+                "quiz_score": lesson_progress.quiz_score if lesson_progress else None
+            })
+
         modules_progress.append({
             "module_id": module.id,
             "title": module.title,
             "progress_percentage": module_progress.progress_percentage if module_progress else 0,
             "status": module_progress.status if module_progress else MaterialProgressStatus.NOT_STARTED.value,
-            "materials": materials_progress
+            "materials": materials_progress,
+            "interactive_lessons": lessons_progress
         })
     
     # Recalculate course progress as average of all module progress percentages
@@ -609,11 +701,11 @@ async def get_user_dashboard(
                     UserModuleProgress.module_id == module.id
                 )
             ).first()
-            
+
             # Get materials count and completed count for this module
             materials = db.query(CourseMaterial).filter(CourseMaterial.module_id == module.id).all()
             completed_materials = 0
-            
+
             for material in materials:
                 material_progress = db.query(UserMaterialProgress).filter(
                     and_(
@@ -622,10 +714,35 @@ async def get_user_dashboard(
                         UserMaterialProgress.status == MaterialProgressStatus.COMPLETED
                     )
                 ).first()
-                
+
                 if material_progress:
                     completed_materials += 1
-            
+
+            # Get interactive lessons count and completed count for this module
+            lessons = db.query(InteractiveLesson).filter(
+                and_(
+                    InteractiveLesson.module_id == module.id,
+                    InteractiveLesson.status == LessonStatus.PUBLISHED
+                )
+            ).all()
+            completed_lessons = 0
+
+            for lesson in lessons:
+                lesson_progress = db.query(UserLessonProgress).filter(
+                    and_(
+                        UserLessonProgress.user_id == current_user.id,
+                        UserLessonProgress.lesson_id == lesson.id,
+                        UserLessonProgress.status == LessonProgressStatus.COMPLETED.value
+                    )
+                ).first()
+
+                if lesson_progress:
+                    completed_lessons += 1
+
+            # Calculate total items (materials + lessons)
+            total_items = len(materials) + len(lessons)
+            completed_items = completed_materials + completed_lessons
+
             modules_progress.append({
                 "module_id": module.id,
                 "title": module.title,
@@ -634,6 +751,10 @@ async def get_user_dashboard(
                 "status": module_progress.status if module_progress else MaterialProgressStatus.NOT_STARTED.value,
                 "total_materials": len(materials),
                 "completed_materials": completed_materials,
+                "total_lessons": len(lessons),
+                "completed_lessons": completed_lessons,
+                "total_items": total_items,
+                "completed_items": completed_items,
                 "started_at": module_progress.started_at.isoformat() if module_progress and module_progress.started_at else None,
                 "completed_at": module_progress.completed_at.isoformat() if module_progress and module_progress.completed_at else None
             })

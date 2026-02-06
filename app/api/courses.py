@@ -112,6 +112,8 @@ from app.models.course import (
     CourseType,
 )
 from app.models.enrollment import Enrollment, EnrollmentStatus
+from app.models.interactive_lesson import InteractiveLesson, LessonStatus
+from app.models.interactive_progress import UserLessonProgress, LessonProgressStatus
 from app.schemas.report import AttendanceReportResponse
 from app.schemas.common import PaginatedResponse
 from app.models.attendance import Attendance, AttendanceStatus
@@ -172,7 +174,7 @@ async def get_courses(
         query = query.filter(Course.status == status)
     else:
         # Only show published courses for users who are not admin or capacitador
-        if current_user.role.value not in ["admin", "capacitador"]:
+        if current_user.role.value not in ["admin", "trainer"]:
             query = query.filter(Course.status == CourseStatus.PUBLISHED)
 
     # Get total count
@@ -209,7 +211,7 @@ async def create_course(
     """
     Create new course (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
@@ -283,7 +285,9 @@ async def get_course(
     """
     Get course by ID
     """
-    course = db.query(Course).filter(Course.id == course_id).first()
+    course = db.query(Course).options(
+        joinedload(Course.modules).joinedload(CourseModule.interactive_lessons)
+    ).filter(Course.id == course_id).first()
 
     if not course:
         raise HTTPException(
@@ -291,7 +295,7 @@ async def get_course(
         )
 
     # Check if user can access this course
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         # For non-admin users, check if course is published AND user is enrolled
         if course.status != CourseStatus.PUBLISHED:
             raise HTTPException(
@@ -430,7 +434,7 @@ async def update_course(
     """
     Update course (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
@@ -462,7 +466,7 @@ async def delete_course(
     """
     Delete course (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
@@ -521,7 +525,7 @@ async def create_course_module(
     """
     Create new course module (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
@@ -560,7 +564,7 @@ async def get_course_modules(
         )
 
     # Check if user can access this course
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         # For non-admin users, check if course is published AND user is enrolled
         if course.status != CourseStatus.PUBLISHED:
             raise HTTPException(
@@ -587,12 +591,75 @@ async def get_course_modules(
 
     modules = (
         db.query(CourseModule)
+        .options(joinedload(CourseModule.interactive_lessons))
         .filter(CourseModule.course_id == course_id)
         .order_by(CourseModule.order_index)
         .all()
     )
 
-    return modules
+    # Get user's enrollment if exists
+    enrollment = (
+        db.query(Enrollment)
+        .filter(
+            and_(
+                Enrollment.user_id == current_user.id,
+                Enrollment.course_id == course_id,
+            )
+        )
+        .first()
+    )
+
+    # Build response with interactive lessons and their progress
+    result = []
+    for module in modules:
+        module_dict = {
+            "id": module.id,
+            "course_id": module.course_id,
+            "title": module.title,
+            "description": module.description,
+            "order_index": module.order_index,
+            "duration_minutes": module.duration_minutes,
+            "is_required": module.is_required,
+            "materials": module.materials,
+            "interactive_lessons": [],
+            "created_at": module.created_at,
+            "updated_at": module.updated_at,
+        }
+
+        # Add interactive lessons with progress info
+        for lesson in module.interactive_lessons:
+            lesson_data = {
+                "id": lesson.id,
+                "title": lesson.title,
+                "description": lesson.description,
+                "order_index": lesson.order_index,
+                "status": lesson.status.value if hasattr(lesson.status, 'value') else lesson.status,
+                "estimated_duration_minutes": lesson.estimated_duration_minutes,
+                "is_required": lesson.is_required,
+                "slides_count": len(lesson.slides) if lesson.slides else 0,
+                "completed": False,
+                "progress_percentage": 0
+            }
+
+            # Get user's progress for this lesson if enrolled
+            if enrollment:
+                lesson_progress = db.query(UserLessonProgress).filter(
+                    and_(
+                        UserLessonProgress.user_id == current_user.id,
+                        UserLessonProgress.lesson_id == lesson.id,
+                        UserLessonProgress.enrollment_id == enrollment.id
+                    )
+                ).first()
+
+                if lesson_progress:
+                    lesson_data["completed"] = lesson_progress.status == LessonProgressStatus.COMPLETED.value
+                    lesson_data["progress_percentage"] = lesson_progress.progress_percentage or 0
+
+            module_dict["interactive_lessons"].append(lesson_data)
+
+        result.append(module_dict)
+
+    return result
 
 
 @router.put("/modules/{module_id}", response_model=CourseModuleResponse)
@@ -605,7 +672,7 @@ async def update_course_module(
     """
     Update course module (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -640,7 +707,7 @@ async def delete_course_module(
     """
     Delete course module (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -757,7 +824,7 @@ async def get_module_materials(
 
     # Check if user can access this course
     course = db.query(Course).filter(Course.id == module.course_id).first()
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         # For non-admin users, check if course is published AND user is enrolled
         if course.status != CourseStatus.PUBLISHED:
             raise HTTPException(
@@ -790,7 +857,7 @@ async def get_module_materials(
     )
 
     # Para usuarios no administradores, añadir información de progreso
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         result = []
         for material in materials:
             # Buscar progreso del material
@@ -873,7 +940,7 @@ async def create_course_material(
     """
     Create new course material (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -927,7 +994,7 @@ async def update_course_material(
     """
     Update course material (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -979,7 +1046,7 @@ async def delete_course_material(
     """
     Delete course material (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -1088,7 +1155,7 @@ async def validate_course_requirements(
         )
 
     # Check if user has permission to validate this course
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
@@ -1181,7 +1248,7 @@ async def get_course_attendance_report(
         )
 
     # Check permissions
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )

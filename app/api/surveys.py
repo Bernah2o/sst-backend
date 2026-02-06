@@ -64,7 +64,7 @@ async def get_surveys(
         query = query.filter(Survey.status == status)
     else:
         # Only show active surveys for non-admin users
-        if current_user.role.value not in ["admin", "capacitador"]:
+        if current_user.role.value not in ["admin", "trainer"]:
             query = query.filter(Survey.status == SurveyStatus.PUBLISHED)
     
     # Get total count
@@ -119,7 +119,7 @@ async def create_survey(
     """
     Create new survey (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -308,7 +308,7 @@ async def get_general_surveys(
     """
     Get general surveys (not associated with any course) - for admin/capacitador management
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -733,7 +733,7 @@ async def update_survey(
     """
     Update survey (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -885,7 +885,7 @@ async def delete_survey(
     """
     Delete survey (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -994,7 +994,7 @@ async def create_survey_question(
     """
     Create new question for survey (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -1032,7 +1032,7 @@ async def update_survey_question(
     """
     Update survey question (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -1088,7 +1088,7 @@ async def delete_survey_question(
     """
     Delete survey question (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -1280,7 +1280,7 @@ async def get_survey_responses(
     """
     Get survey responses (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -1328,7 +1328,7 @@ async def get_survey_statistics(
     """
     Get survey statistics (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -1393,7 +1393,7 @@ async def get_user_surveys(
     Get surveys for a specific user
     """
     # Users can only see their own surveys unless they are admin or capacitador
-    if current_user.role.value not in ["admin", "capacitador"] and current_user.id != user_id:
+    if current_user.role.value not in ["admin", "trainer"] and current_user.id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -1557,7 +1557,7 @@ async def get_survey_detailed_results(
     """
     Get detailed survey results with employee information (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -1810,7 +1810,7 @@ async def get_survey_edit_impact(
     Get information about the impact of editing a survey (admin and capacitador roles only)
     Returns details about existing responses that would be affected
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -1867,7 +1867,7 @@ async def get_question_edit_impact(
     Get information about the impact of editing a question (admin and capacitador roles only)
     Returns details about existing answers that would be affected
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"

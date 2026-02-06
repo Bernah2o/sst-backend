@@ -1,6 +1,6 @@
 from datetime import datetime
-from typing import List, Optional
-from pydantic import BaseModel, Field
+from typing import List, Optional, Any
+from pydantic import BaseModel, Field, model_validator
 from enum import Enum
 
 
@@ -89,10 +89,64 @@ class CourseModuleUpdate(BaseModel):
     is_required: Optional[bool] = None
 
 
+class InteractiveLessonSummary(BaseModel):
+    """Schema resumido de lección interactiva para incluir en módulos"""
+    id: int
+    title: str
+    description: Optional[str] = None
+    order_index: int = 0
+    status: str = "draft"
+    estimated_duration_minutes: Optional[int] = None
+    is_required: bool = True
+    slides_count: int = 0
+    completed: bool = False
+    progress_percentage: float = 0
+
+    class Config:
+        from_attributes = True
+
+    @model_validator(mode='before')
+    @classmethod
+    def convert_from_orm(cls, data: Any) -> Any:
+        """Convertir desde ORM a dict con valores por defecto"""
+        if isinstance(data, dict):
+            return data
+        # Es un objeto ORM
+        return {
+            'id': data.id,
+            'title': data.title,
+            'description': data.description,
+            'order_index': data.order_index,
+            'status': data.status.value if hasattr(data.status, 'value') else str(data.status),
+            'estimated_duration_minutes': data.estimated_duration_minutes,
+            'is_required': data.is_required,
+            'slides_count': data.slides_count if hasattr(data, 'slides_count') else 0,
+            'completed': False,
+            'progress_percentage': 0.0
+        }
+
+    @classmethod
+    def from_lesson(cls, lesson, user_progress=None):
+        """Crear desde un modelo de lección con progreso opcional"""
+        return cls(
+            id=lesson.id,
+            title=lesson.title,
+            description=lesson.description,
+            order_index=lesson.order_index,
+            status=lesson.status.value if hasattr(lesson.status, 'value') else str(lesson.status),
+            estimated_duration_minutes=lesson.estimated_duration_minutes,
+            is_required=lesson.is_required,
+            slides_count=lesson.slides_count if hasattr(lesson, 'slides_count') else 0,
+            completed=user_progress.status == "completed" if user_progress else False,
+            progress_percentage=user_progress.progress_percentage if user_progress else 0
+        )
+
+
 class CourseModuleResponse(CourseModuleBase):
     id: int
     course_id: int
     materials: List[CourseMaterialResponse] = []
+    interactive_lessons: List[InteractiveLessonSummary] = []
     created_at: datetime
     updated_at: datetime
 

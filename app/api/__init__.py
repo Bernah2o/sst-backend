@@ -42,6 +42,7 @@ from .assessments import router as assessments_router
 from .sectores_economicos import router as sectores_economicos_router
 from .empresas import router as empresas_router
 from .matriz_legal import router as matriz_legal_router
+from .interactive_lessons import router as interactive_lessons_router
 
 
 
@@ -91,3 +92,4 @@ api_router.include_router(restricciones_medicas_router, prefix="/restricciones-m
 api_router.include_router(sectores_economicos_router, prefix="/sectores-economicos", tags=["sectores-economicos"])
 api_router.include_router(empresas_router, prefix="/empresas", tags=["empresas"])
 api_router.include_router(matriz_legal_router, prefix="/matriz-legal", tags=["matriz-legal"])
+api_router.include_router(interactive_lessons_router, prefix="/interactive-lessons", tags=["interactive-lessons"])

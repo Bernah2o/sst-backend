@@ -104,6 +104,12 @@ class CourseModule(Base):
         "CourseMaterial", back_populates="module", cascade="all, delete-orphan"
     )
     module_progress = relationship("UserModuleProgress", back_populates="module")
+    interactive_lessons = relationship(
+        "InteractiveLesson",
+        back_populates="module",
+        cascade="all, delete-orphan",
+        order_by="InteractiveLesson.order_index"
+    )
 
     def __repr__(self):
         return f"<CourseModule(id={self.id}, title='{self.title}', course_id={self.course_id})>"

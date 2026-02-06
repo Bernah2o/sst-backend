@@ -99,7 +99,7 @@ async def bulk_assign_courses(
     db: Session = Depends(get_db),
 ) -> BulkEnrollmentResponse:
     """Assign a course to multiple users (admin and capacitador roles only)"""
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
@@ -357,7 +357,7 @@ async def bulk_assign_courses_to_workers(
     Assign a course to multiple workers by their worker IDs (admin and capacitador roles only)
     If a worker is not registered, they will be auto-registered with a temporary user account
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
@@ -549,7 +549,7 @@ async def get_user_enrollments(
     """
     # Check permissions
     if (
-        current_user.role.value not in ["admin", "capacitador"]
+        current_user.role.value not in ["admin", "trainer"]
         and current_user.id != user_id
     ):
         raise HTTPException(
@@ -604,7 +604,7 @@ async def delete_enrollment(
     Permanently delete an enrollment and all related data from the database
     This action cannot be undone.
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -817,7 +817,7 @@ async def get_course_workers(
     """
     Get all workers enrolled in a specific course (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -901,7 +901,7 @@ async def remove_worker_from_course(
     """
     Remove a worker from a course (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -1011,7 +1011,7 @@ async def get_enrollments(
     Get all enrollments with pagination (admin and capacitador roles only)
     """
     # Check permissions
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -1105,7 +1105,7 @@ async def create_enrollment(
     Create a new enrollment (admin and capacitador roles only)
     """
     # Check permissions
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -1209,7 +1209,7 @@ async def get_enrollment_stats(
     Get enrollment statistics by status
     """
     # Check permissions
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -1326,7 +1326,7 @@ async def get_enrollment(
     Get enrollment by ID
     """
     # Check permissions
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -1387,7 +1387,7 @@ async def update_enrollment(
     Update an enrollment (admin and capacitador roles only)
     """
     # Check permissions
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )

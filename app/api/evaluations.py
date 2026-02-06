@@ -51,7 +51,7 @@ async def get_evaluations(
         query = query.filter(Evaluation.status == status)
     else:
         # Only show active evaluations for non-admin/capacitador users
-        if current_user.role.value not in ["admin", "capacitador"]:
+        if current_user.role.value not in ["admin", "trainer"]:
             query = query.filter(Evaluation.status == EvaluationStatus.PUBLISHED)
     
     # For employees, only show evaluations from courses they are enrolled in
@@ -132,7 +132,7 @@ async def get_evaluation_stats(
     Get evaluation statistics by status
     """
     # Check permissions
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -170,7 +170,7 @@ async def create_evaluation(
     """
     Create new evaluation (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -883,7 +883,7 @@ async def get_user_evaluations(
     Get user evaluations
     """
     # Users can only see their own evaluations unless they are admin or capacitador
-    if current_user.role.value not in ["admin", "capacitador"] and current_user.id != user_id:
+    if current_user.role.value not in ["admin", "trainer"] and current_user.id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -929,7 +929,7 @@ async def get_all_evaluation_results(
     from fastapi.responses import JSONResponse
     
     # Only admin and capacitador can access this endpoint
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -1040,7 +1040,7 @@ async def get_evaluation(
         )
     
     # Check if user can access this evaluation
-    if current_user.role.value not in ["admin", "capacitador"] and evaluation.status != EvaluationStatus.PUBLISHED:
+    if current_user.role.value not in ["admin", "trainer"] and evaluation.status != EvaluationStatus.PUBLISHED:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Evaluación no disponible"
@@ -1059,7 +1059,7 @@ async def update_evaluation(
     """
     Update evaluation (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -1136,7 +1136,7 @@ async def delete_evaluation(
     """
     Delete evaluation (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -1175,7 +1175,7 @@ async def validate_evaluation_deletion(
     """
     Validate if evaluation can be deleted (check for associated courses and user submissions)
     """
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -1482,7 +1482,7 @@ async def reassign_evaluation(
     Reassign evaluation to a user (admin only) - resets attempts
     """
     # Only admin and capacitador can reassign evaluations
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -1551,7 +1551,7 @@ async def reset_evaluation_status(
     Reset evaluation status for a user (admin only) - allows retaking failed evaluations
     """
     # Only admin and capacitador can reset evaluation status
-    if current_user.role.value not in ["admin", "capacitador"]:
+    if current_user.role.value not in ["admin", "trainer"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
