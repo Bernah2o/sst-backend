@@ -120,9 +120,7 @@ async def get_occupational_exams(
         )
 
     # Get total count (solo contar exámenes, no el join completo)
-    total = db.query(func.count(OccupationalExam.id)).select_from(
-        query.with_entities(OccupationalExam.id).subquery()
-    ).scalar()
+    total = query.with_entities(func.count(OccupationalExam.id)).scalar()
 
     # Apply pagination and ordering
     results = (
@@ -144,6 +142,60 @@ async def get_occupational_exams(
             next_exam_date = exam.exam_date + timedelta(days=730)
         else:
             next_exam_date = exam.exam_date + timedelta(days=365)
+
+        # ---------------------------------------------------------------------
+        # Lógica de fallback para datos faltantes (producción / legacy)
+        # ---------------------------------------------------------------------
+        
+        # 1. Calcular duración del cargo si no existe
+        duracion = exam.duracion_cargo_actual_meses
+        if duracion is None and worker and worker.fecha_de_ingreso:
+            try:
+                # Calcular diferencia en meses
+                months_diff = (exam.exam_date.year - worker.fecha_de_ingreso.year) * 12 + (exam.exam_date.month - worker.fecha_de_ingreso.month)
+                if exam.exam_date.day < worker.fecha_de_ingreso.day:
+                    months_diff -= 1
+                duracion = max(0, months_diff)
+            except Exception:
+                pass
+
+        # 2. Traer factores de riesgo del profesiograma si no existen
+        factores = exam.factores_riesgo_evaluados
+        if not factores and cargo:
+            try:
+                profesiograma = (
+                    db.query(Profesiograma)
+                    .filter(
+                        Profesiograma.cargo_id == cargo.id,
+                        Profesiograma.estado == ProfesiogramaEstado.ACTIVO
+                    )
+                    .order_by(Profesiograma.version.desc())
+                    .first()
+                )
+                
+                if profesiograma:
+                    prof_factors = (
+                        db.query(ProfesiogramaFactor)
+                        .options(joinedload(ProfesiogramaFactor.factor_riesgo))
+                        .filter(ProfesiogramaFactor.profesiograma_id == profesiograma.id)
+                        .all()
+                    )
+                    
+                    risk_factors_list = []
+                    for pf in prof_factors:
+                        risk_factors_list.append({
+                            "factor_riesgo_id": pf.factor_riesgo_id,
+                            "nombre": pf.factor_riesgo.nombre,
+                            "codigo": pf.factor_riesgo.codigo,
+                            "categoria": pf.factor_riesgo.categoria,
+                            "nivel_exposicion": pf.nivel_exposicion,
+                            "tiempo_exposicion_horas": float(pf.tiempo_exposicion_horas) if pf.tiempo_exposicion_horas else 0,
+                        })
+                    factores = risk_factors_list
+            except Exception as e:
+                print(f"Error fetching legacy factors: {e}")
+
+        # ---------------------------------------------------------------------
 
         # Mapear medical_aptitude_concept a result legacy
         result_mapping = {
@@ -168,8 +220,8 @@ async def get_occupational_exams(
             "exam_date": exam.exam_date.isoformat(),
             "departamento": exam.departamento,
             "ciudad": exam.ciudad,
-            "duracion_cargo_actual_meses": exam.duracion_cargo_actual_meses,
-            "factores_riesgo_evaluados": exam.factores_riesgo_evaluados,
+            "duracion_cargo_actual_meses": duracion,
+            "factores_riesgo_evaluados": factores,
             "cargo_id_momento_examen": exam.cargo_id_momento_examen,
             "programa": exam.programa,
             "occupational_conclusions": exam.occupational_conclusions,
@@ -761,6 +813,60 @@ async def get_occupational_exam(
         "no_apto": "no_apto",
     }
 
+    # ---------------------------------------------------------------------
+    # Lógica de fallback para datos faltantes (producción / legacy)
+    # ---------------------------------------------------------------------
+    
+    # 1. Calcular duración del cargo si no existe
+    duracion = exam.duracion_cargo_actual_meses
+    if duracion is None and worker and worker.fecha_de_ingreso:
+        try:
+            # Calcular diferencia en meses
+            months_diff = (exam.exam_date.year - worker.fecha_de_ingreso.year) * 12 + (exam.exam_date.month - worker.fecha_de_ingreso.month)
+            if exam.exam_date.day < worker.fecha_de_ingreso.day:
+                months_diff -= 1
+            duracion = max(0, months_diff)
+        except Exception:
+            pass
+
+    # 2. Traer factores de riesgo del profesiograma si no existen
+    factores = exam.factores_riesgo_evaluados
+    if not factores and cargo:
+        try:
+            profesiograma = (
+                db.query(Profesiograma)
+                .filter(
+                    Profesiograma.cargo_id == cargo.id,
+                    Profesiograma.estado == ProfesiogramaEstado.ACTIVO
+                )
+                .order_by(Profesiograma.version.desc())
+                .first()
+            )
+            
+            if profesiograma:
+                prof_factors = (
+                    db.query(ProfesiogramaFactor)
+                    .options(joinedload(ProfesiogramaFactor.factor_riesgo))
+                    .filter(ProfesiogramaFactor.profesiograma_id == profesiograma.id)
+                    .all()
+                )
+                
+                risk_factors_list = []
+                for pf in prof_factors:
+                    risk_factors_list.append({
+                        "factor_riesgo_id": pf.factor_riesgo_id,
+                        "nombre": pf.factor_riesgo.nombre,
+                        "codigo": pf.factor_riesgo.codigo,
+                        "categoria": pf.factor_riesgo.categoria,
+                        "nivel_exposicion": pf.nivel_exposicion,
+                        "tiempo_exposicion_horas": float(pf.tiempo_exposicion_horas) if pf.tiempo_exposicion_horas else 0,
+                    })
+                factores = risk_factors_list
+        except Exception as e:
+            print(f"Error fetching legacy factors: {e}")
+
+    # ---------------------------------------------------------------------
+
     # Crear respuesta enriquecida con datos del trabajador
     exam_dict = {
         "id": exam.id,
@@ -768,8 +874,8 @@ async def get_occupational_exam(
         "exam_date": exam.exam_date,
         "departamento": exam.departamento,
         "ciudad": exam.ciudad,
-        "duracion_cargo_actual_meses": exam.duracion_cargo_actual_meses,
-        "factores_riesgo_evaluados": exam.factores_riesgo_evaluados,
+        "duracion_cargo_actual_meses": duracion,
+        "factores_riesgo_evaluados": factores,
         "cargo_id_momento_examen": exam.cargo_id_momento_examen,
         "programa": exam.programa,
         "occupational_conclusions": exam.occupational_conclusions,
