@@ -852,3 +852,118 @@ class HTMLToPDFConverter:
                     f"Error en generación masiva: {str(e)}"
                 ))
             return results + emergency_results
+
+    def generate_meeting_minutes_pdf(self, template_data, output_path=None):
+        """
+        Genera un PDF de Acta de Reunión de comité.
+
+        Args:
+            template_data: Diccionario con datos de la reunión, miembros, asistencia, actividades
+            output_path: Ruta donde guardar el PDF (opcional)
+
+        Returns:
+            bytes: Contenido del PDF o ruta del archivo si se especifica output_path
+        """
+        try:
+            now = datetime.now()
+            logo_base64 = self._load_logo_base64()
+
+            if not isinstance(template_data, dict):
+                if hasattr(template_data, "__dict__"):
+                    template_data = template_data.__dict__
+                else:
+                    template_data = {}
+
+            context = {
+                "logo_base64": logo_base64,
+                "acta_number": template_data.get("acta_number", 1),
+                "committee_type": template_data.get("committee_type", "copasst"),
+                "committee_name": template_data.get("committee_name", ""),
+                "meeting_date": template_data.get("meeting_date", ""),
+                "location": template_data.get("location", "No especificado"),
+                "start_time": template_data.get("start_time", ""),
+                "end_time": template_data.get("end_time", ""),
+                "attendees": template_data.get("attendees", []),
+                "empty_rows": template_data.get("empty_rows", 0),
+                "guests": template_data.get("guests", []),
+                "quorum_achieved": template_data.get("quorum_achieved", False),
+                "present_count": template_data.get("present_count", 0),
+                "total_members": template_data.get("total_members", 0),
+                "quorum_percentage": template_data.get("quorum_percentage", "0"),
+                "previous_meeting": template_data.get("previous_meeting", None),
+                "previous_acta_number": template_data.get("previous_acta_number", 0),
+                "previous_meeting_date": template_data.get("previous_meeting_date", ""),
+                "agenda": template_data.get("agenda", ""),
+                "minutes_content": template_data.get("minutes_content", ""),
+                "previous_activities": template_data.get("previous_activities", []),
+                "new_activities": template_data.get("new_activities", []),
+                "notes": template_data.get("notes", ""),
+                "secretary_name": template_data.get("secretary_name", "_______________"),
+                "president_name": template_data.get("president_name", "_______________"),
+                "generation_date": now.strftime("%d/%m/%Y"),
+                "generation_time": now.strftime("%H:%M:%S"),
+            }
+
+            html_content = self.render_template("meeting_minutes.html", context)
+
+            css_path = os.path.join(self.template_dir, "css", "meeting_minutes.css")
+            if os.path.exists(css_path):
+                css_url = self._get_file_url(css_path)
+                html_content = html_content.replace(
+                    'href="css/meeting_minutes.css"', f'href="{css_url}"'
+                )
+
+            specific_meta = """
+    <meta name="title" content="Acta de Reunión">
+    <meta name="subject" content="Acta de Reunión de Comité SST">
+    <meta name="keywords" content="acta, reunión, comité, sst">"""
+            html_content = html_content.replace("</head>", f"{specific_meta}\n</head>")
+
+            base_url = self._get_file_url(self.template_dir)
+            html_obj = weasyprint.HTML(
+                string=html_content, base_url=base_url, encoding="utf-8"
+            )
+
+            stylesheets = []
+            if os.path.exists(css_path):
+                css_obj = self._load_css_cached(css_path)
+                if css_obj:
+                    stylesheets.append(css_obj)
+
+            pdf_metadata = {
+                "title": f"Acta de Reunión No. {context['acta_number']}",
+                "author": "SST Sistema",
+                "subject": "Acta de Reunión de Comité",
+                "keywords": "acta, reunión, comité, sst",
+                "creator": "SST Sistema",
+                "producer": "WeasyPrint",
+            }
+
+            pdf_content = html_obj.write_pdf(
+                stylesheets=stylesheets,
+                metadata=pdf_metadata,
+                pdf_version=(1, 7),
+                optimize_images=True,
+                compress=True,
+            )
+
+            if not pdf_content or len(pdf_content) < 1000:
+                raise ValueError("PDF de acta de reunión está vacío")
+
+            logger.info(f"Acta de reunión PDF generada ({len(pdf_content)} bytes)")
+
+            if output_path:
+                output_dir = os.path.dirname(output_path)
+                if output_dir:
+                    os.makedirs(output_dir, exist_ok=True)
+                with open(output_path, "wb") as f:
+                    f.write(pdf_content)
+                return output_path
+
+            return pdf_content
+
+        except Exception as e:
+            logger.error(f"Error en generate_meeting_minutes_pdf: {str(e)}")
+            return self._generate_emergency_pdf(
+                f"Error en acta de reunión: {str(e)}"
+            )

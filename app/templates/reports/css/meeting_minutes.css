@@ -1,0 +1,396 @@
+/* Estilos generales - Acta de Reunión */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: Arial, Helvetica, sans-serif;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+@page {
+    size: letter;
+    margin: 1.5cm 1.5cm 2cm 1.5cm;
+}
+
+body {
+    background-color: #ffffff;
+    color: #333333;
+    font-size: 10pt;
+    line-height: 1.4;
+}
+
+.container {
+    width: 100%;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+/* Header */
+.header {
+    display: flex;
+    align-items: center;
+    border: 1px solid #333;
+    margin-bottom: 10px;
+}
+
+.header-logo {
+    width: 20%;
+    padding: 8px;
+    text-align: center;
+    border-right: 1px solid #333;
+}
+
+.header-logo img {
+    max-width: 100px;
+    max-height: 60px;
+}
+
+.logo-placeholder {
+    font-size: 14pt;
+    font-weight: bold;
+    color: #999;
+    padding: 10px;
+}
+
+.header-title {
+    width: 55%;
+    text-align: center;
+    padding: 8px;
+    border-right: 1px solid #333;
+}
+
+.header-title h1 {
+    color: #1976d2;
+    font-size: 16pt;
+    margin: 0;
+}
+
+.header-meta {
+    width: 25%;
+    padding: 4px 8px;
+}
+
+.meta-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.meta-table td {
+    padding: 2px 4px;
+    font-size: 8pt;
+    border: none;
+}
+
+.meta-label {
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.meta-value {
+    text-align: right;
+}
+
+/* Committee Type Section */
+.committee-type-section {
+    margin-bottom: 10px;
+}
+
+.committee-type-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #333;
+}
+
+.committee-type-table td {
+    padding: 6px 10px;
+    font-size: 9pt;
+    border: none;
+}
+
+.type-label {
+    font-weight: bold;
+    width: 25%;
+    background-color: #e3f2fd;
+}
+
+.type-option {
+    width: 25%;
+    text-align: center;
+}
+
+.checkbox {
+    font-size: 12pt;
+    vertical-align: middle;
+}
+
+.checkbox.checked {
+    color: #1976d2;
+    font-weight: bold;
+}
+
+/* Meeting Info */
+.meeting-info {
+    margin-bottom: 12px;
+}
+
+.info-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #333;
+}
+
+.info-table td {
+    padding: 6px 10px;
+    font-size: 9pt;
+    border: 1px solid #ccc;
+}
+
+.info-label {
+    font-weight: bold;
+    background-color: #e3f2fd;
+    width: 15%;
+    white-space: nowrap;
+}
+
+.info-value {
+    width: 35%;
+}
+
+/* Section Titles */
+.section-title {
+    background-color: #1976d2;
+    color: white;
+    padding: 6px 12px;
+    font-size: 11pt;
+    margin-bottom: 0;
+}
+
+/* Attendees Table */
+.attendees-section {
+    margin-bottom: 12px;
+}
+
+.attendees-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #333;
+}
+
+.attendees-table th {
+    background-color: #1976d2;
+    color: white;
+    padding: 6px 8px;
+    font-size: 9pt;
+    text-align: center;
+    border: 1px solid #1565c0;
+}
+
+.attendees-table td {
+    padding: 5px 8px;
+    font-size: 9pt;
+    border: 1px solid #ccc;
+}
+
+.attendees-table tr:nth-child(even) {
+    background-color: #f5f5f5;
+}
+
+.col-number { width: 5%; }
+.col-name { width: 30%; }
+.col-role { width: 25%; }
+.col-attendance { width: 10%; }
+.col-signature { width: 30%; }
+
+.center { text-align: center; }
+
+.signature-cell {
+    height: 35px;
+    background-color: #fafafa;
+}
+
+.empty-row td {
+    height: 30px;
+}
+
+/* Guests Section */
+.guests-section {
+    margin-bottom: 12px;
+}
+
+.guests-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #333;
+}
+
+.guests-table th {
+    background-color: #1976d2;
+    color: white;
+    padding: 6px 8px;
+    font-size: 9pt;
+    text-align: center;
+    border: 1px solid #1565c0;
+}
+
+.guests-table td {
+    padding: 5px 8px;
+    font-size: 9pt;
+    border: 1px solid #ccc;
+}
+
+/* Activities Section */
+.activities-section {
+    margin-bottom: 15px;
+}
+
+.activity-block {
+    border: 1px solid #ddd;
+    margin-bottom: 8px;
+    page-break-inside: avoid;
+}
+
+.activity-block h3 {
+    background-color: #e3f2fd;
+    padding: 5px 12px;
+    font-size: 10pt;
+    color: #1565c0;
+    border-bottom: 1px solid #ddd;
+}
+
+.activity-content {
+    padding: 8px 12px;
+    font-size: 9pt;
+}
+
+.activity-content p {
+    margin-bottom: 4px;
+}
+
+.preformatted {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Commitments Table */
+.commitments-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+}
+
+.commitments-table th {
+    background-color: #42a5f5;
+    color: white;
+    padding: 5px 6px;
+    text-align: center;
+    border: 1px solid #1e88e5;
+    font-size: 8pt;
+}
+
+.commitments-table td {
+    padding: 4px 6px;
+    border: 1px solid #ccc;
+    font-size: 8pt;
+}
+
+.commitments-table tr:nth-child(even) {
+    background-color: #f5f5f5;
+}
+
+.col-activity { width: 25%; }
+.col-responsible { width: 15%; }
+.col-status { width: 10%; }
+.col-progress { width: 8%; }
+.col-due-date { width: 10%; }
+.col-observations { width: 27%; }
+
+/* Activity subtitle */
+.activity-subtitle {
+    padding: 6px 12px 2px;
+    font-size: 9pt;
+    font-style: italic;
+    color: #555;
+}
+
+/* Signatures Section */
+.signatures-section {
+    margin-top: 30px;
+    page-break-inside: avoid;
+}
+
+.signature-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 40px;
+}
+
+.signature-block {
+    width: 45%;
+    text-align: center;
+}
+
+.signature-line {
+    border-bottom: 1px solid #333;
+    height: 50px;
+    margin-bottom: 5px;
+}
+
+.signature-name {
+    font-weight: bold;
+    font-size: 9pt;
+    margin-bottom: 2px;
+}
+
+.signature-role {
+    font-size: 8pt;
+    color: #666;
+}
+
+/* Footer */
+.footer {
+    margin-top: 20px;
+    border-top: 1px solid #ddd;
+    padding-top: 8px;
+    font-size: 8pt;
+    color: #999;
+    text-align: center;
+}
+
+/* Print Styles */
+@media print {
+    body {
+        font-size: 9pt;
+    }
+
+    .container {
+        padding: 0;
+    }
+
+    .header-title h1 {
+        font-size: 14pt;
+    }
+
+    .attendees-table th,
+    .guests-table th,
+    .commitments-table th {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .section-title {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .activity-block h3 {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .type-label,
+    .info-label {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}

@@ -28,7 +28,8 @@ class OccupationalExam(Base):
     worker_id = Column(Integer, ForeignKey("workers.id"), nullable=False)
     
     # Información del Examen
-    tipo_examen_id = Column(Integer, ForeignKey('tipos_examen.id'), nullable=False)
+    exam_type = Column(String(50), nullable=True)  # Campo con datos en producción (examen_ingreso, examen_periodico, etc.)
+    tipo_examen_id = Column(Integer, ForeignKey('tipos_examen.id'), nullable=True)
     exam_date = Column(Date, nullable=False)
     departamento = Column(String(50), nullable=True)
     ciudad = Column(String(50), nullable=True)

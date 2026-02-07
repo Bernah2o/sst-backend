@@ -1,18 +1,24 @@
 """
 API endpoints for Committee Meetings Management
 """
+import io
+import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, desc, asc, func
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.committee import (
-    Committee, CommitteeMeeting, MeetingAttendance, CommitteeMember
+    Committee, CommitteeMeeting, MeetingAttendance, CommitteeMember, CommitteeActivity
 )
 from app.models.user import User
+from app.services.html_to_pdf import HTMLToPDFConverter
+
+logger = logging.getLogger(__name__)
 from app.schemas.committee import (
     CommitteeMeeting as CommitteeMeetingSchema,
     CommitteeMeetingCreate,
@@ -105,8 +111,8 @@ async def create_committee_meeting(
     for member in active_members:
         attendance = MeetingAttendance(
             meeting_id=db_meeting.id,
-            user_id=member.user_id,
-            status=AttendanceStatusEnum.ABSENT
+            member_id=member.id,
+            attendance_status=AttendanceStatusEnum.ABSENT.value
         )
         db.add(attendance)
     
@@ -172,33 +178,62 @@ async def update_committee_meeting(
     
     return meeting
 
+@router.get("/{meeting_id}/delete-preview")
+async def get_meeting_delete_preview(
+    meeting_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Obtener información de lo que se eliminará al borrar una reunión"""
+    meeting = db.query(CommitteeMeeting).filter(CommitteeMeeting.id == meeting_id).first()
+
+    if not meeting:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Reunión no encontrada"
+        )
+
+    attendance_count = db.query(MeetingAttendance).filter(
+        MeetingAttendance.meeting_id == meeting_id
+    ).count()
+
+    activities_count = db.query(CommitteeActivity).filter(
+        CommitteeActivity.meeting_id == meeting_id
+    ).count()
+
+    return {
+        "meeting_id": meeting_id,
+        "meeting_title": meeting.title,
+        "attendance_count": attendance_count,
+        "activities_count": activities_count,
+        "can_delete": True,
+    }
+
 @router.delete("/{meeting_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_committee_meeting(
     meeting_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Eliminar una reunión de comité"""
+    """Eliminar una reunión de comité y todo su flujo asociado"""
     meeting = db.query(CommitteeMeeting).filter(CommitteeMeeting.id == meeting_id).first()
-    
+
     if not meeting:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Reunión no encontrada"
         )
-    
-    # Verificar que no se pueda eliminar una reunión completada
-    if meeting.status == "completed":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No se puede eliminar una reunión completada"
-        )
-    
+
+    # Eliminar actividades/compromisos vinculados a esta reunión
+    db.query(CommitteeActivity).filter(
+        CommitteeActivity.meeting_id == meeting_id
+    ).delete()
+
     # Eliminar registros de asistencia asociados
     db.query(MeetingAttendance).filter(
         MeetingAttendance.meeting_id == meeting_id
     ).delete()
-    
+
     db.delete(meeting)
     db.commit()
 
@@ -263,29 +298,36 @@ async def complete_meeting(
 @router.post("/{meeting_id}/cancel", response_model=CommitteeMeetingSchema)
 async def cancel_meeting(
     meeting_id: int,
+    body: dict = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Cancelar una reunión"""
+    """Cancelar una reunión con motivo opcional"""
     meeting = db.query(CommitteeMeeting).filter(CommitteeMeeting.id == meeting_id).first()
-    
+
     if not meeting:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Reunión no encontrada"
         )
-    
+
     if meeting.status == "completed":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No se puede cancelar una reunión completada"
         )
-    
+
     meeting.status = "cancelled"
-    
+
+    # Guardar el motivo de cancelación en las notas
+    reason = (body or {}).get("reason", "")
+    if reason:
+        cancel_note = f"Motivo de cancelación: {reason}"
+        meeting.notes = f"{meeting.notes}\n\n{cancel_note}" if meeting.notes else cancel_note
+
     db.commit()
     db.refresh(meeting)
-    
+
     return meeting
 
 # Meeting Attendance endpoints
@@ -332,26 +374,26 @@ async def create_meeting_attendance(
             detail="Reunión no encontrada"
         )
     
-    # Verificar que el usuario es miembro del comité
+    # Verificar que el miembro existe y pertenece al comité
     member = db.query(CommitteeMember).filter(
         and_(
+            CommitteeMember.id == attendance.member_id,
             CommitteeMember.committee_id == meeting.committee_id,
-            CommitteeMember.user_id == attendance.user_id,
             CommitteeMember.is_active == True
         )
     ).first()
-    
+
     if not member:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El usuario no es miembro activo del comité"
+            detail="El miembro no es parte activa del comité"
         )
-    
+
     # Verificar que no existe ya un registro de asistencia
     existing_attendance = db.query(MeetingAttendance).filter(
         and_(
             MeetingAttendance.meeting_id == meeting_id,
-            MeetingAttendance.user_id == attendance.user_id
+            MeetingAttendance.member_id == attendance.member_id
         )
     ).first()
     
@@ -363,7 +405,10 @@ async def create_meeting_attendance(
     
     attendance_data = attendance.model_dump()
     attendance_data["meeting_id"] = meeting_id
-    
+    # Mapear 'status' del schema a 'attendance_status' del modelo
+    if "status" in attendance_data:
+        attendance_data["attendance_status"] = attendance_data.pop("status")
+
     db_attendance = MeetingAttendance(**attendance_data)
     db.add(db_attendance)
     db.commit()
@@ -371,29 +416,32 @@ async def create_meeting_attendance(
     
     return db_attendance
 
-@router.put("/{meeting_id}/attendance/{user_id}", response_model=MeetingAttendanceSchema)
+@router.put("/{meeting_id}/attendance/{member_id}", response_model=MeetingAttendanceSchema)
 async def update_meeting_attendance(
     meeting_id: int,
-    user_id: int,
+    member_id: int,
     attendance_update: MeetingAttendanceUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Actualizar la asistencia de un usuario a una reunión"""
+    """Actualizar la asistencia de un miembro a una reunión"""
     attendance = db.query(MeetingAttendance).filter(
         and_(
             MeetingAttendance.meeting_id == meeting_id,
-            MeetingAttendance.user_id == user_id
+            MeetingAttendance.member_id == member_id
         )
     ).first()
-    
+
     if not attendance:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Registro de asistencia no encontrado"
         )
-    
+
     update_data = attendance_update.model_dump(exclude_unset=True)
+    # Mapear 'status' del schema a 'attendance_status' del modelo
+    if "status" in update_data:
+        update_data["attendance_status"] = update_data.pop("status")
     for field, value in update_data.items():
         setattr(attendance, field, value)
     
@@ -479,5 +527,227 @@ async def get_meeting_statistics(
     present_count = stats["attendance_by_status"].get("present", 0)
     if total_members > 0:
         stats["attendance_rate"] = round((present_count / total_members) * 100, 2)
-    
+
     return stats
+
+
+@router.get("/{meeting_id}/minutes/pdf")
+async def generate_meeting_minutes_pdf(
+    meeting_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Generar PDF del Acta de Reunión"""
+    # Cargar reunión con relaciones
+    meeting = db.query(CommitteeMeeting).options(
+        joinedload(CommitteeMeeting.committee),
+        joinedload(CommitteeMeeting.attendances).joinedload(MeetingAttendance.member).joinedload(CommitteeMember.user),
+    ).filter(CommitteeMeeting.id == meeting_id).first()
+
+    if not meeting:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Reunión no encontrada"
+        )
+
+    committee = meeting.committee
+
+    # Calcular número de acta (secuencial por comité)
+    meeting_count = db.query(CommitteeMeeting).filter(
+        and_(
+            CommitteeMeeting.committee_id == committee.id,
+            CommitteeMeeting.id <= meeting_id,
+        )
+    ).count()
+
+    # Obtener miembros activos del comité con usuarios
+    active_members = db.query(CommitteeMember).options(
+        joinedload(CommitteeMember.user)
+    ).filter(
+        and_(
+            CommitteeMember.committee_id == committee.id,
+            CommitteeMember.is_active == True
+        )
+    ).all()
+
+    # Mapeo de roles a español
+    role_display = {
+        "PRESIDENT": "Presidente",
+        "VICE_PRESIDENT": "Vicepresidente",
+        "SECRETARY": "Secretario(a)",
+        "MEMBER": "Miembro",
+        "ALTERNATE": "Suplente",
+    }
+
+    # Construir lista de asistentes
+    attendance_map = {}
+    for att in meeting.attendances:
+        attendance_map[att.member_id] = att
+
+    attendees = []
+    president_name = "_______________"
+    secretary_name = "_______________"
+
+    for member in active_members:
+        user = member.user
+        name = f"{user.first_name} {user.last_name}" if user else f"Usuario #{member.user_id}"
+        role_enum = member.role.value if hasattr(member.role, 'value') else str(member.role)
+        role_label = role_display.get(role_enum, role_enum)
+
+        att = attendance_map.get(member.id)
+        att_status = att.attendance_status if att else "absent"
+        is_present = att_status.upper() in ("PRESENT", "LATE")
+
+        attendees.append({
+            "name": name,
+            "role": role_label,
+            "present": is_present,
+        })
+
+        if role_enum == "PRESIDENT":
+            president_name = name
+        elif role_enum == "SECRETARY":
+            secretary_name = name
+
+    # Calcular quórum
+    present_count = sum(1 for a in attendees if a["present"])
+    total_members_count = len(active_members)
+    quorum_pct = round((present_count / total_members_count * 100), 1) if total_members_count > 0 else 0
+    quorum_achieved = quorum_pct >= float(committee.quorum_percentage or 50)
+
+    # Reunión anterior (para lectura del acta anterior)
+    previous_meeting = db.query(CommitteeMeeting).filter(
+        and_(
+            CommitteeMeeting.committee_id == committee.id,
+            CommitteeMeeting.id < meeting_id,
+        )
+    ).order_by(desc(CommitteeMeeting.meeting_date)).first()
+
+    previous_acta_number = 0
+    previous_meeting_date = ""
+    if previous_meeting:
+        previous_acta_number = db.query(CommitteeMeeting).filter(
+            and_(
+                CommitteeMeeting.committee_id == committee.id,
+                CommitteeMeeting.id <= previous_meeting.id,
+            )
+        ).count()
+        previous_meeting_date = previous_meeting.meeting_date.strftime("%d/%m/%Y") if previous_meeting.meeting_date else ""
+
+    # Mapeo de estados a español
+    status_display = {
+        "PENDING": "Pendiente",
+        "IN_PROGRESS": "En Progreso",
+        "COMPLETED": "Completada",
+        "CANCELLED": "Cancelada",
+        "OVERDUE": "Vencida",
+    }
+
+    # Actividades del acta anterior (compromisos asignados en la reunión anterior)
+    previous_activities = []
+    if previous_meeting:
+        previous_activities_raw = db.query(CommitteeActivity).options(
+            joinedload(CommitteeActivity.assigned_member).joinedload(CommitteeMember.user)
+        ).filter(
+            CommitteeActivity.meeting_id == previous_meeting.id
+        ).order_by(CommitteeActivity.due_date).all()
+
+        for act in previous_activities_raw:
+            responsible = "Sin asignar"
+            if act.assigned_member and act.assigned_member.user:
+                u = act.assigned_member.user
+                responsible = f"{u.first_name} {u.last_name}"
+            act_status = act.status.value if hasattr(act.status, 'value') else str(act.status)
+            previous_activities.append({
+                "title": act.title or "",
+                "responsible": responsible,
+                "progress": act.progress_percentage or 0,
+                "due_date": act.due_date.strftime("%d/%m/%Y") if act.due_date else "Sin fecha",
+                "status": status_display.get(act_status.upper(), act_status),
+                "observations": act.notes or "",
+            })
+
+    # Actividades asignadas en esta reunión (compromisos nuevos)
+    new_activities_raw = db.query(CommitteeActivity).options(
+        joinedload(CommitteeActivity.assigned_member).joinedload(CommitteeMember.user)
+    ).filter(
+        CommitteeActivity.meeting_id == meeting_id
+    ).order_by(CommitteeActivity.due_date).all()
+
+    new_activities = []
+    for act in new_activities_raw:
+        responsible = "Sin asignar"
+        if act.assigned_member and act.assigned_member.user:
+            u = act.assigned_member.user
+            responsible = f"{u.first_name} {u.last_name}"
+        new_activities.append({
+            "title": act.title or "",
+            "responsible": responsible,
+            "due_date": act.due_date.strftime("%d/%m/%Y") if act.due_date else "Sin fecha",
+            "observations": act.notes or "",
+        })
+
+    # Calcular horarios
+    meeting_dt = meeting.meeting_date
+    start_time = meeting_dt.strftime("%H:%M") if meeting_dt else ""
+    duration = meeting.duration_minutes or 60
+    end_dt = meeting_dt + timedelta(minutes=duration) if meeting_dt else None
+    end_time = end_dt.strftime("%H:%M") if end_dt else ""
+
+    # Filas vacías para completar la tabla a mínimo 8 filas
+    empty_rows = max(0, 8 - len(attendees))
+
+    # Preparar datos para el template
+    template_data = {
+        "acta_number": meeting_count,
+        "committee_type": committee.committee_type.value if hasattr(committee.committee_type, 'value') else str(committee.committee_type),
+        "committee_name": committee.name,
+        "meeting_date": meeting_dt.strftime("%d/%m/%Y") if meeting_dt else "",
+        "location": meeting.location or "No especificado",
+        "start_time": start_time,
+        "end_time": end_time,
+        "attendees": attendees,
+        "empty_rows": empty_rows,
+        "guests": [],
+        "quorum_achieved": quorum_achieved,
+        "present_count": present_count,
+        "total_members": total_members_count,
+        "quorum_percentage": str(quorum_pct),
+        "previous_meeting": previous_meeting is not None,
+        "previous_acta_number": previous_acta_number,
+        "previous_meeting_date": previous_meeting_date,
+        "agenda": meeting.agenda or "",
+        "minutes_content": meeting.minutes_content or "",
+        "previous_activities": previous_activities,
+        "new_activities": new_activities,
+        "notes": meeting.notes or "",
+        "secretary_name": secretary_name,
+        "president_name": president_name,
+    }
+
+    # Generar PDF
+    try:
+        converter = HTMLToPDFConverter()
+        pdf_content = converter.generate_meeting_minutes_pdf(template_data)
+
+        if isinstance(pdf_content, str):
+            # Si retorna una ruta, leer el archivo
+            with open(pdf_content, "rb") as f:
+                pdf_content = f.read()
+
+        filename = f"Acta_Reunion_{meeting_count}_{committee.name.replace(' ', '_')}.pdf"
+
+        return StreamingResponse(
+            io.BytesIO(pdf_content),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(len(pdf_content)),
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error generando PDF de acta: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al generar el PDF del acta: {str(e)}"
+        )

@@ -47,7 +47,8 @@ async def get_committee_activities(
 ):
     """Obtener actividades de comités con filtros"""
     query = db.query(CommitteeActivity).options(
-        joinedload(CommitteeActivity.committee)
+        joinedload(CommitteeActivity.committee),
+        joinedload(CommitteeActivity.assigned_member).joinedload(CommitteeMember.user)
     )
     
     # Filtros
@@ -80,6 +81,7 @@ async def get_committee_activities(
     return activities
 
 @router.post("/", response_model=CommitteeActivitySchema, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=CommitteeActivitySchema, status_code=status.HTTP_201_CREATED)
 async def create_committee_activity(
     activity: CommitteeActivityCreate,
     db: Session = Depends(get_db),
@@ -94,30 +96,36 @@ async def create_committee_activity(
             detail="Comité no encontrado"
         )
     
-    # Verificar que el usuario asignado es miembro del comité (si se especifica)
+    # Verificar que el miembro asignado pertenece al comité (si se especifica)
     if activity.assigned_to:
         member = db.query(CommitteeMember).filter(
             and_(
+                CommitteeMember.id == activity.assigned_to,
                 CommitteeMember.committee_id == activity.committee_id,
-                CommitteeMember.user_id == activity.assigned_to,
                 CommitteeMember.is_active == True
             )
         ).first()
-        
+
         if not member:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El usuario asignado no es miembro activo del comité"
+                detail="El miembro asignado no es miembro activo del comité"
             )
-    
+
     activity_data = activity.model_dump()
     activity_data["created_by"] = current_user.id
-    
+
     db_activity = CommitteeActivity(**activity_data)
     db.add(db_activity)
     db.commit()
     db.refresh(db_activity)
-    
+
+    # Re-query with relationships loaded for the response
+    db_activity = db.query(CommitteeActivity).options(
+        joinedload(CommitteeActivity.committee),
+        joinedload(CommitteeActivity.assigned_member).joinedload(CommitteeMember.user)
+    ).filter(CommitteeActivity.id == db_activity.id).first()
+
     return db_activity
 
 @router.get("/{activity_id}", response_model=CommitteeActivitySchema)
@@ -128,7 +136,8 @@ async def get_committee_activity(
 ):
     """Obtener una actividad de comité por ID"""
     activity = db.query(CommitteeActivity).options(
-        joinedload(CommitteeActivity.committee)
+        joinedload(CommitteeActivity.committee),
+        joinedload(CommitteeActivity.assigned_member).joinedload(CommitteeMember.user)
     ).filter(CommitteeActivity.id == activity_id).first()
     
     if not activity:
@@ -155,29 +164,34 @@ async def update_committee_activity(
             detail="Actividad no encontrada"
         )
     
-    # Verificar que el usuario asignado es miembro del comité (si se especifica)
+    # Verificar que el miembro asignado pertenece al comité (si se especifica)
     if activity_update.assigned_to:
         member = db.query(CommitteeMember).filter(
             and_(
+                CommitteeMember.id == activity_update.assigned_to,
                 CommitteeMember.committee_id == activity.committee_id,
-                CommitteeMember.user_id == activity_update.assigned_to,
                 CommitteeMember.is_active == True
             )
         ).first()
-        
+
         if not member:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El usuario asignado no es miembro activo del comité"
+                detail="El miembro asignado no es miembro activo del comité"
             )
-    
+
     update_data = activity_update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(activity, field, value)
-    
+
     db.commit()
-    db.refresh(activity)
-    
+
+    # Re-query with relationships loaded for the response
+    activity = db.query(CommitteeActivity).options(
+        joinedload(CommitteeActivity.committee),
+        joinedload(CommitteeActivity.assigned_member).joinedload(CommitteeMember.user)
+    ).filter(CommitteeActivity.id == activity_id).first()
+
     return activity
 
 @router.delete("/{activity_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -221,14 +235,20 @@ async def complete_activity(
         )
     
     activity.status = ActivityStatusEnum.COMPLETED
-    activity.completed_date = date.today()
-    
+    activity.completion_date = date.today()
+    activity.progress_percentage = 100
+
     if completion_notes:
         activity.notes = (activity.notes or "") + f"\n\nCompletada: {completion_notes}"
-    
+
     db.commit()
-    db.refresh(activity)
-    
+
+    # Re-query with relationships loaded for the response
+    activity = db.query(CommitteeActivity).options(
+        joinedload(CommitteeActivity.committee),
+        joinedload(CommitteeActivity.assigned_member).joinedload(CommitteeMember.user)
+    ).filter(CommitteeActivity.id == activity_id).first()
+
     return activity
 
 @router.get("/activities/committee/{committee_id}", response_model=List[CommitteeActivitySchema])
@@ -249,16 +269,19 @@ async def get_activities_by_committee(
             detail="Comité no encontrado"
         )
     
-    query = db.query(CommitteeActivity).filter(
+    query = db.query(CommitteeActivity).options(
+        joinedload(CommitteeActivity.committee),
+        joinedload(CommitteeActivity.assigned_member).joinedload(CommitteeMember.user)
+    ).filter(
         CommitteeActivity.committee_id == committee_id
     )
-    
+
     if status:
         query = query.filter(CommitteeActivity.status == status)
-    
+
     if priority:
         query = query.filter(CommitteeActivity.priority == priority)
-    
+
     if overdue_only:
         today = date.today()
         query = query.filter(
@@ -267,14 +290,14 @@ async def get_activities_by_committee(
                 CommitteeActivity.status != ActivityStatusEnum.COMPLETED
             )
         )
-    
+
     query = query.order_by(
         CommitteeActivity.priority.desc(),
         CommitteeActivity.due_date.asc()
     )
-    
+
     activities = query.all()
-    
+
     return activities
 
 # Committee Document endpoints
@@ -437,24 +460,33 @@ async def delete_committee_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Eliminar un documento de comité"""
+    """Eliminar un documento de comité y su archivo del almacenamiento"""
+    from app.utils.storage import storage_manager
+
     document = db.query(CommitteeDocument).filter(
         and_(
             CommitteeDocument.id == document_id,
             CommitteeDocument.committee_id == committee_id
         )
     ).first()
-    
+
     if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Documento no encontrado"
         )
-    
-    # TODO: Eliminar archivo físico del sistema de archivos si existe
-    # if document.file_path and os.path.exists(document.file_path):
-    #     os.remove(document.file_path)
-    
+
+    # Eliminar archivo del almacenamiento (Contabo/local)
+    if document.file_path:
+        try:
+            deleted = await storage_manager.delete_file(document.file_path)
+            if deleted:
+                logger.info(f"Archivo eliminado del almacenamiento: {document.file_path}")
+            else:
+                logger.warning(f"No se pudo eliminar el archivo del almacenamiento: {document.file_path}")
+        except Exception as e:
+            logger.error(f"Error al eliminar archivo del almacenamiento: {str(e)}")
+
     db.delete(document)
     db.commit()
 
@@ -496,10 +528,21 @@ async def upload_document_file(
         )
     
     try:
-        # Subir archivo usando StorageManager
+        # Generar nombre de archivo basado en el título del documento
+        import re as re_module
+        safe_title = re_module.sub(r'[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ\s\-_]', '', title)
+        safe_title = re_module.sub(r'\s+', '_', safe_title.strip())
+        if not safe_title:
+            safe_title = "documento"
+        # Renombrar el archivo con el título antes de subirlo
+        original_ext = '.' + file.filename.split('.')[-1].lower() if '.' in file.filename else ''
+        file.filename = f"{safe_title}{original_ext}"
+
+        # Subir archivo usando StorageManager (keep_original_name para usar el título)
         upload_result = await storage_manager.upload_file(
-            file, 
-            folder=f"committees/{committee_id}/documents"
+            file,
+            folder=f"committees/{committee_id}/documents",
+            keep_original_name=True
         )
         
         # Obtener el tamaño del archivo
@@ -569,7 +612,8 @@ async def get_activities_by_user(
 ):
     """Obtener todas las actividades asignadas a un usuario específico"""
     query = db.query(CommitteeActivity).options(
-        joinedload(CommitteeActivity.committee)
+        joinedload(CommitteeActivity.committee),
+        joinedload(CommitteeActivity.assigned_member).joinedload(CommitteeMember.user)
     ).filter(CommitteeActivity.assigned_to == user_id)
     
     if status:
@@ -597,7 +641,8 @@ async def get_overdue_activities(
     today = date.today()
     
     query = db.query(CommitteeActivity).options(
-        joinedload(CommitteeActivity.committee)
+        joinedload(CommitteeActivity.committee),
+        joinedload(CommitteeActivity.assigned_member).joinedload(CommitteeMember.user)
     ).filter(
         and_(
             CommitteeActivity.due_date < today,
@@ -701,9 +746,12 @@ async def get_document_url(
                 detail="No tienes permisos para acceder a este documento"
             )
     
-    # Retornar la URL del archivo
+    # Obtener URL accesible del archivo usando storage_manager
+    from app.utils.storage import storage_manager
+    file_url = storage_manager.get_presigned_url(document.file_path) or document.file_path
+
     return {
-        "url": document.file_path,
+        "url": file_url,
         "filename": document.file_name,
         "mime_type": document.mime_type
     }
