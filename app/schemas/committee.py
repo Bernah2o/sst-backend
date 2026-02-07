@@ -3,7 +3,7 @@ Pydantic schemas for Committee Management System
 """
 from datetime import datetime, date
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, validator, ConfigDict
+from pydantic import BaseModel, Field, AliasChoices, validator, computed_field, ConfigDict
 from enum import Enum
 
 # Enums
@@ -133,7 +133,15 @@ class Committee(CommitteeBase):
     created_at: datetime
     updated_at: datetime
     created_by: Optional[int]
-    
+    members: Optional[List[Any]] = Field(None, exclude=True)
+
+    @computed_field
+    @property
+    def members_count(self) -> int:
+        if self.members is None:
+            return 0
+        return sum(1 for m in self.members if getattr(m, 'is_active', True))
+
     model_config = ConfigDict(from_attributes=True)
 
 # Committee Role schemas
@@ -162,7 +170,7 @@ class CommitteeMemberBase(BaseModel):
     committee_id: int = Field(..., description="ID del comité")
     user_id: int = Field(..., description="ID del usuario")
     role: CommitteeRoleEnum = Field(..., description="Rol en el comité")
-    role_id: int = Field(..., description="ID del rol")
+    role_id: Optional[int] = Field(None, description="ID del rol (se resuelve automáticamente si no se envía)")
     is_active: bool = Field(True, description="Si la membresía está activa")
     start_date: date = Field(..., description="Fecha de inicio")
     end_date: Optional[date] = Field(None, description="Fecha de fin")
@@ -255,11 +263,17 @@ class CommitteeMeeting(CommitteeMeetingBase):
 class MeetingAttendanceBase(BaseModel):
     meeting_id: int = Field(..., description="ID de la reunión")
     member_id: int = Field(..., description="ID del miembro")
-    status: AttendanceStatusEnum = Field(..., description="Estado de asistencia")
+    status: AttendanceStatusEnum = Field(
+        ...,
+        validation_alias=AliasChoices("status", "attendance_status"),
+        description="Estado de asistencia"
+    )
     arrival_time: Optional[datetime] = Field(None, description="Hora de llegada")
     departure_time: Optional[datetime] = Field(None, description="Hora de salida")
     excuse_reason: Optional[str] = Field(None, description="Razón de excusa")
     notes: Optional[str] = Field(None, description="Notas adicionales")
+
+    model_config = ConfigDict(populate_by_name=True)
 
     @validator('departure_time')
     def validate_departure_time(cls, v, values):
@@ -282,8 +296,8 @@ class MeetingAttendance(MeetingAttendanceBase):
     id: int
     created_at: datetime
     updated_at: datetime
-    
-    model_config = ConfigDict(from_attributes=True)
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 # Committee Voting schemas
 class CommitteeVotingBase(BaseModel):
@@ -399,12 +413,21 @@ class CommitteeActivityUpdate(BaseModel):
     supporting_document_url: Optional[str] = Field(None, max_length=500)
     notes: Optional[str] = None
 
+class AssignedUserInfo(BaseModel):
+    id: int
+    first_name: str
+    last_name: str
+    email: str
+
+    model_config = ConfigDict(from_attributes=True)
+
 class CommitteeActivity(CommitteeActivityBase):
     id: int
     created_at: datetime
     updated_at: datetime
     created_by: Optional[int]
-    
+    assigned_user: Optional[AssignedUserInfo] = None
+
     model_config = ConfigDict(from_attributes=True)
 
 # Committee Document schemas

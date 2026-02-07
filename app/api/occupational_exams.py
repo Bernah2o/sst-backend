@@ -32,7 +32,6 @@ from app.dependencies import (
 from app.models.user import User
 from app.models.worker import Worker
 from app.models.occupational_exam import OccupationalExam
-from app.models.tipo_examen import TipoExamen
 from app.models.cargo import Cargo
 from app.models.notification_acknowledgment import NotificationAcknowledgment
 from app.models.admin_config import Programas
@@ -48,13 +47,21 @@ from app.models.profesiograma import Profesiograma, ProfesiogramaFactor, Profesi
 
 router = APIRouter()
 
+# Mapeo de exam_type a etiquetas legibles
+EXAM_TYPE_LABELS = {
+    "INGRESO": "Examen de Ingreso",
+    "PERIODICO": "Examen Periódico",
+    "REINTEGRO": "Examen de Reintegro",
+    "RETIRO": "Examen de Retiro",
+}
+
 
 @router.get("/", response_model=PaginatedResponse[OccupationalExamResponse])
 @router.get("", response_model=PaginatedResponse[OccupationalExamResponse])
 async def get_occupational_exams(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    tipo_examen_id: Optional[int] = Query(None),
+    exam_type: Optional[str] = Query(None, description="Filtro por tipo de examen (INGRESO, PERIODICO, REINTEGRO, RETIRO)"),
     result: Optional[str] = Query(None),
     worker_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
@@ -67,12 +74,25 @@ async def get_occupational_exams(
     # Calculate offset
     skip = (page - 1) * limit
 
-    # Base query with join to get worker information
-    query = db.query(OccupationalExam).join(Worker).options(joinedload(OccupationalExam.tipo_examen))
+    # Base query with joins para evitar N+1 queries
+    query = (
+        db.query(OccupationalExam, Cargo)
+        .join(Worker, OccupationalExam.worker_id == Worker.id)
+        .outerjoin(
+            Cargo,
+            or_(
+                Worker.cargo_id == Cargo.id,
+                and_(Worker.cargo_id.is_(None), Worker.position == Cargo.nombre_cargo),
+            ),
+        )
+        .options(
+            joinedload(OccupationalExam.worker),
+        )
+    )
 
     # Apply filters
-    if tipo_examen_id:
-        query = query.filter(OccupationalExam.tipo_examen_id == tipo_examen_id)
+    if exam_type:
+        query = query.filter(OccupationalExam.exam_type == exam_type)
 
     if result:
         # Map result filter to medical_aptitude_concept values
@@ -99,36 +119,31 @@ async def get_occupational_exams(
             )
         )
 
-    # Get total count
-    total = query.count()
+    # Get total count (solo contar exámenes, no el join completo)
+    total = db.query(func.count(OccupationalExam.id)).select_from(
+        query.with_entities(OccupationalExam.id).subquery()
+    ).scalar()
 
     # Apply pagination and ordering
-    exams = (
+    results = (
         query.order_by(OccupationalExam.exam_date.desc())
         .offset(skip)
         .limit(limit)
         .all()
     )
 
-    # Enrich exam data with worker information
+    # Enrich exam data with worker information (sin queries adicionales)
     enriched_exams = []
-    for exam in exams:
+    for exam, cargo in results:
         worker = exam.worker
-
-        # Calcular fecha del próximo examen basado en la periodicidad del cargo
-        cargo = None
-        if getattr(worker, "cargo_id", None):
-            cargo = db.query(Cargo).filter(Cargo.id == worker.cargo_id).first()
-        if not cargo:
-            cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
         periodicidad = cargo.periodicidad_emo if cargo else "anual"
 
         if periodicidad == "semestral":
-            next_exam_date = exam.exam_date + timedelta(days=180)  # 6 meses
+            next_exam_date = exam.exam_date + timedelta(days=180)
         elif periodicidad == "bianual":
-            next_exam_date = exam.exam_date + timedelta(days=730)  # 2 años
-        else:  # anual por defecto
-            next_exam_date = exam.exam_date + timedelta(days=365)  # 1 año
+            next_exam_date = exam.exam_date + timedelta(days=730)
+        else:
+            next_exam_date = exam.exam_date + timedelta(days=365)
 
         # Mapear medical_aptitude_concept a result legacy
         result_mapping = {
@@ -148,8 +163,8 @@ async def get_occupational_exams(
                 if worker and worker.fecha_de_ingreso
                 else None
             ),
-            "tipo_examen_id": exam.tipo_examen_id,
-            "tipo_examen": exam.tipo_examen,
+
+            "exam_type": exam.exam_type,
             "exam_date": exam.exam_date.isoformat(),
             "departamento": exam.departamento,
             "ciudad": exam.ciudad,
@@ -164,7 +179,7 @@ async def get_occupational_exams(
             "observations": exam.observations,
             "examining_doctor": exam.examining_doctor,
             "medical_center": exam.medical_center,
-            "pdf_file_path": exam.pdf_file_path,  # Campo que faltaba
+            "pdf_file_path": exam.pdf_file_path,
             "requires_follow_up": exam.requires_follow_up or False,
             "supplier_id": exam.supplier_id,
             "doctor_id": exam.doctor_id,
@@ -306,12 +321,6 @@ async def create_occupational_exam(
         data["departamento"] = worker.department
     if not data.get("ciudad") and getattr(worker, "city", None):
         data["ciudad"] = worker.city
-    if not data.get("afiliacion_eps_momento") and getattr(worker, "eps", None):
-        data["afiliacion_eps_momento"] = worker.eps
-    if not data.get("afiliacion_afp_momento") and getattr(worker, "afp", None):
-        data["afiliacion_afp_momento"] = worker.afp
-    if not data.get("afiliacion_arl_momento") and getattr(worker, "arl", None):
-        data["afiliacion_arl_momento"] = worker.arl
     if not data.get("cargo_id_momento_examen") and getattr(worker, "cargo_id", None):
         data["cargo_id_momento_examen"] = worker.cargo_id
 
@@ -454,12 +463,7 @@ async def create_occupational_exam(
                 observacion_parts.append(f"Médico examinador: {exam.examining_doctor}")
             if exam.medical_center:
                 observacion_parts.append(f"Centro médico: {exam.medical_center}")
-            if exam.tipo_examen:
-                exam_type_label = exam.tipo_examen.nombre
-            else:
-                # Intentar cargar si no está disponible (lazy load)
-                te = db.query(TipoExamen).filter(TipoExamen.id == exam.tipo_examen_id).first()
-                exam_type_label = te.nombre if te else "Desconocido"
+            exam_type_label = EXAM_TYPE_LABELS.get(exam.exam_type, exam.exam_type or "Desconocido")
             observacion_parts.append(f"Tipo de examen: {exam_type_label}")
 
             observacion_completa = (
@@ -520,8 +524,7 @@ async def create_occupational_exam(
     # Crear respuesta enriquecida con datos del trabajador
     exam_dict = {
         "id": exam.id,
-        "tipo_examen_id": exam.tipo_examen_id,
-        "tipo_examen": exam.tipo_examen,
+        "exam_type": exam.exam_type,
         "exam_date": exam.exam_date,
         "departamento": exam.departamento,
         "ciudad": exam.ciudad,
@@ -536,7 +539,7 @@ async def create_occupational_exam(
         "observations": exam.observations,
         "examining_doctor": exam.examining_doctor,
         "medical_center": exam.medical_center,
-        "pdf_file_path": exam.pdf_file_path,  # Campo faltante agregado
+        "pdf_file_path": exam.pdf_file_path,
         "requires_follow_up": exam.requires_follow_up or False,
         "supplier_id": exam.supplier_id,
         "doctor_id": exam.doctor_id,
@@ -550,11 +553,6 @@ async def create_occupational_exam(
             else None
         ),
         "next_exam_date": next_exam_date.isoformat(),
-        "departamento": exam.departamento,
-        "ciudad": exam.ciudad,
-        "duracion_cargo_actual_meses": exam.duracion_cargo_actual_meses,
-        "factores_riesgo_evaluados": exam.factores_riesgo_evaluados,
-        "cargo_id_momento_examen": exam.cargo_id_momento_examen,
         # Campos legacy para compatibilidad con el frontend
         "status": "realizado",
         "result": result_mapping.get(exam.medical_aptitude_concept, "pendiente"),
@@ -573,7 +571,7 @@ async def create_occupational_exam(
 @router.get("/report/pdf")
 async def generate_occupational_exam_report_pdf(
     worker_id: Optional[int] = Query(None, description="ID del trabajador específico"),
-    tipo_examen_id: Optional[int] = Query(None, description="ID del tipo de examen"),
+    exam_type: Optional[str] = Query(None, description="Tipo de examen (INGRESO, PERIODICO, REINTEGRO, RETIRO)"),
     start_date: Optional[date] = Query(None, description="Fecha de inicio del rango"),
     end_date: Optional[date] = Query(None, description="Fecha de fin del rango"),
     include_overdue: bool = Query(True, description="Incluir exámenes vencidos"),
@@ -593,13 +591,13 @@ async def generate_occupational_exam_report_pdf(
         total_workers = len(workers)
 
         # Obtener exámenes ocupacionales con filtros
-        exams_query = db.query(OccupationalExam).join(Worker).options(joinedload(OccupationalExam.tipo_examen)).options(joinedload(OccupationalExam.tipo_examen))
+        exams_query = db.query(OccupationalExam).join(Worker)
 
         if worker_id:
             exams_query = exams_query.filter(OccupationalExam.worker_id == worker_id)
 
-        if tipo_examen_id:
-            exams_query = exams_query.filter(OccupationalExam.tipo_examen_id == tipo_examen_id)
+        if exam_type:
+            exams_query = exams_query.filter(OccupationalExam.exam_type == exam_type)
 
         if start_date:
             exams_query = exams_query.filter(OccupationalExam.exam_date >= start_date)
@@ -649,7 +647,7 @@ async def generate_occupational_exam_report_pdf(
                     "cargo": worker.position or "No especificado",
                     "last_exam_date": last_exam.exam_date.strftime("%d/%m/%Y"),
                     "next_exam_date": next_exam_date.strftime("%d/%m/%Y"),
-                    "exam_type": last_exam.tipo_examen.nombre if last_exam.tipo_examen else "Desconocido",
+                    "exam_type": EXAM_TYPE_LABELS.get(last_exam.exam_type, last_exam.exam_type or "Desconocido"),
                 }
 
                 if days_difference < 0:
@@ -740,10 +738,21 @@ async def get_occupational_exam(
             detail="Examen ocupacional no encontrado",
         )
 
-    # Calcular fecha del próximo examen (1 año después)
-    from datetime import timedelta
+    # Calcular fecha del próximo examen basado en periodicidad del cargo
+    worker = exam.worker
+    cargo = None
+    if getattr(worker, "cargo_id", None):
+        cargo = db.query(Cargo).filter(Cargo.id == worker.cargo_id).first()
+    if not cargo:
+        cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
+    periodicidad = cargo.periodicidad_emo if cargo else "anual"
 
-    next_exam_date = exam.exam_date + timedelta(days=365)
+    if periodicidad == "semestral":
+        next_exam_date = exam.exam_date + timedelta(days=180)
+    elif periodicidad == "bianual":
+        next_exam_date = exam.exam_date + timedelta(days=730)
+    else:
+        next_exam_date = exam.exam_date + timedelta(days=365)
 
     # Mapear medical_aptitude_concept a result legacy
     result_mapping = {
@@ -753,11 +762,9 @@ async def get_occupational_exam(
     }
 
     # Crear respuesta enriquecida con datos del trabajador
-    worker = exam.worker
     exam_dict = {
         "id": exam.id,
-        "tipo_examen_id": exam.tipo_examen_id,
-        "tipo_examen": exam.tipo_examen,
+        "exam_type": exam.exam_type,
         "exam_date": exam.exam_date,
         "departamento": exam.departamento,
         "ciudad": exam.ciudad,
@@ -772,7 +779,7 @@ async def get_occupational_exam(
         "observations": exam.observations,
         "examining_doctor": exam.examining_doctor,
         "medical_center": exam.medical_center,
-        "pdf_file_path": exam.pdf_file_path,  # Campo faltante agregado
+        "pdf_file_path": exam.pdf_file_path,
         "requires_follow_up": exam.requires_follow_up or False,
         "supplier_id": exam.supplier_id,
         "doctor_id": exam.doctor_id,
@@ -900,16 +907,7 @@ async def update_occupational_exam(
                     )
                 if exam.medical_center:
                     observacion_parts.append(f"Centro médico: {exam.medical_center}")
-                if exam.tipo_examen:
-
-                    exam_type_label = exam.tipo_examen.nombre
-
-                else:
-
-                    te = db.query(TipoExamen).filter(TipoExamen.id == exam.tipo_examen_id).first()
-
-                    exam_type_label = te.nombre if te else "Desconocido"
-
+                exam_type_label = EXAM_TYPE_LABELS.get(exam.exam_type, exam.exam_type or "Desconocido")
                 observacion_parts.append(f"Tipo de examen: {exam_type_label}")
 
                 observacion_completa = (
@@ -979,8 +977,7 @@ async def update_occupational_exam(
     # Crear respuesta enriquecida con datos del trabajador
     exam_dict = {
         "id": exam.id,
-        "tipo_examen_id": exam.tipo_examen_id,
-        "tipo_examen": exam.tipo_examen,
+        "exam_type": exam.exam_type,
         "exam_date": exam.exam_date,
         "departamento": exam.departamento,
         "ciudad": exam.ciudad,

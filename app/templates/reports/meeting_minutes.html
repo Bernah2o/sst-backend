@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="pdf-engine" content="WeasyPrint">
+    <title>Acta de Reunión</title>
+    <link rel="stylesheet" href="css/meeting_minutes.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-logo">
+                {% if logo_base64 %}
+                <img src="data:image/png;base64,{{ logo_base64 }}" alt="Logo Empresa">
+                {% else %}
+                <div class="logo-placeholder">LOGO</div>
+                {% endif %}
+            </div>
+            <div class="header-title">
+                <h1>ACTA DE REUNIÓN</h1>
+            </div>
+            <div class="header-meta">
+                <table class="meta-table">
+                    <tr>
+                        <td class="meta-label">Código:</td>
+                        <td class="meta-value">SST-ACT-{{ "%03d"|format(acta_number) }}</td>
+                    </tr>
+                    <tr>
+                        <td class="meta-label">Versión:</td>
+                        <td class="meta-value">01</td>
+                    </tr>
+                    <tr>
+                        <td class="meta-label">Página:</td>
+                        <td class="meta-value">1 de 1</td>
+                    </tr>
+                </table>
+            </div>
+        </header>
+
+        <!-- Committee Type -->
+        <section class="committee-type-section">
+            <table class="committee-type-table">
+                <tr>
+                    <td class="type-label">TIPO DE COMITÉ:</td>
+                    <td class="type-option">
+                        <span class="checkbox {% if committee_type == 'copasst' %}checked{% endif %}">{% if committee_type == 'copasst' %}&#9745;{% else %}&#9744;{% endif %}</span> COPASST
+                    </td>
+                    <td class="type-option">
+                        <span class="checkbox {% if committee_type == 'convivencia' %}checked{% endif %}">{% if committee_type == 'convivencia' %}&#9745;{% else %}&#9744;{% endif %}</span> Comité de Convivencia
+                    </td>
+                    <td class="type-option">
+                        <span class="checkbox {% if committee_type not in ['copasst', 'convivencia'] %}checked{% endif %}">{% if committee_type not in ['copasst', 'convivencia'] %}&#9745;{% else %}&#9744;{% endif %}</span> Otro
+                    </td>
+                </tr>
+            </table>
+        </section>
+
+        <!-- Meeting Info -->
+        <section class="meeting-info">
+            <table class="info-table">
+                <tr>
+                    <td class="info-label">ACTA No.:</td>
+                    <td class="info-value">{{ acta_number }}</td>
+                    <td class="info-label">FECHA:</td>
+                    <td class="info-value">{{ meeting_date }}</td>
+                </tr>
+                <tr>
+                    <td class="info-label">LUGAR:</td>
+                    <td class="info-value" colspan="3">{{ location }}</td>
+                </tr>
+                <tr>
+                    <td class="info-label">HORA INICIO:</td>
+                    <td class="info-value">{{ start_time }}</td>
+                    <td class="info-label">HORA FIN:</td>
+                    <td class="info-value">{{ end_time }}</td>
+                </tr>
+            </table>
+        </section>
+
+        <!-- Attendees -->
+        <section class="attendees-section">
+            <h2 class="section-title">ASISTENTES</h2>
+            <table class="attendees-table">
+                <thead>
+                    <tr>
+                        <th class="col-number">#</th>
+                        <th class="col-name">NOMBRE</th>
+                        <th class="col-role">CARGO / ROL</th>
+                        <th class="col-attendance">ASISTE</th>
+                        <th class="col-signature">FIRMA</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for attendee in attendees %}
+                    <tr>
+                        <td class="center">{{ loop.index }}</td>
+                        <td>{{ attendee.name }}</td>
+                        <td>{{ attendee.role }}</td>
+                        <td class="center">
+                            {% if attendee.present %}
+                            <strong>SI</strong>
+                            {% else %}
+                            NO
+                            {% endif %}
+                        </td>
+                        <td class="signature-cell"></td>
+                    </tr>
+                    {% endfor %}
+                    {% for i in range(empty_rows) %}
+                    <tr class="empty-row">
+                        <td class="center">{{ attendees|length + loop.index }}</td>
+                        <td></td>
+                        <td></td>
+                        <td class="center"></td>
+                        <td class="signature-cell"></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Invitados -->
+        {% if guests %}
+        <section class="guests-section">
+            <h2 class="section-title">INVITADOS</h2>
+            <table class="guests-table">
+                <thead>
+                    <tr>
+                        <th class="col-number">#</th>
+                        <th class="col-name">NOMBRE</th>
+                        <th class="col-role">CARGO</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for guest in guests %}
+                    <tr>
+                        <td class="center">{{ loop.index }}</td>
+                        <td>{{ guest.name }}</td>
+                        <td>{{ guest.role }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+        {% endif %}
+
+        <!-- Orden del Día / Actividades -->
+        <section class="activities-section">
+            <h2 class="section-title">ORDEN DEL DÍA</h2>
+
+            <!-- 1. Verificación de Quórum -->
+            <div class="activity-block">
+                <h3>1. Verificación de Quórum</h3>
+                <div class="activity-content">
+                    {% if quorum_achieved %}
+                    <p>Se verifica quórum con la asistencia de <strong>{{ present_count }}</strong> de <strong>{{ total_members }}</strong> miembros ({{ quorum_percentage }}%). Se da inicio a la reunión.</p>
+                    {% else %}
+                    <p>No se logró quórum. Asistieron <strong>{{ present_count }}</strong> de <strong>{{ total_members }}</strong> miembros ({{ quorum_percentage }}%).</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- 2. Lectura del Acta Anterior -->
+            <div class="activity-block">
+                <h3>2. Lectura del Acta Anterior</h3>
+                <div class="activity-content">
+                    {% if previous_meeting %}
+                    <p>Se da lectura al acta No. {{ previous_acta_number }} del {{ previous_meeting_date }}, la cual fue aprobada por los asistentes.</p>
+                    {% else %}
+                    <p>No existe acta anterior para este comité.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- 3. Desarrollo de la Reunión -->
+            <div class="activity-block">
+                <h3>3. Desarrollo de la Reunión</h3>
+                <div class="activity-content">
+                    {% if agenda %}
+                    <p><strong>Agenda:</strong></p>
+                    <p class="preformatted">{{ agenda }}</p>
+                    {% endif %}
+                    {% if minutes_content %}
+                    <p><strong>Desarrollo:</strong></p>
+                    <p class="preformatted">{{ minutes_content }}</p>
+                    {% else %}
+                    <p><em>Sin contenido registrado.</em></p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- 4. Revisión de Compromisos Anteriores -->
+            <div class="activity-block">
+                <h3>4. Revisión de Compromisos Anteriores</h3>
+                {% if previous_meeting %}
+                <p class="activity-subtitle">Compromisos asignados en el Acta No. {{ previous_acta_number }} del {{ previous_meeting_date }}:</p>
+                {% endif %}
+                {% if previous_activities and previous_activities|length > 0 %}
+                <table class="commitments-table">
+                    <thead>
+                        <tr>
+                            <th class="col-number">#</th>
+                            <th class="col-activity">ACTIVIDAD</th>
+                            <th class="col-responsible">RESPONSABLE</th>
+                            <th class="col-status">ESTADO</th>
+                            <th class="col-progress">% AVANCE</th>
+                            <th class="col-due-date">FECHA LÍMITE</th>
+                            <th class="col-observations">OBSERVACIONES</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for activity in previous_activities %}
+                        <tr>
+                            <td class="center">{{ loop.index }}</td>
+                            <td>{{ activity.title }}</td>
+                            <td>{{ activity.responsible }}</td>
+                            <td class="center">{{ activity.status }}</td>
+                            <td class="center">{{ activity.progress }}%</td>
+                            <td class="center">{{ activity.due_date }}</td>
+                            <td>{{ activity.observations }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="activity-content">
+                    {% if previous_meeting %}
+                    <p><em>No se asignaron compromisos en el acta anterior.</em></p>
+                    {% else %}
+                    <p><em>No existe acta anterior para este comité.</em></p>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- 5. Asignación de Compromisos -->
+            <div class="activity-block">
+                <h3>5. Asignación de Compromisos</h3>
+                {% if new_activities and new_activities|length > 0 %}
+                <table class="commitments-table">
+                    <thead>
+                        <tr>
+                            <th class="col-number">#</th>
+                            <th class="col-activity">ACTIVIDAD</th>
+                            <th class="col-responsible">RESPONSABLE</th>
+                            <th class="col-due-date">FECHA LÍMITE</th>
+                            <th class="col-observations">OBSERVACIONES</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for activity in new_activities %}
+                        <tr>
+                            <td class="center">{{ loop.index }}</td>
+                            <td>{{ activity.title }}</td>
+                            <td>{{ activity.responsible }}</td>
+                            <td class="center">{{ activity.due_date }}</td>
+                            <td>{{ activity.observations }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="activity-content">
+                    <p><em>No se asignaron nuevos compromisos.</em></p>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- 6. Proposiciones y Varios -->
+            <div class="activity-block">
+                <h3>6. Proposiciones y Varios</h3>
+                <div class="activity-content">
+                    {% if notes %}
+                    <p class="preformatted">{{ notes }}</p>
+                    {% else %}
+                    <p><em>Sin proposiciones adicionales.</em></p>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+
+        <!-- Firmas -->
+        <section class="signatures-section">
+            <div class="signature-row">
+                <div class="signature-block">
+                    <div class="signature-line"></div>
+                    <p class="signature-name">{{ secretary_name }}</p>
+                    <p class="signature-role">Secretario(a) del Comité</p>
+                </div>
+                <div class="signature-block">
+                    <div class="signature-line"></div>
+                    <p class="signature-name">{{ president_name }}</p>
+                    <p class="signature-role">Presidente del Comité</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Documento generado por el Sistema de Gestión SST - {{ generation_date }} {{ generation_time }}</p>
+        </footer>
+    </div>
+</body>
+</html>

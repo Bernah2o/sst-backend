@@ -217,14 +217,34 @@ async def create_committee_member(
             detail="Usuario no encontrado"
         )
     
-    # Verificar que el rol existe
-    role = db.query(CommitteeRole).filter(CommitteeRole.id == member.role_id).first()
-    if not role:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Rol no encontrado"
-        )
-    
+    # Resolver role_id automáticamente si no se envía
+    role_name_mapping = {
+        "PRESIDENT": "Presidente",
+        "VICE_PRESIDENT": "Vicepresidente",
+        "SECRETARY": "Secretario",
+        "MEMBER": "Miembro",
+        "ALTERNATE": "Suplente",
+    }
+    role_enum_value = member.role.value if hasattr(member.role, 'value') else member.role
+
+    if member.role_id:
+        role = db.query(CommitteeRole).filter(CommitteeRole.id == member.role_id).first()
+        if not role:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Rol no encontrado"
+            )
+    else:
+        # Buscar el rol por nombre o crearlo si no existe
+        display_name = role_name_mapping.get(role_enum_value, role_enum_value)
+        role = db.query(CommitteeRole).filter(CommitteeRole.name == display_name).first()
+        if not role:
+            # Crear el rol automáticamente
+            role = CommitteeRole(name=display_name, description=f"Rol de {display_name}", is_active=True)
+            db.add(role)
+            db.flush()
+        member.role_id = role.id
+
     # Verificar que no existe una membresía activa para este usuario en este comité
     existing_member = db.query(CommitteeMember).filter(
         and_(
@@ -307,18 +327,34 @@ async def update_committee_member(
             detail="Miembro no encontrado"
         )
     
-    # Verificar rol si se está actualizando
+    # Resolver role_id si se está actualizando el rol
     if member_update.role_id:
         role = db.query(CommitteeRole).filter(
             CommitteeRole.id == member_update.role_id
         ).first()
-        
         if not role:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Rol no encontrado"
             )
-    
+    elif member_update.role:
+        # Auto-resolver role_id a partir del enum
+        role_name_mapping = {
+            "PRESIDENT": "Presidente",
+            "VICE_PRESIDENT": "Vicepresidente",
+            "SECRETARY": "Secretario",
+            "MEMBER": "Miembro",
+            "ALTERNATE": "Suplente",
+        }
+        role_enum_value = member_update.role.value if hasattr(member_update.role, 'value') else member_update.role
+        display_name = role_name_mapping.get(role_enum_value, role_enum_value)
+        role = db.query(CommitteeRole).filter(CommitteeRole.name == display_name).first()
+        if not role:
+            role = CommitteeRole(name=display_name, description=f"Rol de {display_name}", is_active=True)
+            db.add(role)
+            db.flush()
+        member_update.role_id = role.id
+
     # Verificar límites de roles específicos si se está cambiando el rol
     if member_update.role and member_update.role != member.role:
         if member_update.role in ["PRESIDENT", "VICE_PRESIDENT", "SECRETARY"]:
@@ -374,6 +410,7 @@ async def delete_committee_member(
 @router.post("/{member_id}/activate", response_model=CommitteeMemberSchema)
 async def activate_committee_member(
     member_id: int,
+    reason: Optional[str] = Query(None, description="Razón de la activación"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -403,6 +440,18 @@ async def activate_committee_member(
         )
     
     member.is_active = True
+    member.end_date = None  # Limpiar fecha de fin al activar
+    
+    if reason:
+        current_notes = member.notes or ""
+        today_str = date.today().strftime("%Y-%m-%d")
+        new_note = f"Activado el {today_str}. Razón: {reason}"
+        
+        if current_notes:
+            member.notes = f"{current_notes}\n{new_note}"
+        else:
+            member.notes = new_note
+            
     db.commit()
     db.refresh(member)
     
@@ -412,6 +461,7 @@ async def activate_committee_member(
 async def deactivate_committee_member(
     member_id: int,
     end_date: Optional[date] = Query(None),
+    reason: Optional[str] = Query(None, description="Razón de la inactivación (ej: renuncia, retiro)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -429,6 +479,16 @@ async def deactivate_committee_member(
         member.end_date = end_date
     elif not member.end_date:
         member.end_date = date.today()
+    
+    if reason:
+        current_notes = member.notes or ""
+        today_str = date.today().strftime("%Y-%m-%d")
+        new_note = f"Inactivado el {today_str}. Razón: {reason}"
+        
+        if current_notes:
+            member.notes = f"{current_notes}\n{new_note}"
+        else:
+            member.notes = new_note
     
     db.commit()
     db.refresh(member)

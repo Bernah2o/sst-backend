@@ -343,6 +343,13 @@ class CommitteeActivity(Base):
     meeting = relationship("CommitteeMeeting", back_populates="activities")
     assigned_member = relationship("CommitteeMember", back_populates="assigned_activities")
 
+    @property
+    def assigned_user(self):
+        """Navigate assigned_member -> user for Pydantic serialization"""
+        if self.assigned_member and self.assigned_member.user:
+            return self.assigned_member.user
+        return None
+
 class CommitteeDocument(Base):
     """Documentos de comités"""
     __tablename__ = "committee_documents"
