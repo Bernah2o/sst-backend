@@ -7,6 +7,7 @@ import base64
 from app.utils.storage import storage_manager
 import re
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 from datetime import datetime
 import json
 
@@ -138,7 +139,8 @@ async def create_homework_assessment(
         attachments_data=attachments_json,
         worker_signature=assessment.worker_signature,
         sst_signature=assessment.sst_signature,
-        created_by=current_user.id
+        created_by=current_user.id,
+        sst_management_data=assessment.sst_management_data
     )
     
     db.add(db_assessment)
@@ -220,6 +222,7 @@ async def update_homework_assessment(
     db_assessment.home_address = assessment.home_address
     db_assessment.status = "COMPLETED"
     db_assessment.worker_signature = assessment.worker_signature
+    db_assessment.sst_management_data = assessment.sst_management_data
     
     if assessment.photos:
         db_assessment.photos_data = json.dumps(assessment.photos)
@@ -282,6 +285,92 @@ def bulk_assign_homework_assessments(
         "skipped_count": len(skipped),
         "failed_details": failed,
         "skipped_details": skipped
+    }
+
+@router.get("/homework/stats")
+def get_homework_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin)
+):
+    """
+    Obtiene estadísticas agregadas de las autoevaluaciones de trabajo en casa
+    para análisis de cumplimiento y áreas de mejora.
+    """
+    total_count = db.query(HomeworkAssessment).count()
+    completed_count = db.query(HomeworkAssessment).filter(HomeworkAssessment.status == "COMPLETED").count()
+    pending_count = total_count - completed_count
+
+    if completed_count == 0:
+        return {
+            "total": total_count,
+            "completed": completed_count,
+            "pending": pending_count,
+            "compliance_by_category": [],
+            "top_issues": []
+        }
+
+    # Categorías a evaluar
+    categories = [
+        ("lighting_check", "Iluminación"),
+        ("ventilation_check", "Ventilación"),
+        ("desk_check", "Mesa de Trabajo"),
+        ("chair_check", "Silla Ergonómica"),
+        ("screen_check", "Posición Pantalla"),
+        ("mouse_keyboard_check", "Teclado y Ratón"),
+        ("space_check", "Espacio Disponible"),
+        ("floor_check", "Estado del Piso"),
+        ("noise_check", "Ruido Ambiental"),
+        ("connectivity_check", "Conectividad"),
+        ("equipment_check", "Seguridad Equipos"),
+        ("confidentiality_check", "Confidencialidad"),
+        ("active_breaks_check", "Pausas Activas"),
+        ("psychosocial_check", "Riesgo Psicosocial")
+    ]
+
+    compliance_data = []
+    
+    # Obtener sumas de cumplimiento (checks que son True)
+    for field, label in categories:
+        # Contar cuántos son True para este campo en evaluaciones COMPLETADAS
+        count_true = db.query(func.count(HomeworkAssessment.id)).filter(
+            HomeworkAssessment.status == "COMPLETED",
+            getattr(HomeworkAssessment, field) == True
+        ).scalar()
+        
+        percentage = (count_true / completed_count) * 100
+        compliance_data.append({
+            "category": label,
+            "compliant_count": count_true,
+            "non_compliant_count": completed_count - count_true,
+            "percentage": round(percentage, 2)
+        })
+
+    # Top issues (categorías con menor cumplimiento)
+    top_issues = sorted(compliance_data, key=lambda x: x["percentage"])[:5]
+
+    # Resumen de estados de planes de acción (Seguimiento SST)
+    all_management = db.query(HomeworkAssessment.sst_management_data).filter(
+        HomeworkAssessment.sst_management_data != None
+    ).all()
+    
+    action_stats = {"OPEN": 0, "IN_PROGRESS": 0, "CLOSED": 0}
+    for (m_data_str,) in all_management:
+        try:
+            m_data = json.loads(m_data_str)
+            for item in m_data.values():
+                status = item.get("status", "OPEN")
+                if status in action_stats:
+                    action_stats[status] += 1
+        except:
+            continue
+
+    return {
+        "total": total_count,
+        "completed": completed_count,
+        "pending": pending_count,
+        "compliance_by_category": compliance_data,
+        "top_issues": top_issues,
+        "action_stats": action_stats
     }
 
 @router.get("/homework", response_model=List[AssessmentSchema])

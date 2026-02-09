@@ -80,6 +80,10 @@ class HomeworkAssessment(Base):
     # Fotos (almacenadas como paths separados por coma o JSON, usaremos JSON string para flexibilidad)
     photos_data = Column(Text, nullable=True)  # JSON string: {"general": "path", "desk": "path", ...}
     
+    # Seguimiento SST y Plan de Acción
+    # Estructura sugerida: {"lighting": {"status": "OPEN", "action": "...", "date": "..."}, ...}
+    sst_management_data = Column(Text, nullable=True) 
+    
     # Metadatos
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

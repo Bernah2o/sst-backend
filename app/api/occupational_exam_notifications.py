@@ -141,9 +141,15 @@ async def send_individual_reminder(
                 break
         
         if not worker_data:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Trabajador no encontrado o no requiere examen"
+                content={
+                    "success": False,
+                    "message": "Trabajador no encontrado o no requiere examen",
+                    "detail": "Trabajador no encontrado o no requiere examen",
+                    "error_code": 404,
+                    "timestamp": datetime.now().timestamp()
+                }
             )
         
         # Enviar recordatorio en background
@@ -187,9 +193,15 @@ async def send_notification_with_pdf(
                 break
         
         if not worker_data:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Trabajador no encontrado o no requiere examen"
+                content={
+                    "success": False,
+                    "message": "Trabajador no encontrado o no requiere examen",
+                    "detail": "Trabajador no encontrado o no requiere examen",
+                    "error_code": 404,
+                    "timestamp": datetime.now().timestamp()
+                }
             )
         
         # Enviar recordatorio en background

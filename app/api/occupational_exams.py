@@ -74,28 +74,18 @@ async def get_occupational_exams(
     # Calculate offset
     skip = (page - 1) * limit
 
-    # Base query with joins para evitar N+1 queries
-    query = (
-        db.query(OccupationalExam, Cargo)
-        .join(Worker, OccupationalExam.worker_id == Worker.id)
-        .outerjoin(
-            Cargo,
-            or_(
-                Worker.cargo_id == Cargo.id,
-                and_(Worker.cargo_id.is_(None), Worker.position == Cargo.nombre_cargo),
-            ),
-        )
-        .options(
-            joinedload(OccupationalExam.worker),
-        )
-    )
-
-    # Apply filters
+    # Base query
+    query = db.query(OccupationalExam)
+    
+    # 1. Optimizar consulta de conteo (evitar joins innecesarios)
+    count_query = db.query(func.count(OccupationalExam.id))
+    
+    # Apply filters to both
     if exam_type:
         query = query.filter(OccupationalExam.exam_type == exam_type)
+        count_query = count_query.filter(OccupationalExam.exam_type == exam_type)
 
     if result:
-        # Map result filter to medical_aptitude_concept values
         result_mapping = {
             "apto": "apto",
             "apto_con_restricciones": "apto_con_recomendaciones",
@@ -103,15 +93,23 @@ async def get_occupational_exams(
         }
         medical_aptitude = result_mapping.get(result)
         if medical_aptitude:
-            query = query.filter(
-                OccupationalExam.medical_aptitude_concept == medical_aptitude
-            )
+            query = query.filter(OccupationalExam.medical_aptitude_concept == medical_aptitude)
+            count_query = count_query.filter(OccupationalExam.medical_aptitude_concept == medical_aptitude)
 
     if worker_id:
         query = query.filter(OccupationalExam.worker_id == worker_id)
+        count_query = count_query.filter(OccupationalExam.worker_id == worker_id)
 
     if search:
-        query = query.filter(
+        # Solo unir Worker si hay búsqueda
+        query = query.join(Worker, OccupationalExam.worker_id == Worker.id).filter(
+            or_(
+                Worker.first_name.ilike(f"%{search}%"),
+                Worker.last_name.ilike(f"%{search}%"),
+                Worker.document_number.ilike(f"%{search}%"),
+            )
+        )
+        count_query = count_query.join(Worker, OccupationalExam.worker_id == Worker.id).filter(
             or_(
                 Worker.first_name.ilike(f"%{search}%"),
                 Worker.last_name.ilike(f"%{search}%"),
@@ -119,8 +117,13 @@ async def get_occupational_exams(
             )
         )
 
-    # Get total count (solo contar exámenes, no el join completo)
-    total = query.with_entities(func.count(OccupationalExam.id)).scalar()
+    # Get total count
+    total = count_query.scalar()
+
+    # 2. Carga ansiosa para el query principal
+    query = query.options(
+        joinedload(OccupationalExam.worker).joinedload(Worker.cargo_obj)
+    )
 
     # Apply pagination and ordering
     results = (
@@ -130,10 +133,46 @@ async def get_occupational_exams(
         .all()
     )
 
-    # Enrich exam data with worker information (sin queries adicionales)
+    # 3. Optimización N+1: Pre-cargar Profesiogramas y Factores en bloque
+    # Identificar qué cargos necesitan factores de riesgo (aquellos que no los tienen en BD)
+    cargos_needed = set()
+    for exam in results:
+        if not exam.factores_riesgo_evaluados:
+            worker = exam.worker
+            if worker:
+                if worker.cargo_id:
+                    cargos_needed.add(worker.cargo_id)
+    
+    prof_map = {}
+    if cargos_needed:
+        # Buscar profesiogramas activos para estos cargos
+        active_profs = (
+            db.query(Profesiograma)
+            .filter(
+                Profesiograma.cargo_id.in_(list(cargos_needed)),
+                Profesiograma.estado == ProfesiogramaEstado.ACTIVO
+            )
+            .options(
+                joinedload(Profesiograma.profesiograma_factors).joinedload(ProfesiogramaFactor.factor_riesgo)
+            )
+            .all()
+        )
+        # Mapear por cargo_id
+        for p in active_profs:
+            prof_map[p.cargo_id] = p
+
+    # Enrich exam data with worker information (sin queries adicionales dentro del loop)
     enriched_exams = []
-    for exam, cargo in results:
+    for exam in results:
         worker = exam.worker
+        cargo = worker.cargo_obj if worker else None
+        
+        # Fallback de cargo si no hay cargo_id pero hay position (solo si es necesario)
+        if not cargo and worker and worker.position:
+            # Esta parte aún podría causar un query por cada fila sin cargo_id
+            # pero asumimos que la mayoría sí tiene cargo_id
+            cargo = db.query(Cargo).filter(Cargo.nombre_cargo == worker.position).first()
+        
         periodicidad = cargo.periodicidad_emo if cargo else "anual"
 
         if periodicidad == "semestral":
@@ -163,26 +202,11 @@ async def get_occupational_exams(
         factores = exam.factores_riesgo_evaluados
         if not factores and cargo:
             try:
-                profesiograma = (
-                    db.query(Profesiograma)
-                    .filter(
-                        Profesiograma.cargo_id == cargo.id,
-                        Profesiograma.estado == ProfesiogramaEstado.ACTIVO
-                    )
-                    .order_by(Profesiograma.version.desc())
-                    .first()
-                )
+                profesiograma = prof_map.get(cargo.id)
                 
                 if profesiograma:
-                    prof_factors = (
-                        db.query(ProfesiogramaFactor)
-                        .options(joinedload(ProfesiogramaFactor.factor_riesgo))
-                        .filter(ProfesiogramaFactor.profesiograma_id == profesiograma.id)
-                        .all()
-                    )
-                    
                     risk_factors_list = []
-                    for pf in prof_factors:
+                    for pf in profesiograma.profesiograma_factors:
                         risk_factors_list.append({
                             "factor_riesgo_id": pf.factor_riesgo_id,
                             "nombre": pf.factor_riesgo.nombre,

@@ -51,6 +51,7 @@ class HomeworkAssessmentBase(BaseModel):
     sst_observations: Optional[str] = None
     home_address: Optional[str] = None
     status: Optional[str] = "PENDING"
+    sst_management_data: Optional[str] = None
 
 class HomeworkAssessmentCreate(HomeworkAssessmentBase):
     worker_id: int
