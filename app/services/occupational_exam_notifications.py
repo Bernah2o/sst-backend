@@ -3,7 +3,7 @@ from typing import List, Dict, Any
 from pathlib import Path
 from jinja2 import Template
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, func, cast, String
 
 from app.database import get_db
 from app.models.worker import Worker
@@ -62,14 +62,18 @@ class OccupationalExamNotificationService:
         today = date.today()
         notification_date = today + timedelta(days=days_ahead)
         
-        # Subconsulta para obtener el último examen de cada trabajador
+        # Subconsulta para obtener el último examen de cada trabajador (Optimizado para PostgreSQL)
         latest_exams = (
             self.db.query(
                 OccupationalExam.worker_id,
                 OccupationalExam.exam_date.label('last_exam_date'),
-                TipoExamen.nombre.label('exam_type_name')
+                # Usar coalesce para obtener el nombre del tipo de examen desde la relación o el campo string
+                func.coalesce(
+                    TipoExamen.nombre, 
+                    cast(OccupationalExam.exam_type, String)
+                ).label('exam_type_name')
             )
-            .join(TipoExamen, OccupationalExam.tipo_examen_id == TipoExamen.id)
+            .outerjoin(TipoExamen, OccupationalExam.tipo_examen_id == TipoExamen.id)
             .distinct(OccupationalExam.worker_id)
             .order_by(OccupationalExam.worker_id, OccupationalExam.exam_date.desc())
             .subquery()
@@ -233,8 +237,22 @@ Sistema de Gestión SST
             
             # Determinar el tipo de examen (por defecto periódico)
             exam_type_label = "Examen Periódico"
-            if latest_exam and latest_exam.tipo_examen:
-                exam_type_label = latest_exam.tipo_examen.nombre
+            
+            # Mapeo de códigos a etiquetas legibles (backup si no hay relación tipo_examen)
+            exam_type_mapping = {
+                "INGRESO": "Examen de Ingreso",
+                "PERIODICO": "Examen Periódico",
+                "REINTEGRO": "Examen de Reintegro",
+                "RETIRO": "Examen de Retiro",
+            }
+            
+            if latest_exam:
+                if latest_exam.tipo_examen:
+                    exam_type_label = latest_exam.tipo_examen.nombre
+                elif latest_exam.exam_type:
+                    # Intentar mapear el código string, o usarlo tal cual formateado
+                    code = latest_exam.exam_type
+                    exam_type_label = exam_type_mapping.get(code, code.replace('_', ' ').title())
             
             # Preparar los datos para la plantilla
             last_exam_date = worker_data.get("last_exam_date")
