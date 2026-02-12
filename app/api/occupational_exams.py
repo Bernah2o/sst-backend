@@ -153,7 +153,7 @@ async def get_occupational_exams(
                 Profesiograma.estado == ProfesiogramaEstado.ACTIVO
             )
             .options(
-                joinedload(Profesiograma.profesiograma_factors).joinedload(ProfesiogramaFactor.factor_riesgo)
+                joinedload(Profesiograma.profesiograma_factores).joinedload(ProfesiogramaFactor.factor_riesgo)
             )
             .all()
         )
@@ -206,7 +206,7 @@ async def get_occupational_exams(
                 
                 if profesiograma:
                     risk_factors_list = []
-                    for pf in profesiograma.profesiograma_factors:
+                    for pf in profesiograma.profesiograma_factores:
                         risk_factors_list.append({
                             "factor_riesgo_id": pf.factor_riesgo_id,
                             "nombre": pf.factor_riesgo.nombre,
