@@ -8,7 +8,7 @@ from sqlalchemy import and_, or_
 import os
 
 from app.database import get_db
-from app.dependencies import get_current_active_user
+from app.dependencies import get_current_active_user, has_role_or_custom
 from app.models.user import User
 
 
@@ -174,7 +174,7 @@ async def get_courses(
         query = query.filter(Course.status == status)
     else:
         # Only show published courses for users who are not admin or capacitador
-        if current_user.role.value not in ["admin", "trainer"]:
+        if not has_role_or_custom(current_user, ["admin", "trainer"]):
             query = query.filter(Course.status == CourseStatus.PUBLISHED)
 
     # Get total count
@@ -211,7 +211,7 @@ async def create_course(
     """
     Create new course (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
@@ -295,7 +295,7 @@ async def get_course(
         )
 
     # Check if user can access this course
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         # For non-admin users, check if course is published AND user is enrolled
         if course.status != CourseStatus.PUBLISHED:
             raise HTTPException(
@@ -434,7 +434,7 @@ async def update_course(
     """
     Update course (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
@@ -466,7 +466,7 @@ async def delete_course(
     """
     Delete course (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
@@ -525,7 +525,7 @@ async def create_course_module(
     """
     Create new course module (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
@@ -564,7 +564,7 @@ async def get_course_modules(
         )
 
     # Check if user can access this course
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         # For non-admin users, check if course is published AND user is enrolled
         if course.status != CourseStatus.PUBLISHED:
             raise HTTPException(
@@ -672,7 +672,7 @@ async def update_course_module(
     """
     Update course module (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -707,7 +707,7 @@ async def delete_course_module(
     """
     Delete course module (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -824,7 +824,7 @@ async def get_module_materials(
 
     # Check if user can access this course
     course = db.query(Course).filter(Course.id == module.course_id).first()
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         # For non-admin users, check if course is published AND user is enrolled
         if course.status != CourseStatus.PUBLISHED:
             raise HTTPException(
@@ -857,7 +857,7 @@ async def get_module_materials(
     )
 
     # Para usuarios no administradores, añadir información de progreso
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         result = []
         for material in materials:
             # Buscar progreso del material
@@ -940,7 +940,7 @@ async def create_course_material(
     """
     Create new course material (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -994,7 +994,7 @@ async def update_course_material(
     """
     Update course material (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -1046,7 +1046,7 @@ async def delete_course_material(
     """
     Delete course material (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -1155,7 +1155,7 @@ async def validate_course_requirements(
         )
 
     # Check if user has permission to validate this course
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
@@ -1248,7 +1248,7 @@ async def get_course_attendance_report(
         )
 
     # Check permissions
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )

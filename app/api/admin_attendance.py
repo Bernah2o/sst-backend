@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
 
-from app.dependencies import get_current_active_user
+from app.dependencies import get_current_active_user, has_role_or_custom
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.attendance import Attendance, AttendanceStatus, AttendanceType
@@ -27,7 +27,7 @@ router = APIRouter()
 # Verificación de permisos de administrador
 def check_admin_permissions(current_user: User):
     """Verificar que el usuario tenga permisos de administrador"""
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Esta funcionalidad es exclusiva para administradores",

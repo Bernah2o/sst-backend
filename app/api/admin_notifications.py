@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func, desc
 
 from app.database import get_db
-from app.dependencies import get_current_active_user
+from app.dependencies import get_current_active_user, has_role_or_custom
 from app.models.user import User
 from app.models.worker import Worker
 from app.models.occupational_exam import OccupationalExam
@@ -55,7 +55,7 @@ def get_or_create_notification_setting(db: Session) -> SystemSettings:
 
 def verify_admin_permissions(current_user: User):
     """Verifica que el usuario actual sea administrador"""
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permisos para administrar notificaciones"

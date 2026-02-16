@@ -65,6 +65,7 @@ async def get_occupational_exams(
     result: Optional[str] = Query(None),
     worker_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
+    next_exam_status: Optional[str] = Query(None, description="Filtro por próximo examen: 'proximos' (próximos 30 días), 'vencidos' (ya vencidos)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_supervisor_or_admin),
 ) -> Any:
@@ -117,6 +118,37 @@ async def get_occupational_exams(
             )
         )
 
+    # Filtro por estado del próximo examen (calculado con SQL)
+    if next_exam_status in ("proximos", "vencidos"):
+        from sqlalchemy import case
+        today = date.today()
+        # Unir con Worker y Cargo si no se hizo antes
+        if not search:
+            query = query.join(Worker, OccupationalExam.worker_id == Worker.id)
+            count_query = count_query.join(Worker, OccupationalExam.worker_id == Worker.id)
+        query = query.outerjoin(Cargo, Worker.cargo_id == Cargo.id)
+        count_query = count_query.outerjoin(Cargo, Worker.cargo_id == Cargo.id)
+
+        # Calcular next_exam_date usando CASE + interval (PostgreSQL)
+        next_exam_expr = case(
+            (Cargo.periodicidad_emo == "semestral", OccupationalExam.exam_date + timedelta(days=180)),
+            (Cargo.periodicidad_emo == "bianual", OccupationalExam.exam_date + timedelta(days=730)),
+            else_=OccupationalExam.exam_date + timedelta(days=365),
+        )
+
+        if next_exam_status == "proximos":
+            # Próximos 30 días: next_exam_date entre hoy y hoy+30
+            query = query.filter(
+                and_(next_exam_expr >= today, next_exam_expr <= today + timedelta(days=30))
+            )
+            count_query = count_query.filter(
+                and_(next_exam_expr >= today, next_exam_expr <= today + timedelta(days=30))
+            )
+        elif next_exam_status == "vencidos":
+            # Vencidos: next_exam_date < hoy
+            query = query.filter(next_exam_expr < today)
+            count_query = count_query.filter(next_exam_expr < today)
+
     # Get total count
     total = count_query.scalar()
 
@@ -160,6 +192,17 @@ async def get_occupational_exams(
         # Mapear por cargo_id
         for p in active_profs:
             prof_map[p.cargo_id] = p
+
+    # 4. Pre-cargar seguimientos en bloque para evitar N+1 desde el frontend
+    exam_ids = [exam.id for exam in results]
+    seguimiento_exam_ids = set()
+    if exam_ids:
+        seguimiento_rows = (
+            db.query(Seguimiento.occupational_exam_id)
+            .filter(Seguimiento.occupational_exam_id.in_(exam_ids))
+            .all()
+        )
+        seguimiento_exam_ids = {row[0] for row in seguimiento_rows}
 
     # Enrich exam data with worker information (sin queries adicionales dentro del loop)
     enriched_exams = []
@@ -270,6 +313,7 @@ async def get_occupational_exams(
             ),
             "created_at": exam.created_at.isoformat(),
             "updated_at": exam.updated_at.isoformat(),
+            "has_seguimiento": exam.id in seguimiento_exam_ids,
         }
         enriched_exams.append(exam_dict)
 

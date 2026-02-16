@@ -11,7 +11,7 @@ import os
 import uuid
 
 from app.database import get_db
-from app.dependencies import get_current_user, get_current_active_user, require_admin, require_supervisor_or_admin, has_permission
+from app.dependencies import get_current_user, get_current_active_user, require_admin, require_supervisor_or_admin, has_permission, has_role_or_custom
 from app.models.user import User, UserRole
 from app.models.worker import Worker, WorkerContract
 from app.models.worker_document import WorkerDocument, DocumentCategory
@@ -2169,7 +2169,7 @@ async def get_worker_reinduction_history(
     # Verificar permisos: el trabajador solo puede ver su propio historial
     # Los supervisores y admins pueden ver cualquier historial
     user_worker = db.query(Worker).filter(Worker.user_id == current_user.id).first()
-    if (current_user.role.value not in ["admin", "supervisor"] and 
+    if (not has_role_or_custom(current_user, ["admin", "supervisor"]) and 
         (not user_worker or user_worker.id != worker_id)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -2580,7 +2580,7 @@ async def get_worker_novedades_stats(
     # Verificar permisos: el trabajador solo puede ver sus propias estadísticas
     # Los supervisores y admins pueden ver cualquier estadística
     user_worker = db.query(Worker).filter(Worker.user_id == current_user.id).first()
-    if (current_user.role.value not in ["admin", "supervisor"] and 
+    if (not has_role_or_custom(current_user, ["admin", "supervisor"]) and 
         (not user_worker or user_worker.id != worker_id)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

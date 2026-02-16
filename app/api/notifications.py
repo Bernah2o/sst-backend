@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
 
-from app.dependencies import get_current_active_user
+from app.dependencies import get_current_active_user, has_role_or_custom
 from app.database import get_db
 from app.models.user import User
 from app.models.worker import Worker
@@ -91,7 +91,7 @@ async def create_notification(
     """
     Create new notification (admin only)
     """
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -162,7 +162,7 @@ async def get_notification(
         )
     
     # Users can only see their own notifications unless they are admin
-    if current_user.role.value != "admin" and notification.user_id != current_user.id:
+    if not has_role_or_custom(current_user, ["admin"]) and notification.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -181,7 +181,7 @@ async def update_notification(
     """
     Update notification (admin only)
     """
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -224,7 +224,7 @@ async def delete_notification(
         )
     
     # Users can only delete their own notifications unless they are admin
-    if current_user.role.value != "admin" and notification.user_id != current_user.id:
+    if not has_role_or_custom(current_user, ["admin"]) and notification.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -252,7 +252,7 @@ async def mark_notification_read(
         )
     
     # Verificar que la notificación pertenece al usuario actual o es admin
-    if current_user.role.value != "admin" and notification.user_id != current_user.id:
+    if not has_role_or_custom(current_user, ["admin"]) and notification.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -279,7 +279,7 @@ async def send_exam_notification(
     Solo administradores pueden enviar estas notificaciones.
     """
     # Verificar permisos (solo admin)
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permisos para enviar notificaciones"
@@ -483,7 +483,7 @@ async def send_notification(
         )
     
     # Check permissions - users can only send their own notifications unless they are admin
-    if current_user.role.value != "admin" and notification.user_id != current_user.id:
+    if not has_role_or_custom(current_user, ["admin"]) and notification.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -567,7 +567,7 @@ async def create_bulk_notifications(
     - Usuarios por roles (user_roles: admin, trainer, employee, supervisor)
     - Todos los usuarios (si no se especifica user_ids ni user_roles)
     """
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -691,7 +691,7 @@ async def send_notifications_by_role(
     
     Roles disponibles: admin, trainer, employee, supervisor
     """
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -750,7 +750,7 @@ async def send_notifications_to_all(
     """
     Enviar notificaciones a todos los usuarios activos del sistema
     """
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -807,7 +807,7 @@ async def get_notification_templates(
     """
     Get notification templates (admin only)
     """
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -850,7 +850,7 @@ async def create_notification_template(
     """
     Create notification template (admin only)
     """
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -888,7 +888,7 @@ async def get_notification_template(
     """
     Get notification template by ID (admin only)
     """
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -915,7 +915,7 @@ async def update_notification_template(
     """
     Update notification template (admin only)
     """
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -949,7 +949,7 @@ async def delete_notification_template(
     """
     Delete notification template (admin only)
     """
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -980,7 +980,7 @@ async def send_notification_from_template(
     """
     Send notifications using a template (admin only)
     """
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -1082,7 +1082,7 @@ async def send_test_email(
     """
     Send test email to any email address (admin only)
     """
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"

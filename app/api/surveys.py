@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func
 
-from app.dependencies import get_current_active_user, get_current_user
+from app.dependencies import get_current_active_user, get_current_user, has_role_or_custom
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.survey import Survey, SurveyQuestion, UserSurvey, UserSurveyAnswer, SurveyStatus, UserSurveyStatus
@@ -64,7 +64,7 @@ async def get_surveys(
         query = query.filter(Survey.status == status)
     else:
         # Only show active surveys for non-admin users
-        if current_user.role.value not in ["admin", "trainer"]:
+        if not has_role_or_custom(current_user, ["admin", "trainer"]):
             query = query.filter(Survey.status == SurveyStatus.PUBLISHED)
     
     # Get total count
@@ -119,7 +119,7 @@ async def create_survey(
     """
     Create new survey (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -308,7 +308,7 @@ async def get_general_surveys(
     """
     Get general surveys (not associated with any course) - for admin/capacitador management
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -678,7 +678,7 @@ async def get_survey(
         )
     
     # Check if user can access this survey
-    if current_user.role.value != "admin" and survey.status != SurveyStatus.PUBLISHED:
+    if not has_role_or_custom(current_user, ["admin"]) and survey.status != SurveyStatus.PUBLISHED:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="La encuesta no está disponible"
@@ -733,7 +733,7 @@ async def update_survey(
     """
     Update survey (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -885,7 +885,7 @@ async def delete_survey(
     """
     Delete survey (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -971,7 +971,7 @@ async def get_survey_questions(
         )
     
     # Check if user can access this survey
-    if current_user.role.value != "admin" and survey.status != SurveyStatus.PUBLISHED:
+    if not has_role_or_custom(current_user, ["admin"]) and survey.status != SurveyStatus.PUBLISHED:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="La encuesta no está disponible"
@@ -994,7 +994,7 @@ async def create_survey_question(
     """
     Create new question for survey (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -1032,7 +1032,7 @@ async def update_survey_question(
     """
     Update survey question (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -1088,7 +1088,7 @@ async def delete_survey_question(
     """
     Delete survey question (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -1280,7 +1280,7 @@ async def get_survey_responses(
     """
     Get survey responses (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -1328,7 +1328,7 @@ async def get_survey_statistics(
     """
     Get survey statistics (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -1393,7 +1393,7 @@ async def get_user_surveys(
     Get surveys for a specific user
     """
     # Users can only see their own surveys unless they are admin or capacitador
-    if current_user.role.value not in ["admin", "trainer"] and current_user.id != user_id:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]) and current_user.id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -1521,7 +1521,7 @@ async def get_survey_presentation(
         )
     
     # Check if user can access this survey
-    if current_user.role.value != "admin" and survey.status != SurveyStatus.PUBLISHED:
+    if not has_role_or_custom(current_user, ["admin"]) and survey.status != SurveyStatus.PUBLISHED:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Survey is not available"
@@ -1557,7 +1557,7 @@ async def get_survey_detailed_results(
     """
     Get detailed survey results with employee information (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -1699,7 +1699,7 @@ async def cleanup_orphaned_answers(
     Clean up orphaned survey answers (admin only)
     This endpoint removes UserSurveyAnswer records that reference non-existent SurveyQuestion records
     """
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo los administradores pueden ejecutar la limpieza de datos"
@@ -1745,7 +1745,7 @@ async def check_data_integrity(
     Check data integrity for surveys (admin only)
     Returns information about potential data integrity issues
     """
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Solo los administradores pueden verificar la integridad de datos"
@@ -1810,7 +1810,7 @@ async def get_survey_edit_impact(
     Get information about the impact of editing a survey (admin and capacitador roles only)
     Returns details about existing responses that would be affected
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -1867,7 +1867,7 @@ async def get_question_edit_impact(
     Get information about the impact of editing a question (admin and capacitador roles only)
     Returns details about existing answers that would be affected
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"

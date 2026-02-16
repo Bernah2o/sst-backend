@@ -41,10 +41,22 @@ def get_current_verified_user(current_user: User = Depends(get_current_active_us
     return current_user
 
 
+def _user_has_custom_role(user: User) -> bool:
+    """Check if user has an active custom role assigned"""
+    return bool(user.custom_role_id)
+
+
+def has_role_or_custom(user: User, allowed_roles: list) -> bool:
+    """Check if user has one of the allowed roles OR has a custom role assigned.
+    Use this in internal endpoint checks instead of: user.role.value not in [...]
+    """
+    return user.role.value in allowed_roles or _user_has_custom_role(user)
+
+
 def require_role(required_role: UserRole):
     """Dependency factory to require specific user role"""
     def role_checker(current_user: User = Depends(get_current_active_user)) -> User:
-        if current_user.role != required_role:
+        if current_user.role != required_role and not _user_has_custom_role(current_user):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions"
@@ -56,7 +68,7 @@ def require_role(required_role: UserRole):
 def require_roles(*required_roles: UserRole):
     """Dependency factory to require any of the specified roles"""
     def role_checker(current_user: User = Depends(get_current_active_user)) -> User:
-        if current_user.role not in required_roles:
+        if current_user.role not in required_roles and not _user_has_custom_role(current_user):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions"
@@ -76,8 +88,8 @@ def require_admin(current_user: User = Depends(get_current_active_user)) -> User
 
 
 def require_trainer_or_admin(current_user: User = Depends(get_current_active_user)) -> User:
-    """Require trainer or admin role"""
-    if not (current_user.is_trainer() or current_user.is_admin()):
+    """Require trainer or admin role, or user with custom role"""
+    if not (current_user.is_trainer() or current_user.is_admin() or _user_has_custom_role(current_user)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Trainer or admin access required"
@@ -86,8 +98,8 @@ def require_trainer_or_admin(current_user: User = Depends(get_current_active_use
 
 
 def require_supervisor_or_admin(current_user: User = Depends(get_current_active_user)) -> User:
-    """Require supervisor or admin role"""
-    if not (current_user.is_supervisor() or current_user.is_admin()):
+    """Require supervisor or admin role, or user with custom role"""
+    if not (current_user.is_supervisor() or current_user.is_admin() or _user_has_custom_role(current_user)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Supervisor or admin access required"
@@ -96,8 +108,8 @@ def require_supervisor_or_admin(current_user: User = Depends(get_current_active_
 
 
 def require_manager_access(current_user: User = Depends(get_current_active_user)) -> User:
-    """Require manager level access (admin, supervisor, or trainer)"""
-    if not current_user.can_view_reports():
+    """Require manager level access (admin, supervisor, trainer, or custom role)"""
+    if not (current_user.can_view_reports() or _user_has_custom_role(current_user)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Manager access required"
@@ -136,17 +148,22 @@ class PermissionChecker:
         return current_user
     
     def _has_permission(self, user: User, resource_type: str, action: str) -> bool:
-        """Check if user has permission for specific resource and action"""
+        """Check if user has permission for specific resource and action.
+        Custom roles EXTEND base role permissions (don't replace them).
+        """
         # Admin has all permissions
         if user.is_admin():
             return True
-        
-        # Check custom role permissions first
+
+        # Check hardcoded role permissions first (base permissions)
+        if self._check_hardcoded_role_permission(user, resource_type, action):
+            return True
+
+        # Then check custom role permissions (additional permissions)
         if user.custom_role_id:
             return self._check_custom_role_permission(user, resource_type, action)
-        
-        # Fallback to hardcoded role permissions
-        return self._check_hardcoded_role_permission(user, resource_type, action)
+
+        return False
     
     def _check_custom_role_permission(self, user: User, resource_type: str, action: str) -> bool:
         """Check permission based on custom role"""

@@ -9,7 +9,7 @@ import tempfile
 import requests
 from contextlib import contextmanager
 
-from app.dependencies import get_current_active_user
+from app.dependencies import get_current_active_user, has_role_or_custom
 from app.database import get_db
 from app.models.user import User
 from app.models.certificate import Certificate, CertificateStatus
@@ -67,13 +67,13 @@ async def get_certificates(
     # Apply filters
     if user_id:
         # Users can only see their own certificates unless they are admin
-        if current_user.role.value != "admin" and current_user.id != user_id:
+        if not has_role_or_custom(current_user, ["admin"]) and current_user.id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Permisos insuficientes"
             )
         query = query.filter(Certificate.user_id == user_id)
-    elif current_user.role.value != "admin":
+    elif not has_role_or_custom(current_user, ["admin"]):
         # Non-admin users can only see their own certificates
         query = query.filter(Certificate.user_id == current_user.id)
     
@@ -90,7 +90,7 @@ async def get_certificates(
             pass
     else:
         # Only show issued certificates for non-admin users
-        if current_user.role.value not in ["admin", "trainer"]:
+        if not has_role_or_custom(current_user, ["admin", "trainer"]):
             query = query.filter(Certificate.status == CertificateStatus.ISSUED)
     
     # Get total count
@@ -192,7 +192,7 @@ async def get_certificate(
         )
     
     # Users can only see their own certificates unless they are admin
-    if current_user.role.value != "admin" and certificate.user_id != current_user.id:
+    if not has_role_or_custom(current_user, ["admin"]) and certificate.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -211,7 +211,7 @@ async def update_certificate(
     """
     Update certificate (admin only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -245,7 +245,7 @@ async def delete_certificate(
     """
     Delete certificate physically (admin only) - Removes the certificate from database and storage
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -300,7 +300,7 @@ async def generate_certificate(
     """
     Generate certificate for course completion (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -426,7 +426,7 @@ async def revoke_certificate(
     """
     Revoke certificate (admin only)
     """
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -466,7 +466,7 @@ async def regenerate_certificate(
     """
     Regenerate certificate PDF (admin only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -517,7 +517,7 @@ async def get_user_certificates_summary(
     Get certificate summary for a user
     """
     # Users can only see their own summary unless they are admin
-    if current_user.role.value != "admin" and current_user.id != user_id:
+    if not has_role_or_custom(current_user, ["admin"]) and current_user.id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -554,7 +554,7 @@ async def generate_certificate_pdf(
     """
     Generate PDF for an existing certificate (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -608,7 +608,7 @@ async def get_certificate_pdf(
         )
     
     # Check permissions
-    if current_user.role.value not in ["admin", "trainer"] and certificate.user_id != current_user.id:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]) and certificate.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -716,7 +716,7 @@ async def generate_certificate_from_course(
     """
     Generate certificate for a user who completed a course (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
