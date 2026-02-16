@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_active_user
+from app.dependencies import get_current_active_user, has_role_or_custom
 from app.models.user import User
 from app.models.course import Course, CourseModule, CourseMaterial, MaterialType
 from app.schemas.common import MessageResponse
@@ -233,7 +233,7 @@ async def upload_course_material(
             detail="Curso no encontrado"
         )
     
-    if course.created_by != current_user.id and current_user.role.value not in ["admin", "trainer"]:
+    if course.created_by != current_user.id and not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes para subir materiales a este curso"
@@ -338,7 +338,7 @@ async def delete_course_material(
     module = db.query(CourseModule).filter(CourseModule.id == material.module_id).first()
     course = db.query(Course).filter(Course.id == module.course_id).first()
     
-    if course.created_by != current_user.id and current_user.role.value not in ["admin", "trainer"]:
+    if course.created_by != current_user.id and not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes para eliminar este material"
@@ -434,7 +434,7 @@ async def view_course_material(
         Enrollment.course_id == course.id
     ).first()
     
-    if not enrollment and course.created_by != current_user.id and current_user.role.value not in ["admin", "trainer"]:
+    if not enrollment and course.created_by != current_user.id and not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No está inscrito en este curso"
@@ -451,7 +451,7 @@ async def view_course_material(
     
     # Agregar un campo para indicar si el usuario puede descargar el material
     # Solo los administradores, capacitadores y creadores del curso pueden descargar
-    can_download = (current_user.role.value in ["admin", "trainer", "supervisor"] or 
+    can_download = (has_role_or_custom(current_user, ["admin", "trainer", "supervisor"]) or 
                    course.created_by == current_user.id)
     
     return {
@@ -487,7 +487,7 @@ async def download_course_material(
     
     # Verificar si el usuario tiene permisos para descargar
     # Solo los administradores, capacitadores, supervisores y creadores del curso pueden descargar
-    if current_user.role.value not in ["admin", "trainer", "supervisor"] and course.created_by != current_user.id:
+    if not has_role_or_custom(current_user, ["admin", "trainer", "supervisor"]) and course.created_by != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes permisos para descargar este material"

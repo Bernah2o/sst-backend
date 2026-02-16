@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, func, or_
 
 from app.database import get_db
-from app.dependencies import get_current_active_user
+from app.dependencies import get_current_active_user, has_role_or_custom
 from app.models.user import User, UserRole
 from app.models.worker import Worker
 from app.models.course import Course, CourseStatus, CourseModule, CourseType
@@ -61,7 +61,7 @@ async def get_user_progress(
     query = db.query(Enrollment).join(User, Enrollment.user_id == User.id).join(Course, Enrollment.course_id == Course.id).outerjoin(Worker, Worker.user_id == User.id)
     
     # Role-based filtering
-    if current_user.role.value not in ["admin", "trainer", "supervisor"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer", "supervisor"]):
         # Employees can only see their own progress
         query = query.filter(Enrollment.user_id == current_user.id)
     elif user_id:
@@ -240,7 +240,7 @@ async def get_user_progress_by_id(
     Get all progress for a specific user
     """
     # Permission check
-    if current_user.role.value not in ["admin", "trainer", "supervisor"] and current_user.id != user_id:
+    if not has_role_or_custom(current_user, ["admin", "trainer", "supervisor"]) and current_user.id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -316,7 +316,7 @@ async def get_course_progress(
     Get progress for all users in a specific course
     """
     # Permission check
-    if current_user.role.value not in ["admin", "trainer", "supervisor"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer", "supervisor"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -398,7 +398,7 @@ async def get_enrollment_details(
     Get detailed pending items for a specific enrollment.
     Only accessible by admin, capacitador, or supervisor.
     """
-    if current_user.role.value not in ["admin", "trainer", "supervisor"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer", "supervisor"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permisos para ver detalles de progreso de otros usuarios"
@@ -422,7 +422,7 @@ async def send_reminder(
     """
     Send a manual reminder to the user for a specific enrollment
     """
-    if current_user.role.value not in ["admin", "trainer", "supervisor"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer", "supervisor"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tiene permisos para enviar recordatorios"

@@ -14,7 +14,7 @@ import io
 import pandas as pd
 from starlette.background import BackgroundTask
 
-from app.dependencies import get_current_active_user
+from app.dependencies import get_current_active_user, has_role_or_custom
 from app.database import get_db
 from app.models.user import User
 from app.models.worker import Worker
@@ -192,7 +192,7 @@ async def create_session(
     """
     Create new session (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
@@ -247,7 +247,7 @@ async def update_session(
     """
     Update session (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
@@ -311,7 +311,7 @@ async def delete_session(
     """
     Delete session (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
         )
@@ -344,7 +344,7 @@ async def export_attendance_data(
     """
     
     # Check permissions
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, 
             detail="Permisos insuficientes para exportar datos"
@@ -434,14 +434,14 @@ async def get_attendance_records(
     if user_id:
         # Users can only see their own attendance unless they are admin or capacitador
         if (
-            current_user.role.value not in ["admin", "trainer"]
+            not has_role_or_custom(current_user, ["admin", "trainer"])
             and current_user.id != user_id
         ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes"
             )
         query = query.filter(Attendance.user_id == user_id)
-    elif current_user.role.value not in ["admin", "trainer"]:
+    elif not has_role_or_custom(current_user, ["admin", "trainer"]):
         # Non-admin/capacitador users can only see their own attendance
         query = query.filter(Attendance.user_id == current_user.id)
 
@@ -519,7 +519,7 @@ async def create_attendance_record(
     """
     # Validar permisos
     if (
-        current_user.role.value not in ["admin", "trainer"]
+        not has_role_or_custom(current_user, ["admin", "trainer"])
         and attendance_data.get("user_id") != current_user.id
     ):
         raise HTTPException(
@@ -705,7 +705,7 @@ async def get_attendance_stats(
     Get attendance statistics by status
     """
     # Check permissions
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -761,7 +761,7 @@ async def generate_attendance_list_pdf(
     """
     Generate attendance list PDF for all participants in a specific course session
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -1366,7 +1366,7 @@ async def get_attendance_record(
 
     # Users can only see their own attendance unless they are admin or capacitador
     if (
-        current_user.role.value not in ["admin", "trainer"]
+        not has_role_or_custom(current_user, ["admin", "trainer"])
         and attendance.user_id != current_user.id
     ):
         raise HTTPException(
@@ -1395,7 +1395,7 @@ async def update_attendance_record(
 
     # Users can only update their own attendance unless they are admin or capacitador
     if (
-        current_user.role.value not in ["admin", "trainer"]
+        not has_role_or_custom(current_user, ["admin", "trainer"])
         and attendance.user_id != current_user.id
     ):
         raise HTTPException(
@@ -1448,7 +1448,7 @@ async def delete_attendance_record(
     """
     Delete attendance record (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -1590,7 +1590,7 @@ async def get_user_attendance_summary(
     Get attendance summary for a user
     """
     if (
-        current_user.role.value not in ["admin", "trainer"]
+        not has_role_or_custom(current_user, ["admin", "trainer"])
         and current_user.id != user_id
     ):
         raise HTTPException(
@@ -1628,7 +1628,7 @@ async def delete_session(
     """
     Delete session (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -1656,7 +1656,7 @@ async def bulk_register_attendance(
     Register attendance for multiple users in a session with email notifications
     (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -1850,7 +1850,7 @@ async def generate_attendance_list_pdf(
     """
     Generate attendance list PDF for a session (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )
@@ -2133,7 +2133,7 @@ async def generate_participants_list_pdf(
     """
     Generate participants list PDF for a session with all enrolled users (admin and capacitador roles only)
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions"
         )

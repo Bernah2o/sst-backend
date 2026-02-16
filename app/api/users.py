@@ -8,7 +8,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.dependencies import get_current_active_user
+from app.dependencies import get_current_active_user, has_role_or_custom
 from app.models.user import User
 from app.models.audit import AuditLog, AuditAction
 from app.schemas.user import UserResponse, UserRegister, UserUpdate, UserProfile, PasswordChange, UserCreate, UserCreateByAdmin
@@ -102,7 +102,7 @@ async def get_users(
     """
     Get all users (admin only)
     """
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -156,7 +156,7 @@ async def create_user(
     """
     Create a new user (admin only)
     """
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -283,7 +283,7 @@ async def get_user(
     """
     Get user by ID
     """
-    if current_user.role.value != "admin" and current_user.id != user_id:
+    if not has_role_or_custom(current_user, ["admin"]) and current_user.id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permisos insuficientes"
@@ -513,7 +513,7 @@ async def update_user(
     """
     Update user (admin only)
     """
-    if current_user.role.value != "admin":
+    if not has_role_or_custom(current_user, ["admin"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"

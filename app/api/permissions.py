@@ -114,11 +114,11 @@ PERMISSIONS_DATA = [
     {"id": 49, "resource_type": "workers", "action": "delete", "description": "Eliminar trabajadores", "is_active": True},
     
     # Reinducciones
-    {"id": 50, "resource_type": "reinductions", "action": "view", "description": "Acceder a la página de reinducciones", "is_active": True},
-    {"id": 51, "resource_type": "reinductions", "action": "create", "description": "Crear reinducciones", "is_active": True},
-    {"id": 52, "resource_type": "reinductions", "action": "read", "description": "Ver reinducciones", "is_active": True},
-    {"id": 53, "resource_type": "reinductions", "action": "update", "description": "Editar reinducciones", "is_active": True},
-    {"id": 54, "resource_type": "reinductions", "action": "delete", "description": "Eliminar reinducciones", "is_active": True},
+    {"id": 50, "resource_type": "reinduction", "action": "view", "description": "Acceder a la página de reinducciones", "is_active": True},
+    {"id": 51, "resource_type": "reinduction", "action": "create", "description": "Crear reinducciones", "is_active": True},
+    {"id": 52, "resource_type": "reinduction", "action": "read", "description": "Ver reinducciones", "is_active": True},
+    {"id": 53, "resource_type": "reinduction", "action": "update", "description": "Editar reinducciones", "is_active": True},
+    {"id": 54, "resource_type": "reinduction", "action": "delete", "description": "Eliminar reinducciones", "is_active": True},
     
     # Configuración Administrativa
     {"id": 55, "resource_type": "admin_config", "action": "view", "description": "Acceder a configuración administrativa", "is_active": True},
@@ -179,6 +179,24 @@ PERMISSIONS_DATA = [
     
     # Exámenes ocupacionales (adicional para vista)
     {"id": 108, "resource_type": "occupational_exam", "action": "view", "description": "Acceder a exámenes ocupacionales", "is_active": True},
+
+    # Perfil de Usuario
+    {"id": 109, "resource_type": "profile", "action": "view", "description": "Acceder al perfil de usuario", "is_active": True},
+    {"id": 110, "resource_type": "profile", "action": "update", "description": "Editar perfil de usuario", "is_active": True},
+
+    # Auditoría
+    {"id": 111, "resource_type": "audit", "action": "view", "description": "Acceder a la página de auditoría", "is_active": True},
+    {"id": 112, "resource_type": "audit", "action": "read", "description": "Ver registros de auditoría", "is_active": True},
+
+    # Inscripciones
+    {"id": 113, "resource_type": "enrollment", "action": "view", "description": "Acceder a la página de inscripciones", "is_active": True},
+    {"id": 114, "resource_type": "enrollment", "action": "create", "description": "Crear inscripciones", "is_active": True},
+    {"id": 115, "resource_type": "enrollment", "action": "read", "description": "Ver inscripciones", "is_active": True},
+    {"id": 116, "resource_type": "enrollment", "action": "update", "description": "Editar inscripciones", "is_active": True},
+    {"id": 117, "resource_type": "enrollment", "action": "delete", "description": "Eliminar inscripciones", "is_active": True},
+
+    # Progreso (agregar view que faltaba)
+    {"id": 118, "resource_type": "progress", "action": "view", "description": "Acceder a la página de progreso", "is_active": True},
 ]
 
 @router.get("/", response_model=List[Permission])
@@ -505,49 +523,53 @@ async def get_my_pages(
     db: Session = Depends(get_db)
 ):
     """
-    Get pages accessible by current user based on their custom role
+    Get ALL permissions for the current user (view + CRUD).
+    Returns both page access and granular action permissions.
     """
-    # If user is ADMIN, return all pages
+    # If user is ADMIN, return all permissions
     if current_user.role == UserRole.ADMIN:
-        # Return all available page permissions
         pages = []
         for perm in PERMISSIONS_DATA:
-            if perm["action"] == "view":
-                pages.append({
-                    "resource_type": perm["resource_type"],
-                    "action": perm["action"],
-                    "has_permission": True
-                })
-        return {"pages": pages}
-    
-    # Check permissions for all users (custom role or hardcoded role)
-    pages = []
-    
-    # Check view permissions for all resources
-    for perm in PERMISSIONS_DATA:
-        if perm["action"] == "view":
-            has_permission = _check_user_permission(current_user, perm["resource_type"], "view", db)
             pages.append({
                 "resource_type": perm["resource_type"],
                 "action": perm["action"],
-                "has_permission": has_permission
+                "has_permission": True
             })
-    
+        return {"pages": pages}
+
+    # Check ALL permissions for the user (not just "view")
+    pages = []
+
+    for perm in PERMISSIONS_DATA:
+        has_permission = _check_user_permission(
+            current_user, perm["resource_type"], perm["action"], db
+        )
+        if has_permission:
+            pages.append({
+                "resource_type": perm["resource_type"],
+                "action": perm["action"],
+                "has_permission": True
+            })
+
     return {"pages": pages}
 
 
 def _check_user_permission(user: User, resource_type: str, action: str, db: Session) -> bool:
     """
-    Helper function to check if user has permission for specific resource and action
+    Helper function to check if user has permission for specific resource and action.
+    For users with custom roles, returns ONLY custom role permissions (not base role).
+    This is used by /auth/me/permissions and /permissions/my-pages to build frontend
+    permission flags, so the Sidebar can distinguish management access (custom role)
+    from basic employee access (base role).
     """
     # Admin has all permissions
     if user.role == UserRole.ADMIN:
         return True
-    
-    # Check custom role permissions
+
+    # Check custom role permissions only (not combined with base)
     if user.custom_role_id:
         return _check_custom_role_permission(user, resource_type, action, db)
-    
+
     # Fallback to hardcoded role permissions
     return _check_hardcoded_role_permission(user, resource_type, action)
 
@@ -612,7 +634,7 @@ def _check_hardcoded_role_permission(user: User, resource_type: str, action: str
             "reports": ["view", "read"],
             "notifications": ["view", "read"],
             "workers": ["view", "read"],
-            "reinductions": ["view", "read"],
+            "reinduction": ["view", "read"],
             "seguimiento": ["view", "read"],
             "occupational_exam": ["view", "read"],
             "absenteeism": ["view", "read"],
@@ -673,3 +695,83 @@ async def bulk_assign_permissions(
     return {
         "message": f"Se asignaron {len(assignment_data.permission_ids)} permisos al rol '{role.display_name}' exitosamente"
     }
+
+
+@router.post("/roles/{role_id}/assign-user/{user_id}")
+async def assign_role_to_user(
+    role_id: int,
+    user_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Asignar un rol personalizado a un usuario"""
+    role = db.query(CustomRole).filter(CustomRole.id == role_id).first()
+    if not role:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Rol no encontrado"
+        )
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado"
+        )
+
+    user.custom_role_id = role_id
+    db.commit()
+
+    return {
+        "message": f"Rol '{role.display_name}' asignado a {user.first_name} {user.last_name} exitosamente"
+    }
+
+
+@router.delete("/roles/unassign-user/{user_id}")
+async def unassign_role_from_user(
+    user_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Remover el rol personalizado de un usuario"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado"
+        )
+
+    user.custom_role_id = None
+    db.commit()
+
+    return {
+        "message": f"Rol personalizado removido de {user.first_name} {user.last_name}"
+    }
+
+
+@router.get("/roles/{role_id}/users")
+async def get_role_users(
+    role_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Obtener usuarios asignados a un rol"""
+    role = db.query(CustomRole).filter(CustomRole.id == role_id).first()
+    if not role:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Rol no encontrado"
+        )
+
+    users = db.query(User).filter(User.custom_role_id == role_id).all()
+    return [
+        {
+            "id": u.id,
+            "email": u.email,
+            "first_name": u.first_name,
+            "last_name": u.last_name,
+            "role": u.role.value if u.role else None,
+            "is_active": u.is_active,
+        }
+        for u in users
+    ]

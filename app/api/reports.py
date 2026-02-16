@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func, extract
 import os
 
-from app.dependencies import get_current_active_user
+from app.dependencies import get_current_active_user, has_role_or_custom
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.course import Course
@@ -37,7 +37,7 @@ async def get_dashboard_stats(
     """
     Get dashboard statistics
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -116,7 +116,7 @@ async def get_course_reports(
     """
     Get course reports
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -232,7 +232,7 @@ async def get_user_reports(
     """
     Get user reports
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -345,7 +345,7 @@ async def get_attendance_reports(
     """
     Get attendance reports
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -435,7 +435,7 @@ async def get_evaluation_reports(
     """
     Get evaluation reports
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -543,7 +543,7 @@ async def get_certificate_reports(
     """
     Get certificate reports
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -630,7 +630,7 @@ async def export_report(
     """
     Export report data
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -655,7 +655,7 @@ async def get_analytics_trends(
     """
     Get analytics trends
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -718,7 +718,7 @@ async def get_performance_analytics(
     """
     Get performance analytics
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -814,7 +814,7 @@ async def get_evaluation_ranking(
     """
     Get ranking of employees by evaluation performance
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -884,7 +884,7 @@ async def get_occupational_exam_reports(
     """
     Get occupational exam reports with next exam date calculations
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
@@ -1088,7 +1088,7 @@ async def generate_occupational_exam_report_pdf(
     """
     Generate PDF report for occupational exams
     """
-    if current_user.role.value not in ["admin", "trainer"]:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions"
