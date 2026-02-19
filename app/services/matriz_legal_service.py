@@ -928,25 +928,27 @@ class MatrizLegalService:
         """
         Sincroniza los cumplimientos de una empresa:
         - Crea registros pendientes para normas nuevas aplicables
-        - No elimina cumplimientos existentes (pueden tener historial)
+        - Marca aplica_empresa=False para normas que ya no aplican (característica removida)
+        - Reactiva aplica_empresa=True para normas que vuelven a aplicar
+        - No elimina registros existentes (pueden tener historial)
         """
         empresa = self.db.query(Empresa).filter(Empresa.id == empresa_id).first()
         if not empresa:
             raise ValueError("Empresa no encontrada")
 
         normas_aplicables = self.get_normas_aplicables_empresa(empresa)
-        normas_ids = {n.id for n in normas_aplicables}
+        normas_aplicables_ids = {n.id for n in normas_aplicables}
 
         # Cumplimientos existentes
         cumplimientos_existentes = self.db.query(MatrizLegalCumplimiento).filter(
             MatrizLegalCumplimiento.empresa_id == empresa_id
         ).all()
 
-        cumplimientos_ids = {c.norma_id for c in cumplimientos_existentes}
+        cumplimientos_por_norma = {c.norma_id: c for c in cumplimientos_existentes}
 
-        # Crear nuevos cumplimientos
+        # Crear nuevos cumplimientos para normas que ahora aplican y no tienen registro
         nuevos = 0
-        for norma_id in normas_ids - cumplimientos_ids:
+        for norma_id in normas_aplicables_ids - set(cumplimientos_por_norma.keys()):
             cumplimiento = MatrizLegalCumplimiento(
                 empresa_id=empresa_id,
                 norma_id=norma_id,
@@ -956,12 +958,27 @@ class MatrizLegalService:
             self.db.add(cumplimiento)
             nuevos += 1
 
+        # Actualizar aplica_empresa en registros existentes según las características actuales
+        reactivados = 0
+        desactivados = 0
+        for norma_id, cumplimiento in cumplimientos_por_norma.items():
+            if norma_id in normas_aplicables_ids:
+                if not cumplimiento.aplica_empresa:
+                    cumplimiento.aplica_empresa = True
+                    reactivados += 1
+            else:
+                if cumplimiento.aplica_empresa:
+                    cumplimiento.aplica_empresa = False
+                    desactivados += 1
+
         self.db.commit()
 
         return {
-            'total_normas_aplicables': len(normas_ids),
+            'total_normas_aplicables': len(normas_aplicables_ids),
             'cumplimientos_existentes': len(cumplimientos_existentes),
-            'nuevos_creados': nuevos
+            'nuevos_creados': nuevos,
+            'reactivados': reactivados,
+            'desactivados': desactivados,
         }
 
     def get_estadisticas_empresa(self, empresa_id: int) -> Dict[str, Any]:
@@ -1043,3 +1060,202 @@ class MatrizLegalService:
             creado_por=user_id
         )
         self.db.add(historial)
+
+    def bulk_update_con_campos(
+        self,
+        empresa_id: int,
+        payload: Any,
+        user_id: int
+    ) -> Dict[str, int]:
+        """
+        Actualiza múltiples cumplimientos seleccionados por ID,
+        aplicando estado + campos opcionales. Registra historial por cada uno.
+        """
+        updated = 0
+        skipped = 0
+        for cumplimiento_id in payload.cumplimiento_ids:
+            cumplimiento = self.db.query(MatrizLegalCumplimiento).filter(
+                MatrizLegalCumplimiento.id == cumplimiento_id,
+                MatrizLegalCumplimiento.empresa_id == empresa_id
+            ).first()
+
+            if not cumplimiento:
+                skipped += 1
+                continue
+
+            estado_anterior = cumplimiento.estado
+            cumplimiento.estado = payload.estado.value
+
+            if payload.evidencia_cumplimiento is not None:
+                cumplimiento.evidencia_cumplimiento = payload.evidencia_cumplimiento
+            if payload.plan_accion is not None:
+                cumplimiento.plan_accion = payload.plan_accion
+            if payload.responsable is not None:
+                cumplimiento.responsable = payload.responsable
+            if payload.fecha_compromiso is not None:
+                cumplimiento.fecha_compromiso = payload.fecha_compromiso
+            if payload.observaciones is not None:
+                cumplimiento.observaciones = payload.observaciones
+            if payload.aplica_empresa is not None:
+                cumplimiento.aplica_empresa = payload.aplica_empresa
+            if payload.justificacion_no_aplica is not None:
+                cumplimiento.justificacion_no_aplica = payload.justificacion_no_aplica
+
+            cumplimiento.fecha_ultima_evaluacion = datetime.utcnow()
+            cumplimiento.evaluado_por = user_id
+
+            self.registrar_cambio_cumplimiento(
+                cumplimiento,
+                estado_anterior,
+                user_id,
+                payload.observaciones or f"Actualización masiva → {payload.estado.value}"
+            )
+            updated += 1
+
+        self.db.commit()
+        return {"updated": updated, "skipped": skipped, "total": len(payload.cumplimiento_ids)}
+
+    def bulk_update_por_filtros(
+        self,
+        empresa_id: int,
+        payload: Any,
+        user_id: int
+    ) -> Dict[str, int]:
+        """
+        Aplica una actualización masiva a TODOS los cumplimientos que coincidan
+        con los filtros dados (no solo la página actual). Maneja también las
+        normas sin registro de cumplimiento ("ghost rows").
+        """
+        empresa = self.db.query(Empresa).filter(Empresa.id == empresa_id).first()
+        if not empresa:
+            raise ValueError("Empresa no encontrada")
+
+        normas_aplicables_ids: List[int] = []
+        if payload.solo_aplicables:
+            normas_aplicables = self.get_normas_aplicables_empresa(empresa)
+            normas_aplicables_ids = [n.id for n in normas_aplicables]
+
+        # --- Primera pasada: actualizar cumplimientos existentes ---
+        query = self.db.query(MatrizLegalCumplimiento).join(
+            MatrizLegalNorma,
+            MatrizLegalCumplimiento.norma_id == MatrizLegalNorma.id
+        ).filter(
+            MatrizLegalCumplimiento.empresa_id == empresa_id,
+            MatrizLegalNorma.activo == True,
+            MatrizLegalNorma.estado == EstadoNorma.VIGENTE.value
+        )
+
+        if payload.solo_aplicables and normas_aplicables_ids:
+            query = query.filter(MatrizLegalCumplimiento.norma_id.in_(normas_aplicables_ids))
+
+        if payload.estado_cumplimiento:
+            query = query.filter(
+                MatrizLegalCumplimiento.estado == payload.estado_cumplimiento
+            )
+        if payload.clasificacion:
+            query = query.filter(
+                MatrizLegalNorma.clasificacion_norma == payload.clasificacion
+            )
+        if payload.tema_general:
+            query = query.filter(
+                MatrizLegalNorma.tema_general == payload.tema_general
+            )
+        if payload.q:
+            search = f"%{payload.q}%"
+            query = query.filter(
+                or_(
+                    MatrizLegalNorma.descripcion_norma.ilike(search),
+                    MatrizLegalNorma.tipo_norma.ilike(search),
+                    MatrizLegalNorma.numero_norma.ilike(search),
+                )
+            )
+
+        cumplimientos = query.all()
+        updated = 0
+        for cumplimiento in cumplimientos:
+            estado_anterior = cumplimiento.estado
+            cumplimiento.estado = payload.estado.value
+            if payload.evidencia_cumplimiento is not None:
+                cumplimiento.evidencia_cumplimiento = payload.evidencia_cumplimiento
+            if payload.plan_accion is not None:
+                cumplimiento.plan_accion = payload.plan_accion
+            if payload.responsable is not None:
+                cumplimiento.responsable = payload.responsable
+            if payload.fecha_compromiso is not None:
+                cumplimiento.fecha_compromiso = payload.fecha_compromiso
+            if payload.observaciones is not None:
+                cumplimiento.observaciones = payload.observaciones
+            if payload.aplica_empresa is not None:
+                cumplimiento.aplica_empresa = payload.aplica_empresa
+            if payload.justificacion_no_aplica is not None:
+                cumplimiento.justificacion_no_aplica = payload.justificacion_no_aplica
+            cumplimiento.fecha_ultima_evaluacion = datetime.utcnow()
+            cumplimiento.evaluado_por = user_id
+            self.registrar_cambio_cumplimiento(
+                cumplimiento,
+                estado_anterior,
+                user_id,
+                payload.observaciones or f"Aplicar a todos los filtrados → {payload.estado.value}"
+            )
+            updated += 1
+
+        # --- Segunda pasada: crear registros para ghost rows (normas sin cumplimiento) ---
+        created = 0
+        if payload.solo_aplicables and normas_aplicables_ids:
+            # Solo aplica si no hay filtro de estado (ghost rows son implícitamente "pendiente")
+            if not payload.estado_cumplimiento or payload.estado_cumplimiento == EstadoCumplimiento.PENDIENTE.value:
+                ghost_query = self.db.query(MatrizLegalNorma).outerjoin(
+                    MatrizLegalCumplimiento,
+                    and_(
+                        MatrizLegalCumplimiento.norma_id == MatrizLegalNorma.id,
+                        MatrizLegalCumplimiento.empresa_id == empresa_id
+                    )
+                ).filter(
+                    MatrizLegalNorma.id.in_(normas_aplicables_ids),
+                    MatrizLegalNorma.activo == True,
+                    MatrizLegalCumplimiento.id.is_(None)
+                )
+                if payload.clasificacion:
+                    ghost_query = ghost_query.filter(
+                        MatrizLegalNorma.clasificacion_norma == payload.clasificacion
+                    )
+                if payload.tema_general:
+                    ghost_query = ghost_query.filter(
+                        MatrizLegalNorma.tema_general == payload.tema_general
+                    )
+                if payload.q:
+                    search = f"%{payload.q}%"
+                    ghost_query = ghost_query.filter(
+                        or_(
+                            MatrizLegalNorma.descripcion_norma.ilike(search),
+                            MatrizLegalNorma.tipo_norma.ilike(search),
+                            MatrizLegalNorma.numero_norma.ilike(search),
+                        )
+                    )
+                for norma in ghost_query.all():
+                    nuevo = MatrizLegalCumplimiento(
+                        empresa_id=empresa_id,
+                        norma_id=norma.id,
+                        estado=payload.estado.value,
+                        evidencia_cumplimiento=payload.evidencia_cumplimiento,
+                        plan_accion=payload.plan_accion,
+                        responsable=payload.responsable,
+                        fecha_compromiso=payload.fecha_compromiso,
+                        observaciones=payload.observaciones,
+                        aplica_empresa=payload.aplica_empresa if payload.aplica_empresa is not None else True,
+                        justificacion_no_aplica=payload.justificacion_no_aplica,
+                        fecha_ultima_evaluacion=datetime.utcnow(),
+                        evaluado_por=user_id,
+                    )
+                    self.db.add(nuevo)
+                    self.db.flush()
+                    self.registrar_cambio_cumplimiento(
+                        nuevo,
+                        None,
+                        user_id,
+                        payload.observaciones or f"Creado via aplicar a todos los filtrados → {payload.estado.value}"
+                    )
+                    created += 1
+
+        self.db.commit()
+        return {"updated": updated, "created": created, "total": updated + created}

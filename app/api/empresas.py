@@ -293,7 +293,8 @@ def sincronizar_normas_empresa(
 
     return MessageResponse(
         message=f"Sincronización completada. Total normas aplicables: {result['total_normas_aplicables']}, "
-                f"Existentes: {result['cumplimientos_existentes']}, Nuevos creados: {result['nuevos_creados']}"
+                f"Existentes: {result['cumplimientos_existentes']}, Nuevos: {result['nuevos_creados']}, "
+                f"Reactivados: {result['reactivados']}, Desactivados: {result['desactivados']}"
     )
 
 

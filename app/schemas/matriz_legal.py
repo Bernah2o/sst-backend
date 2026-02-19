@@ -196,8 +196,47 @@ class MatrizLegalCumplimiento(MatrizLegalCumplimientoBase):
 
 
 class MatrizLegalCumplimientoBulkUpdate(BaseModel):
-    """Para actualizar múltiples cumplimientos a la vez."""
+    """Para actualizar múltiples cumplimientos seleccionados por ID."""
     cumplimiento_ids: List[int] = Field(..., min_length=1)
+    estado: EstadoCumplimiento
+    # Campos adicionales — todos opcionales
+    evidencia_cumplimiento: Optional[str] = None
+    plan_accion: Optional[str] = None
+    responsable: Optional[str] = Field(None, max_length=150)
+    fecha_compromiso: Optional[date] = None
+    observaciones: Optional[str] = None
+    aplica_empresa: Optional[bool] = None
+    justificacion_no_aplica: Optional[str] = None
+
+
+class MatrizLegalFiltrosBulkUpdate(BaseModel):
+    """Actualiza TODOS los cumplimientos que coincidan con los filtros activos."""
+    # Filtros (replica los query params del GET /normas)
+    estado_cumplimiento: Optional[str] = None
+    clasificacion: Optional[str] = None
+    tema_general: Optional[str] = None
+    q: Optional[str] = None
+    solo_aplicables: bool = True
+    # Datos a aplicar
+    estado: EstadoCumplimiento
+    evidencia_cumplimiento: Optional[str] = None
+    plan_accion: Optional[str] = None
+    responsable: Optional[str] = Field(None, max_length=150)
+    fecha_compromiso: Optional[date] = None
+    observaciones: Optional[str] = None
+    aplica_empresa: Optional[bool] = None
+    justificacion_no_aplica: Optional[str] = None
+
+
+class SugerenciasIAContextoRequest(BaseModel):
+    """Contexto para generar sugerencias de IA sin norma específica (uso bulk)."""
+    clasificacion: Optional[str] = None
+    tema_general: Optional[str] = None
+    descripcion_contexto: Optional[str] = None
+
+
+class MatrizLegalInlineEstadoUpdate(BaseModel):
+    """Actualización rápida de solo el estado desde la tabla inline."""
     estado: EstadoCumplimiento
 
 
