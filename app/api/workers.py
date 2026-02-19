@@ -261,7 +261,7 @@ async def export_workers_excel(
         ws.cell(row=row_idx, column=11, value=worker.position)
         ws.cell(row=row_idx, column=12, value=worker.occupation)
         ws.cell(row=row_idx, column=13, value=worker.profession)
-        ws.cell(row=row_idx, column=14, value=worker.area_obj.nombre if worker.area_obj else "")
+        ws.cell(row=row_idx, column=14, value=worker.area_obj.name if worker.area_obj else "")
         ws.cell(row=row_idx, column=15, value=worker.risk_level.value if worker.risk_level else "")
         ws.cell(row=row_idx, column=16, value=float(worker.salary_ibc) if worker.salary_ibc else "")
         ws.cell(row=row_idx, column=17, value=worker.country)

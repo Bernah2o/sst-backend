@@ -39,6 +39,9 @@ from app.schemas.matriz_legal import (
     MatrizLegalCumplimiento as MatrizLegalCumplimientoSchema,
     MatrizLegalCumplimientoUpdate,
     MatrizLegalCumplimientoBulkUpdate,
+    MatrizLegalFiltrosBulkUpdate,
+    MatrizLegalInlineEstadoUpdate,
+    SugerenciasIAContextoRequest,
     MatrizLegalCumplimientoHistorial as CumplimientoHistorialSchema,
     MatrizLegalImportacionPreview,
     MatrizLegalImportacionResult,
@@ -668,45 +671,100 @@ def update_cumplimiento(
 def bulk_update_cumplimiento(
     empresa_id: int,
     payload: MatrizLegalCumplimientoBulkUpdate,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_supervisor_or_admin),
     db: Session = Depends(get_db),
 ):
-    """Actualiza múltiples cumplimientos a la vez."""
+    """Actualiza múltiples cumplimientos seleccionados por ID con estado y campos opcionales."""
     empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
     if not empresa:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Empresa no encontrada"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa no encontrada")
 
-    updated = 0
-    for cumplimiento_id in payload.cumplimiento_ids:
-        cumplimiento = db.query(MatrizLegalCumplimiento).filter(
-            MatrizLegalCumplimiento.id == cumplimiento_id,
-            MatrizLegalCumplimiento.empresa_id == empresa_id
-        ).first()
+    service = MatrizLegalService(db)
+    result = service.bulk_update_con_campos(empresa_id, payload, current_user.id)
 
-        if cumplimiento:
-            estado_anterior = cumplimiento.estado
-            cumplimiento.estado = payload.estado.value if payload.estado else cumplimiento.estado
-            cumplimiento.fecha_ultima_evaluacion = datetime.utcnow()
-            cumplimiento.evaluado_por = current_user.id
+    msg = f"Se actualizaron {result['updated']} cumplimientos"
+    if result['skipped']:
+        msg += f" ({result['skipped']} no encontrados)"
+    return MessageResponse(message=msg)
 
-            # Registrar en historial
-            service = MatrizLegalService(db)
-            service.registrar_cambio_cumplimiento(
-                cumplimiento,
-                estado_anterior,
-                current_user.id,
-                f"Actualización masiva a {payload.estado.value}"
-            )
-            updated += 1
 
-    db.commit()
+@router.post("/empresas/{empresa_id}/cumplimiento/bulk-filtros", response_model=MessageResponse)
+def bulk_update_por_filtros(
+    empresa_id: int,
+    payload: MatrizLegalFiltrosBulkUpdate,
+    current_user: User = Depends(require_supervisor_or_admin),
+    db: Session = Depends(get_db),
+):
+    """Aplica una actualización masiva a TODOS los cumplimientos que coincidan con los filtros activos."""
+    empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
+    if not empresa:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa no encontrada")
+
+    service = MatrizLegalService(db)
+    try:
+        result = service.bulk_update_por_filtros(empresa_id, payload, current_user.id)
+    except Exception as e:
+        logger.error(f"Error en bulk_update_por_filtros empresa {empresa_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
     return MessageResponse(
-        message=f"Se actualizaron {updated} de {len(payload.cumplimiento_ids)} cumplimientos"
+        message=f"Se procesaron {result['total']} normas "
+                f"({result['updated']} actualizadas, {result['created']} creadas)"
     )
+
+
+@router.patch(
+    "/empresas/{empresa_id}/cumplimiento/{norma_id}/estado",
+    response_model=MatrizLegalCumplimientoSchema
+)
+def inline_update_estado(
+    empresa_id: int,
+    norma_id: int,
+    payload: MatrizLegalInlineEstadoUpdate,
+    current_user: User = Depends(require_supervisor_or_admin),
+    db: Session = Depends(get_db),
+):
+    """Actualización rápida del estado de cumplimiento desde la tabla (inline)."""
+    empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
+    if not empresa:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Empresa no encontrada")
+
+    norma = db.query(MatrizLegalNorma).filter(MatrizLegalNorma.id == norma_id).first()
+    if not norma:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Norma no encontrada")
+
+    cumplimiento = db.query(MatrizLegalCumplimiento).filter(
+        MatrizLegalCumplimiento.empresa_id == empresa_id,
+        MatrizLegalCumplimiento.norma_id == norma_id
+    ).first()
+
+    estado_anterior = cumplimiento.estado if cumplimiento else None
+
+    if not cumplimiento:
+        cumplimiento = MatrizLegalCumplimiento(
+            empresa_id=empresa_id,
+            norma_id=norma_id,
+            estado=EstadoCumplimiento.PENDIENTE.value,
+            aplica_empresa=True,
+        )
+        db.add(cumplimiento)
+        db.flush()
+
+    cumplimiento.estado = payload.estado.value
+    cumplimiento.fecha_ultima_evaluacion = datetime.utcnow()
+    cumplimiento.evaluado_por = current_user.id
+
+    service = MatrizLegalService(db)
+    service.registrar_cambio_cumplimiento(
+        cumplimiento,
+        estado_anterior,
+        current_user.id,
+        f"Cambio rápido via tabla → {payload.estado.value}"
+    )
+
+    db.commit()
+    db.refresh(cumplimiento)
+    return cumplimiento
 
 
 @router.get("/empresas/{empresa_id}/cumplimiento/{cumplimiento_id}/historial",
@@ -1003,6 +1061,49 @@ async def generar_sugerencias_ia(
 
     except Exception as e:
         logger.error(f"Error generando sugerencias IA para norma {norma_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al generar sugerencias: {str(e)}"
+        )
+
+
+@router.post("/sugerencias-ia/contexto")
+async def generar_sugerencias_ia_contexto(
+    payload: SugerenciasIAContextoRequest,
+    current_user: User = Depends(require_supervisor_or_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Genera sugerencias de evidencia de cumplimiento usando IA basándose en
+    un contexto general (clasificación, tema) sin requerir una norma específica.
+    Usado en actualizaciones masivas (bulk/filtros).
+    """
+    from app.services.ai_service import ai_service
+
+    if not ai_service.is_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Servicio de IA no configurado. Configure PERPLEXITY_API_KEY en las variables de entorno."
+        )
+
+    try:
+        sugerencias = await ai_service.generate_compliance_suggestions(
+            tipo_norma="Normativa SST",
+            numero_norma="",
+            anio=None,
+            descripcion_norma=payload.descripcion_contexto,
+            articulo=None,
+            exigencias=None,
+            tema_general=payload.tema_general,
+            clasificacion=payload.clasificacion,
+        )
+        return {
+            "success": True,
+            "sugerencias": sugerencias
+        }
+
+    except Exception as e:
+        logger.error(f"Error generando sugerencias IA por contexto: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al generar sugerencias: {str(e)}"
