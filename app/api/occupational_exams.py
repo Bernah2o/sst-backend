@@ -66,6 +66,7 @@ async def get_occupational_exams(
     worker_id: Optional[int] = Query(None),
     search: Optional[str] = Query(None),
     next_exam_status: Optional[str] = Query(None, description="Filtro por próximo examen: 'proximos' (próximos 30 días), 'vencidos' (ya vencidos)"),
+    next_exam_year: Optional[int] = Query(None, description="Filtro por año del próximo examen (ej: 2026)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_supervisor_or_admin),
 ) -> Any:
@@ -118,9 +119,9 @@ async def get_occupational_exams(
             )
         )
 
-    # Filtro por estado del próximo examen (calculado con SQL)
-    if next_exam_status in ("proximos", "vencidos"):
-        from sqlalchemy import case
+    # Filtro por estado del próximo examen y/o por año (calculado con SQL)
+    if next_exam_status in ("proximos", "vencidos") or next_exam_year:
+        from sqlalchemy import case, extract
         today = date.today()
         # Unir con Worker y Cargo si no se hizo antes
         if not search:
@@ -148,6 +149,11 @@ async def get_occupational_exams(
             # Vencidos: next_exam_date < hoy
             query = query.filter(next_exam_expr < today)
             count_query = count_query.filter(next_exam_expr < today)
+
+        if next_exam_year:
+            # Filtrar por año del próximo examen calculado
+            query = query.filter(extract("year", next_exam_expr) == next_exam_year)
+            count_query = count_query.filter(extract("year", next_exam_expr) == next_exam_year)
 
     # Get total count
     total = count_query.scalar()

@@ -44,6 +44,7 @@ from .empresas import router as empresas_router
 from .matriz_legal import router as matriz_legal_router
 from .interactive_lessons import router as interactive_lessons_router
 from .plan_trabajo_anual import router as plan_trabajo_anual_router
+from .presupuesto_sst import router as presupuesto_sst_router
 
 
 
@@ -95,3 +96,4 @@ api_router.include_router(empresas_router, prefix="/empresas", tags=["empresas"]
 api_router.include_router(matriz_legal_router, prefix="/matriz-legal", tags=["matriz-legal"])
 api_router.include_router(interactive_lessons_router, prefix="/interactive-lessons", tags=["interactive-lessons"])
 api_router.include_router(plan_trabajo_anual_router, prefix="/plan-trabajo-anual", tags=["plan-trabajo-anual"])
+api_router.include_router(presupuesto_sst_router, prefix="/presupuesto-sst", tags=["presupuesto-sst"])
