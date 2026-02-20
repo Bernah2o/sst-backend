@@ -186,7 +186,9 @@ def get_absenteeism_list(
         count_result = db.execute(text(count_query), params)
         total = count_result.fetchone().total
 
-        sql_query += f" ORDER BY a.id DESC LIMIT {limit} OFFSET {skip}"
+        sql_query += " ORDER BY a.id DESC LIMIT :limit OFFSET :skip"
+        params['limit'] = limit
+        params['skip'] = skip
 
         result = db.execute(text(sql_query), params)
         raw_items = result.fetchall()

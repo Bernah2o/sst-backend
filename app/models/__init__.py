@@ -103,6 +103,12 @@ from .presupuesto_sst import (
     PresupuestoItem,
     PresupuestoMensual,
 )
+from .programa_capacitaciones import (
+    ProgramaCapacitaciones,
+    CapacitacionActividad,
+    CapacitacionSeguimiento,
+    CapacitacionIndicadorMensual,
+)
 
 __all__ = [
     "User",
@@ -258,4 +264,9 @@ __all__ = [
     "PresupuestoCategoria",
     "PresupuestoItem",
     "PresupuestoMensual",
+    # Programa de Capacitaciones
+    "ProgramaCapacitaciones",
+    "CapacitacionActividad",
+    "CapacitacionSeguimiento",
+    "CapacitacionIndicadorMensual",
 ]
