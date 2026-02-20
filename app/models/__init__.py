@@ -89,6 +89,14 @@ from .matriz_legal import (
     EstadoCumplimiento,
     EstadoImportacion,
 )
+from .plan_trabajo_anual import (
+    PlanTrabajoAnual,
+    PlanTrabajoActividad,
+    PlanTrabajoSeguimiento,
+    EstadoPlan,
+    CicloPhva,
+    CategoriaActividad,
+)
 
 __all__ = [
     "User",
@@ -232,4 +240,11 @@ __all__ = [
     "UserSlideProgress",
     "UserActivityAttempt",
     "LessonProgressStatus",
+    # Plan de Trabajo Anual SG-SST
+    "PlanTrabajoAnual",
+    "PlanTrabajoActividad",
+    "PlanTrabajoSeguimiento",
+    "EstadoPlan",
+    "CicloPhva",
+    "CategoriaActividad",
 ]
