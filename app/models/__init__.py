@@ -97,6 +97,12 @@ from .plan_trabajo_anual import (
     CicloPhva,
     CategoriaActividad,
 )
+from .presupuesto_sst import (
+    PresupuestoSST,
+    PresupuestoCategoria,
+    PresupuestoItem,
+    PresupuestoMensual,
+)
 
 __all__ = [
     "User",
@@ -247,4 +253,9 @@ __all__ = [
     "EstadoPlan",
     "CicloPhva",
     "CategoriaActividad",
+    # Presupuesto SST
+    "PresupuestoSST",
+    "PresupuestoCategoria",
+    "PresupuestoItem",
+    "PresupuestoMensual",
 ]
