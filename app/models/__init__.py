@@ -97,6 +97,11 @@ from .plan_trabajo_anual import (
     CicloPhva,
     CategoriaActividad,
 )
+from .cronograma_pyp import (
+    CronogramaPyp,
+    CronogramaPypActividad,
+    CronogramaPypSeguimiento,
+)
 from .presupuesto_sst import (
     PresupuestoSST,
     PresupuestoCategoria,
@@ -269,6 +274,10 @@ __all__ = [
     "EstadoPlan",
     "CicloPhva",
     "CategoriaActividad",
+    # Cronograma PYP
+    "CronogramaPyp",
+    "CronogramaPypActividad",
+    "CronogramaPypSeguimiento",
     # Presupuesto SST
     "PresupuestoSST",
     "PresupuestoCategoria",
