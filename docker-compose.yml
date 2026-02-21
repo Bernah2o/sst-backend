@@ -1,38 +1,6 @@
 version: "3.8"
 
 services:
-  # Traefik Reverse Proxy
-  traefik:
-    image: traefik:v3.5
-    container_name: sst_traefik
-    command:
-      - "--api=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
-      - "--certificatesresolvers.letsencrypt.acme.email=admin@dh2o.com.co"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik_letsencrypt:/letsencrypt
-    networks:
-      - sst_network
-    restart: unless-stopped
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.traefik.rule=Host(`traefik.dh2o.com.co`)"
-      - "traefik.http.routers.traefik.entrypoints=websecure"
-      - "traefik.http.routers.traefik.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.traefik.service=api@internal"
-      - "traefik.http.routers.traefik.middlewares=traefik-auth"
-      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_DASHBOARD_USERS}"
-
   # PostgreSQL Database con Seguridad Mejorada
   db:
     image: postgres:17-alpine
@@ -211,8 +179,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      traefik:
-        condition: service_started
     networks:
       - sst_network
     restart: unless-stopped
@@ -269,8 +235,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      traefik:
-        condition: service_started
     networks:
       - sst_network
     restart: unless-stopped
@@ -358,13 +322,6 @@ volumes:
       type: none
       o: bind
       device: ./data/attendance_lists
-  traefik_letsencrypt:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./data/letsencrypt
-
 networks:
   sst_network:
     driver: bridge
