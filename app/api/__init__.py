@@ -44,6 +44,7 @@ from .empresas import router as empresas_router
 from .matriz_legal import router as matriz_legal_router
 from .interactive_lessons import router as interactive_lessons_router
 from .plan_trabajo_anual import router as plan_trabajo_anual_router
+from .cronograma_pyp import router as cronograma_pyp_router
 from .presupuesto_sst import router as presupuesto_sst_router
 from .programa_capacitaciones import router as programa_capacitaciones_router
 from .estandares_minimos import router as estandares_minimos_router
@@ -98,6 +99,7 @@ api_router.include_router(empresas_router, prefix="/empresas", tags=["empresas"]
 api_router.include_router(matriz_legal_router, prefix="/matriz-legal", tags=["matriz-legal"])
 api_router.include_router(interactive_lessons_router, prefix="/interactive-lessons", tags=["interactive-lessons"])
 api_router.include_router(plan_trabajo_anual_router, prefix="/plan-trabajo-anual", tags=["plan-trabajo-anual"])
+api_router.include_router(cronograma_pyp_router, prefix="/plan-trabajo-anual", tags=["cronograma-pyp"])
 api_router.include_router(presupuesto_sst_router, prefix="/presupuesto-sst", tags=["presupuesto-sst"])
 api_router.include_router(programa_capacitaciones_router, prefix="/programa-capacitaciones", tags=["programa-capacitaciones"])
 api_router.include_router(estandares_minimos_router, prefix="/estandares-minimos", tags=["estandares-minimos"])
