@@ -6,7 +6,7 @@ services:
     image: traefik:v3.5
     container_name: sst_traefik
     command:
-      - "--api.insecure=true"
+      - "--api=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
@@ -18,7 +18,6 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_letsencrypt:/letsencrypt
@@ -30,7 +29,9 @@ services:
       - "traefik.http.routers.traefik.rule=Host(`traefik.dh2o.com.co`)"
       - "traefik.http.routers.traefik.entrypoints=websecure"
       - "traefik.http.routers.traefik.tls.certresolver=letsencrypt"
-      - "traefik.http.services.traefik.loadbalancer.server.port=8080"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.routers.traefik.middlewares=traefik-auth"
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_DASHBOARD_USERS}"
 
   # PostgreSQL Database con Seguridad Mejorada
   db:
@@ -44,7 +45,8 @@ services:
       -c logging_collector=on
       -c log_directory=/var/log/postgresql
       -c log_filename=postgresql-%Y-%m-%d_%H%M%S.log
-      -c log_statement=all
+      -c log_statement=ddl
+      -c log_min_duration_statement=1000
       -c log_connections=on
       -c log_disconnections=on
       -c log_checkpoints=on
@@ -236,7 +238,7 @@ services:
       - "traefik.http.services.api1.loadbalancer.server.port=8000"
       - "traefik.http.middlewares.api-cors.headers.accesscontrolallowmethods=GET,OPTIONS,PUT,POST,DELETE,PATCH"
       - "traefik.http.middlewares.api-cors.headers.accesscontrolallowheaders=*"
-      - "traefik.http.middlewares.api-cors.headers.accesscontrolalloworiginlist=*"
+      - "traefik.http.middlewares.api-cors.headers.accesscontrolalloworiginlist=https://sst.dh2o.com.co"
       - "traefik.http.middlewares.api-cors.headers.accesscontrolmaxage=100"
       - "traefik.http.middlewares.api-cors.headers.addvaryheader=true"
       - "traefik.http.routers.api1.middlewares=api-cors"
