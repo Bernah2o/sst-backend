@@ -46,6 +46,7 @@ from .interactive_lessons import router as interactive_lessons_router
 from .plan_trabajo_anual import router as plan_trabajo_anual_router
 from .presupuesto_sst import router as presupuesto_sst_router
 from .programa_capacitaciones import router as programa_capacitaciones_router
+from .estandares_minimos import router as estandares_minimos_router
 
 
 
@@ -99,3 +100,4 @@ api_router.include_router(interactive_lessons_router, prefix="/interactive-lesso
 api_router.include_router(plan_trabajo_anual_router, prefix="/plan-trabajo-anual", tags=["plan-trabajo-anual"])
 api_router.include_router(presupuesto_sst_router, prefix="/presupuesto-sst", tags=["presupuesto-sst"])
 api_router.include_router(programa_capacitaciones_router, prefix="/programa-capacitaciones", tags=["programa-capacitaciones"])
+api_router.include_router(estandares_minimos_router, prefix="/estandares-minimos", tags=["estandares-minimos"])

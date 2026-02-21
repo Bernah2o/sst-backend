@@ -109,6 +109,16 @@ from .programa_capacitaciones import (
     CapacitacionSeguimiento,
     CapacitacionIndicadorMensual,
 )
+from .estandares_minimos import (
+    AutoevaluacionEstandares,
+    AutoevaluacionRespuesta,
+    GrupoEstandar,
+    NivelRiesgoEmpresa,
+    EstadoAutoevaluacion,
+    NivelCumplimiento,
+    CicloPHVA,
+    ValorCumplimiento,
+)
 
 __all__ = [
     "User",
@@ -269,4 +279,13 @@ __all__ = [
     "CapacitacionActividad",
     "CapacitacionSeguimiento",
     "CapacitacionIndicadorMensual",
+    # Estándares Mínimos SST
+    "AutoevaluacionEstandares",
+    "AutoevaluacionRespuesta",
+    "GrupoEstandar",
+    "NivelRiesgoEmpresa",
+    "EstadoAutoevaluacion",
+    "NivelCumplimiento",
+    "CicloPHVA",
+    "ValorCumplimiento",
 ]
