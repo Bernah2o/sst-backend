@@ -48,6 +48,7 @@ from .cronograma_pyp import router as cronograma_pyp_router
 from .presupuesto_sst import router as presupuesto_sst_router
 from .programa_capacitaciones import router as programa_capacitaciones_router
 from .estandares_minimos import router as estandares_minimos_router
+from .master_documents import router as master_documents_router
 
 
 
@@ -103,3 +104,4 @@ api_router.include_router(cronograma_pyp_router, prefix="/plan-trabajo-anual", t
 api_router.include_router(presupuesto_sst_router, prefix="/presupuesto-sst", tags=["presupuesto-sst"])
 api_router.include_router(programa_capacitaciones_router, prefix="/programa-capacitaciones", tags=["programa-capacitaciones"])
 api_router.include_router(estandares_minimos_router, prefix="/estandares-minimos", tags=["estandares-minimos"])
+api_router.include_router(master_documents_router, prefix="/master-documents", tags=["master-documents"])
