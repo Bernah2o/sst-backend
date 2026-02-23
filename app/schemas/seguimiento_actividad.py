@@ -105,6 +105,8 @@ class SeguimientoActividadListResponse(BaseModel):
     estado: EstadoActividad
     prioridad: PrioridadActividad
     responsable: Optional[str] = None
+    descripcion: Optional[str] = None
+    observaciones: Optional[str] = None
     archivo_soporte_url: Optional[str] = None
     archivo_soporte_nombre: Optional[str] = None
     created_at: datetime

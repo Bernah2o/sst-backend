@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="pdf-engine" content="WeasyPrint">
+    <title>Listado Maestro de Documentos</title>
+    <link rel="stylesheet" href="css/master_documents_list.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <img src="file:///e:/DH2OCOL/python/sst-app/sst-backend/app/templates/reports/logo_3.png" alt="Logo" style="max-height: 100px;">
+            </div>
+            <div class="header-info">
+                <h1>LISTADO MAESTRO DE DOCUMENTOS</h1>
+                <div class="company-name">{{ company_name }}</div>
+                {% if company_nit %}
+                <div class="company-nit">NIT: {{ company_nit }}</div>
+                {% endif %}
+                <div class="date">Generado: {{ generated_at }}</div>
+            </div>
+        </header>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="col-code">Código</th>
+                        <th class="col-type">Tipo</th>
+                        <th class="col-name">Nombre del Documento</th>
+                        <th class="col-ver">Versión</th>
+                        <th class="col-date">Fecha</th>
+                        <th class="col-loc">Ubicación</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for doc in documents %}
+                    <tr>
+                        <td class="col-code">{{ doc.codigo }}</td>
+                        <td class="col-type">{{ doc.tipo_documento }}</td>
+                        <td class="col-name">{{ doc.nombre_documento }}</td>
+                        <td class="col-ver" style="text-align: center;">{{ doc.version }}</td>
+                        <td class="col-date" style="text-align: center;">{{ doc.fecha }}</td>
+                        <td class="col-loc">{{ doc.ubicacion }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <footer>
+            <div class="footer-left">
+                Sistema de Gestión SST - {{ company_name }}
+            </div>
+            <div class="footer-right">
+                Página <span class="page-number"></span>
+            </div>
+        </footer>
+    </div>
+</body>
+</html>

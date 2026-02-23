@@ -1,13 +1,18 @@
 from typing import List, Optional
+from datetime import datetime
+import io
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user, require_supervisor_or_admin
 from app.models.master_document import MasterDocument
+from app.models.empresa import Empresa
 from app.models.user import User
+from app.services.html_to_pdf import HTMLToPDFConverter
 from app.schemas.master_document import (
     MasterDocumentCreate,
     MasterDocumentResponse,
@@ -57,6 +62,65 @@ def listar_master_documents(
         .offset(skip)
         .limit(limit)
         .all()
+    )
+
+
+@router.get("/pdf", response_class=StreamingResponse)
+async def generar_pdf_master_documents(
+    empresa_id: Optional[int] = Query(None),
+    tipo_documento: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    include_inactive: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = db.query(MasterDocument)
+    if empresa_id is not None:
+        query = query.filter(MasterDocument.empresa_id == empresa_id)
+    if tipo_documento:
+        query = query.filter(MasterDocument.tipo_documento == tipo_documento)
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            or_(
+                MasterDocument.codigo.ilike(like),
+                MasterDocument.nombre_documento.ilike(like),
+            )
+        )
+    if not include_inactive:
+        query = query.filter(MasterDocument.is_active.is_(True))
+
+    documents = query.order_by(MasterDocument.tipo_documento.asc(), MasterDocument.codigo.asc()).all()
+
+    # Obtener información de la empresa si se filtró por una
+    empresa = None
+    if empresa_id:
+        empresa = db.query(Empresa).filter(Empresa.id == empresa_id).first()
+
+    company_name = empresa.nombre if empresa else "Empresa SST"
+    company_nit = empresa.nit if empresa else None
+
+    # Preparar contexto para el PDF
+    context = {
+        "documents": documents,
+        "company_name": company_name,
+        "company_nit": company_nit,
+        "generated_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+        "logo_base64": None,  # Se podría obtener de la configuración de la empresa
+    }
+
+    # Generar PDF
+    converter = HTMLToPDFConverter()
+    pdf_content = await converter.generate_pdf_from_template(
+        "master_documents_list.html", context
+    )
+
+    filename = f"listado_maestro_documentos_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+
+    return StreamingResponse(
+        io.BytesIO(pdf_content),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 

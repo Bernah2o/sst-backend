@@ -1,0 +1,111 @@
+/* Estilos generales */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: Arial, Helvetica, sans-serif;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+body {
+    background-color: #ffffff;
+    color: #333333;
+    font-size: 10pt;
+    line-height: 1.3;
+}
+
+.container {
+    width: 100%;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Encabezado */
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #1976d2;
+    padding-bottom: 10px;
+}
+
+.logo img {
+    max-width: 120px;
+    max-height: 60px;
+}
+
+.header-info {
+    text-align: right;
+}
+
+.header-info h1 {
+    color: #1976d2;
+    font-size: 18pt;
+    margin-bottom: 5px;
+}
+
+.header-info .company-name {
+    font-size: 12pt;
+    font-weight: bold;
+    color: #424242;
+}
+
+.date {
+    font-size: 9pt;
+    color: #666666;
+    margin-top: 5px;
+}
+
+/* Tabla */
+.table-container {
+    margin-bottom: 20px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+}
+
+table th {
+    background-color: #1976d2;
+    color: white;
+    text-align: left;
+    padding: 8px;
+    font-weight: bold;
+    border: 1px solid #1976d2;
+}
+
+table td {
+    padding: 8px;
+    border: 1px solid #e0e0e0;
+}
+
+table tr:nth-child(even) {
+    background-color: #f5f5f5;
+}
+
+/* Column widths */
+.col-code { width: 10%; }
+.col-name { width: 40%; }
+.col-type { width: 15%; }
+.col-ver { width: 10%; }
+.col-date { width: 10%; }
+.col-loc { width: 15%; }
+
+/* Footer */
+footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 10px 20px;
+    font-size: 8pt;
+    color: #666666;
+    border-top: 1px solid #e0e0e0;
+    display: flex;
+    justify-content: space-between;
+}
