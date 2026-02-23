@@ -15,6 +15,7 @@ from .candidate_voting import (
 )
 from .worker import Worker, WorkerContract, Gender, DocumentType, ContractType, RiskLevel, BloodType, EPS, AFP, ARL
 from .worker_document import WorkerDocument
+from .master_document import MasterDocument
 from .contractor import Contractor, ContractorContract, ContractorDocument
 from .worker_novedad import WorkerNovedad, NovedadType, NovedadStatus
 from .worker_vacation import VacationBalance
@@ -206,6 +207,7 @@ __all__ = [
     "NovedadType",
     "NovedadStatus",
     "VacationBalance",
+    "MasterDocument",
     # Committee models
     "CommitteeType",
     "Committee", 
