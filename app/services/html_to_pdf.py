@@ -776,6 +776,135 @@ class HTMLToPDFConverter:
                 f"Error en certificado de asistencia: {str(e)}"
             )
     
+    def generate_seguimiento_actividad_pdf(self, template_data, output_path=None):
+        """
+        Genera un PDF para una actividad de seguimiento SST.
+
+        Args:
+            template_data: Diccionario con la información del seguimiento y la actividad
+            output_path: Ruta donde guardar el PDF generado (opcional)
+
+        Returns:
+            bytes: Contenido del PDF o ruta del archivo si se especifica output_path
+        """
+        try:
+            now = datetime.now()
+            logo_base64 = self._load_logo_base64()
+
+            if not isinstance(template_data, dict):
+                if hasattr(template_data, "__dict__"):
+                    template_data = template_data.__dict__
+                else:
+                    template_data = {}
+
+            seguimiento = template_data.get("seguimiento", {})
+            actividad = template_data.get("actividad", {})
+
+            context = {
+                "logo_base64": logo_base64,
+                "seguimiento": {
+                    "id": seguimiento.get("id"),
+                    "programa": seguimiento.get("programa", ""),
+                    "nombre_trabajador": seguimiento.get("nombre_trabajador", ""),
+                    "cedula": seguimiento.get("cedula", ""),
+                    "cargo": seguimiento.get("cargo", ""),
+                    "fecha_ingreso": seguimiento.get("fecha_ingreso", ""),
+                    "valoracion_riesgo": seguimiento.get("valoracion_riesgo", ""),
+                    "estado": seguimiento.get("estado", ""),
+                    "fecha_inicio": seguimiento.get("fecha_inicio", ""),
+                    "fecha_final": seguimiento.get("fecha_final", ""),
+                    "observacion": seguimiento.get("observacion", ""),
+                    "motivo_inclusion": seguimiento.get("motivo_inclusion", ""),
+                },
+                "actividad": {
+                    "id": actividad.get("id"),
+                    "titulo": actividad.get("titulo", ""),
+                    "descripcion": actividad.get("descripcion", ""),
+                    "tipo_fecha": actividad.get("tipo_fecha", ""),
+                    "fecha_inicio": actividad.get("fecha_inicio", ""),
+                    "fecha_fin": actividad.get("fecha_fin", ""),
+                    "fecha_unica": actividad.get("fecha_unica", ""),
+                    "estado": actividad.get("estado", ""),
+                    "estado_label": actividad.get("estado_label", ""),
+                    "prioridad": actividad.get("prioridad", ""),
+                    "prioridad_label": actividad.get("prioridad_label", ""),
+                    "responsable": actividad.get("responsable", ""),
+                    "observaciones": actividad.get("observaciones", ""),
+                    "created_at": actividad.get("created_at", ""),
+                    "updated_at": actividad.get("updated_at", ""),
+                },
+                "worker": {
+                    "full_name": template_data.get("worker_full_name", seguimiento.get("nombre_trabajador", "")),
+                    "document_number": template_data.get("worker_document", seguimiento.get("cedula", "")),
+                },
+                "generation_date": now.strftime("%d/%m/%Y"),
+                "generation_time": now.strftime("%H:%M:%S"),
+            }
+
+            html_content = self.render_template("seguimiento_actividad.html", context)
+
+            css_path = os.path.join(self.template_dir, "css", "seguimiento_actividad.css")
+            if os.path.exists(css_path):
+                css_url = self._get_file_url(css_path)
+                html_content = html_content.replace(
+                    'href="css/seguimiento_actividad.css"', f'href="{css_url}"'
+                )
+
+            specific_meta = """
+    <meta name="title" content="Actividad de Seguimiento SST">
+    <meta name="subject" content="Actividad de seguimiento de trabajador">
+    <meta name="keywords" content="seguimiento, actividad, sst, trabajador">"""
+            html_content = html_content.replace("</head>", f"{specific_meta}\n</head>")
+
+            base_url = self._get_file_url(self.template_dir)
+            html_obj = weasyprint.HTML(
+                string=html_content, base_url=base_url, encoding="utf-8"
+            )
+
+            stylesheets = []
+            if os.path.exists(css_path):
+                css_obj = self._load_css_cached(css_path)
+                if css_obj:
+                    stylesheets.append(css_obj)
+
+            pdf_metadata = {
+                "title": f"Actividad de Seguimiento SST - {context['actividad']['titulo']}",
+                "author": "SST Sistema",
+                "subject": "Actividad de seguimiento",
+                "keywords": "seguimiento, actividad, sst",
+                "creator": "SST Sistema",
+                "producer": "WeasyPrint",
+            }
+
+            pdf_content = html_obj.write_pdf(
+                stylesheets=stylesheets,
+                metadata=pdf_metadata,
+                pdf_version=(1, 7),
+                optimize_images=True,
+                compress=True,
+            )
+
+            if not pdf_content or len(pdf_content) < 1000:
+                raise ValueError("PDF de actividad de seguimiento está vacío")
+
+            logger.info(f"Actividad de seguimiento PDF generada ({len(pdf_content)} bytes)")
+
+            if output_path:
+                output_dir = os.path.dirname(output_path)
+                if output_dir:
+                    os.makedirs(output_dir, exist_ok=True)
+                with open(output_path, "wb") as f:
+                    f.write(pdf_content)
+                return output_path
+
+            return pdf_content
+
+        except Exception as e:
+            logger.error(f"Error en generate_seguimiento_actividad_pdf: {str(e)}")
+            return self._generate_emergency_pdf(
+                f"Error en actividad de seguimiento: {str(e)}"
+            )
+    
     def generate_bulk_attendance_certificates(self, attendance_list: List[Dict[str, Any]], 
                                             output_dir: Optional[str] = None) -> List[bytes]:
         """

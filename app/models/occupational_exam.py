@@ -58,8 +58,8 @@ class OccupationalExam(Base):
     pdf_file_path = Column(String(500), nullable=True)  # Ruta del archivo PDF del examen
     
     # Control de seguimiento
-    requires_follow_up = Column(Boolean, default=False, nullable=False)  # Indica si el examen requiere seguimiento
-    
+    requires_follow_up = Column(Boolean, default=False, nullable=False)
+
     # Relaciones con Supplier y Doctor (nuevos campos)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
     doctor_id = Column(Integer, ForeignKey("doctors.id"), nullable=True)

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="pdf-engine" content="WeasyPrint">
+    <title>Actividad de Seguimiento SST</title>
+    <link rel="stylesheet" href="css/seguimiento_actividad.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-logo">
+                {% if logo_base64 %}
+                <img src="data:image/png;base64,{{ logo_base64 }}" alt="Logo Empresa">
+                {% else %}
+                <div class="logo-placeholder">LOGO</div>
+                {% endif %}
+            </div>
+            <div class="header-title">
+                <h1>ACTIVIDAD DE SEGUIMIENTO SST</h1>
+                <p class="subtitle">Registro para firma del responsable SST y del trabajador</p>
+            </div>
+            <div class="header-meta">
+                <table>
+                    <tr>
+                        <td class="meta-label">Fecha generación:</td>
+                        <td class="meta-value">{{ generation_date }}</td>
+                    </tr>
+                    <tr>
+                        <td class="meta-label">Hora:</td>
+                        <td class="meta-value">{{ generation_time }}</td>
+                    </tr>
+                    <tr>
+                        <td class="meta-label">ID Seguimiento:</td>
+                        <td class="meta-value">{{ seguimiento.id }}</td>
+                    </tr>
+                    <tr>
+                        <td class="meta-label">ID Actividad:</td>
+                        <td class="meta-value">{{ actividad.id }}</td>
+                    </tr>
+                </table>
+            </div>
+        </header>
+
+        <section class="section">
+            <h2>Datos del Trabajador y del Seguimiento</h2>
+            <table class="info-table">
+                <tr>
+                    <td class="label">Programa:</td>
+                    <td class="value">{{ seguimiento.programa }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Trabajador:</td>
+                    <td class="value">{{ seguimiento.nombre_trabajador }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Documento:</td>
+                    <td class="value">{{ seguimiento.cedula }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Cargo:</td>
+                    <td class="value">{{ seguimiento.cargo }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Fecha de ingreso:</td>
+                    <td class="value">{{ seguimiento.fecha_ingreso }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Valoración de riesgo:</td>
+                    <td class="value">{{ seguimiento.valoracion_riesgo }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Estado del seguimiento:</td>
+                    <td class="value">{{ seguimiento.estado }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Periodo del seguimiento:</td>
+                    <td class="value">
+                        {% if seguimiento.fecha_inicio or seguimiento.fecha_final %}
+                            Desde {{ seguimiento.fecha_inicio or '-' }} hasta {{ seguimiento.fecha_final or '-' }}
+                        {% else %}
+                            No definido
+                        {% endif %}
+                    </td>
+                </tr>
+            </table>
+        </section>
+
+        <section class="section">
+            <h2>Detalle de la Actividad</h2>
+            <table class="info-table">
+                <tr>
+                    <td class="label">Título de la actividad:</td>
+                    <td class="value">{{ actividad.titulo }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Tipo de fecha:</td>
+                    <td class="value">
+                        {% if actividad.tipo_fecha == 'unica' %}
+                            Fecha única
+                        {% elif actividad.tipo_fecha == 'rango' %}
+                            Rango de fechas
+                        {% else %}
+                            {{ actividad.tipo_fecha }}
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <td class="label">Fechas de ejecución:</td>
+                    <td class="value">
+                        {% if actividad.tipo_fecha == 'unica' %}
+                            {{ actividad.fecha_unica or 'No definida' }}
+                        {% else %}
+                            Desde {{ actividad.fecha_inicio or 'No definida' }} hasta {{ actividad.fecha_fin or 'No definida' }}
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <td class="label">Estado de la actividad:</td>
+                    <td class="value">{{ actividad.estado_label or actividad.estado }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Prioridad:</td>
+                    <td class="value">{{ actividad.prioridad_label or actividad.prioridad }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Responsable de la actividad:</td>
+                    <td class="value">{{ actividad.responsable or 'No definido' }}</td>
+                </tr>
+                <tr>
+                    <td class="label">Creación / última actualización:</td>
+                    <td class="value">
+                        Creada: {{ actividad.created_at or '-' }} |
+                        Actualizada: {{ actividad.updated_at or '-' }}
+                    </td>
+                </tr>
+            </table>
+
+            {% if actividad.descripcion %}
+            <div class="text-block">
+                <h3>Descripción de la actividad</h3>
+                <p>{{ actividad.descripcion }}</p>
+            </div>
+            {% endif %}
+
+            {% if actividad.observaciones or seguimiento.observacion or seguimiento.motivo_inclusion %}
+            <div class="text-block">
+                <h3>Observaciones y notas</h3>
+                {% if seguimiento.motivo_inclusion %}
+                <p><strong>Motivo de inclusión al seguimiento:</strong> {{ seguimiento.motivo_inclusion }}</p>
+                {% endif %}
+                {% if seguimiento.observacion %}
+                <p><strong>Observación del seguimiento:</strong> {{ seguimiento.observacion }}</p>
+                {% endif %}
+                {% if actividad.observaciones %}
+                <p><strong>Observaciones de la actividad:</strong> {{ actividad.observaciones }}</p>
+                {% endif %}
+            </div>
+            {% endif %}
+        </section>
+
+        <section class="section">
+            <h2>Declaración</h2>
+            <p class="declaration-text">
+                Mediante la firma del presente documento, el responsable del Sistema de Gestión de
+                Seguridad y Salud en el Trabajo (SST) y el trabajador dejan constancia de la programación
+                y/o ejecución de la actividad descrita, como parte del seguimiento al estado de salud y
+                condiciones de trabajo del colaborador.
+            </p>
+        </section>
+
+        <section class="section signatures-section">
+            <div class="signature-box">
+                <div class="signature-line"></div>
+                <p class="signature-name">
+                    {% if actividad.responsable %}
+                        {{ actividad.responsable }}
+                    {% else %}
+                        Responsable SST
+                    {% endif %}
+                </p>
+                <p class="signature-role">Responsable del Sistema de Gestión SST</p>
+            </div>
+
+            <div class="signature-box">
+                <div class="signature-line"></div>
+                <p class="signature-name">
+                    {% if worker.full_name %}
+                        {{ worker.full_name }}
+                    {% else %}
+                        {{ seguimiento.nombre_trabajador }}
+                    {% endif %}
+                </p>
+                <p class="signature-role">Trabajador</p>
+            </div>
+        </section>
+
+        <footer class="footer">
+            <p>Este documento ha sido generado automáticamente por el Sistema de Gestión de SST.</p>
+            <p class="footer-note">
+                La firma manuscrita o electrónica de las partes otorga validez a este registro de actividad
+                de seguimiento.
+            </p>
+        </footer>
+    </div>
+</body>
+</html>
+
