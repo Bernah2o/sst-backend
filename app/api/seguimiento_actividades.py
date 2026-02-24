@@ -356,11 +356,8 @@ async def generate_actividad_pdf(
             c for c in (actividad.titulo or "") if c.isalnum() or c in "._- "
         ).strip().replace(" ", "_")[:40]
 
-        filename = f"actividad_seguimiento_{seguimiento.id}_{actividad.id}.pdf"
-        if safe_worker_name:
-            filename = f"actividad_seguimiento_{safe_worker_name}_{actividad.id}.pdf"
-        if safe_title:
-            filename = f"actividad_seguimiento_{safe_worker_name or seguimiento.id}_{safe_title}.pdf"
+        # El archivo que se descarga deberá contener el nombre seguimiento_nombre del trabajador
+        filename = f"seguimiento_{safe_worker_name}.pdf" if safe_worker_name else f"seguimiento_{seguimiento.id}.pdf"
 
         response_params = {
             "path": pdf_path,

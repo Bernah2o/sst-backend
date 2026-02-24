@@ -1,12 +1,15 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 import os
 
 from app.database import get_db
-from app.models import Seguimiento, Worker, EstadoSeguimiento, ValoracionRiesgo
+from app.models import (
+    Seguimiento, Worker, EstadoSeguimiento, ValoracionRiesgo, OccupationalExam,
+    Notification, NotificationType, NotificationPriority
+)
 from app.schemas.seguimiento import (
     SeguimientoCreate,
     SeguimientoUpdate,
@@ -120,6 +123,14 @@ def create_seguimiento(
 
     db_seguimiento = Seguimiento(**seguimiento.dict())
     db.add(db_seguimiento)
+    
+    # Si se crea directamente en estado terminado, actualizar el programa del examen ocupacional y desmarcar seguimiento
+    if db_seguimiento.estado == EstadoSeguimiento.TERMINADO and db_seguimiento.occupational_exam_id:
+        db.query(OccupationalExam).filter(OccupationalExam.id == db_seguimiento.occupational_exam_id).update({
+            "programa": "NINGUNO",
+            "requires_follow_up": False
+        })
+        
     db.commit()
     db.refresh(db_seguimiento)
     return db_seguimiento
@@ -142,8 +153,19 @@ def update_seguimiento(
         raise HTTPException(status_code=404, detail="Seguimiento no encontrado")
 
     update_data = seguimiento_update.dict(exclude_unset=True)
+    
+    # Verificar si el estado está cambiando a terminado
+    changing_to_terminado = update_data.get('estado') == EstadoSeguimiento.TERMINADO
+    
     for field, value in update_data.items():
         setattr(db_seguimiento, field, value)
+
+    # Si el seguimiento pasa a terminado, actualizar el programa del examen ocupacional a NINGUNO y desmarcar seguimiento
+    if changing_to_terminado and db_seguimiento.occupational_exam_id:
+        db.query(OccupationalExam).filter(OccupationalExam.id == db_seguimiento.occupational_exam_id).update({
+            "programa": "NINGUNO",
+            "requires_follow_up": False
+        })
 
     db.commit()
     db.refresh(db_seguimiento)
@@ -304,3 +326,73 @@ async def download_medical_recommendation_pdf(
         raise HTTPException(
             status_code=500, detail=f"Error descargando el PDF: {str(e)}"
         )
+
+
+@router.post("/{seguimiento_id}/notify-worker", response_model=MessageResponse)
+async def notify_worker_inclusion(
+    seguimiento_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin),
+):
+    """
+    Enviar notificación al trabajador sobre su inclusión en el seguimiento
+    """
+    # 1. Obtener seguimiento
+    seguimiento = db.query(Seguimiento).filter(Seguimiento.id == seguimiento_id).first()
+    if not seguimiento:
+        raise HTTPException(status_code=404, detail="Seguimiento no encontrado")
+
+    # 2. Obtener trabajador
+    worker = db.query(Worker).filter(Worker.id == seguimiento.worker_id).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Trabajador no encontrado")
+
+    if not worker.email:
+        raise HTTPException(
+            status_code=400,
+            detail="El trabajador no tiene un correo electrónico registrado",
+        )
+
+    # 3. Preparar contexto para el correo
+    from app.config import settings
+    from app.utils.email import send_email
+    import json
+
+    context = {
+        "worker_name": worker.full_name,
+        "programa": seguimiento.programa,
+        "fecha_inicio": (
+            seguimiento.fecha_inicio.strftime("%d/%m/%Y")
+            if seguimiento.fecha_inicio
+            else "Pendiente"
+        ),
+        "valoracion_riesgo": (
+            seguimiento.valoracion_riesgo.title() if seguimiento.valoracion_riesgo else None
+        ),
+        "motivo_inclusion": seguimiento.motivo_inclusion,
+        "system_url": settings.react_app_api_url,  # O la URL del frontend si es diferente
+    }
+
+    # 4. Enviar correo en segundo plano
+    background_tasks.add_task(
+        send_email,
+        recipient=worker.email,
+        subject="Notificación de Inclusión a Programa de Seguimiento SST",
+        template="seguimiento_inclusion",
+        context=context,
+    )
+
+    # 5. Crear notificación en el sistema
+    notification = Notification(
+        user_id=worker.user_id,
+        title="Inclusión a Seguimiento SST",
+        message=f"Has sido incluido en el programa de seguimiento: {seguimiento.programa}",
+        notification_type=NotificationType.EMAIL,
+        priority=NotificationPriority.NORMAL,
+        additional_data=json.dumps({"seguimiento_id": seguimiento.id}),
+    )
+    db.add(notification)
+    db.commit()
+
+    return {"message": f"Notificación enviada exitosamente a {worker.email}"}

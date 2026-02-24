@@ -143,6 +143,11 @@ body {
     background-color: #fcfcfc;
 }
 
+.document-closing {
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+
 .signatures-section {
     display: flex;
     justify-content: space-between;
