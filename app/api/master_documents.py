@@ -2,8 +2,8 @@ from typing import List, Optional
 from datetime import datetime
 import io
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
+from fastapi.responses import StreamingResponse, Response
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,9 @@ from app.schemas.master_document import (
     MasterDocumentResponse,
     MasterDocumentUpdate,
 )
+from app.services.s3_storage import contabo_service
+import uuid
+from pathlib import Path
 
 
 router = APIRouter()
@@ -214,7 +217,116 @@ def eliminar_master_document(
     current_user: User = Depends(require_supervisor_or_admin),
 ):
     document = _get_master_document_or_404(db, document_id)
+    
+    # Eliminar archivo adjunto de Contabo si existe
+    if document.support_file_key and contabo_service:
+        try:
+            contabo_service.delete_file(document.support_file_key)
+        except Exception as e:
+            # Loguear el error pero continuar con la eliminación del registro
+            print(f"Error al eliminar soporte de Contabo: {str(e)}")
+            
     db.delete(document)
     db.commit()
     return None
+
+
+@router.post("/{document_id}/upload-support", response_model=MasterDocumentResponse)
+async def upload_document_support(
+    document_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_supervisor_or_admin),
+):
+    document = _get_master_document_or_404(db, document_id)
+    
+    if not contabo_service:
+        raise HTTPException(status_code=500, detail="Servicio de almacenamiento no disponible")
+    
+    # Validar archivo
+    allowed_extensions = {'.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png', '.xlsx', '.xls'}
+    file_extension = Path(file.filename).suffix.lower()
+    if file_extension not in allowed_extensions:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Extensión no permitida. Permitidas: {', '.join(allowed_extensions)}"
+        )
+    
+    # Generar key única
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    unique_id = str(uuid.uuid4())[:8]
+    file_key = f"master_documents/{document.empresa_id or 'global'}/{document_id}/{timestamp}_{unique_id}_{file.filename}"
+    
+    try:
+        # Leer y subir
+        content = await file.read()
+        contabo_service.upload_bytes(content, file_key, file.content_type)
+        
+        # Si ya tenía un archivo, opcionalmente eliminarlo (mejor no por ahora para evitar pérdida accidental si hay errores)
+        # if document.support_file_key:
+        #     contabo_service.delete_file(document.support_file_key)
+            
+        document.support_file_key = file_key
+        db.commit()
+        db.refresh(document)
+        return document
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al subir archivo: {str(e)}")
+
+
+@router.get("/{document_id}/preview-support")
+async def preview_document_support(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    document = _get_master_document_or_404(db, document_id)
+    if not document.support_file_key:
+        raise HTTPException(status_code=404, detail="Este documento no tiene soporte cargado")
+        
+    if not contabo_service:
+        raise HTTPException(status_code=500, detail="Servicio de almacenamiento no disponible")
+        
+    url = contabo_service.get_presigned_url(document.support_file_key)
+    if not url:
+        # Si falla el presigned, intentar obtener public url si está configurado
+        url = contabo_service.get_public_url(document.support_file_key)
+        
+    return {"url": url}
+
+
+@router.get("/{document_id}/download-support")
+async def download_document_support(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    document = _get_master_document_or_404(db, document_id)
+    if not document.support_file_key:
+        raise HTTPException(status_code=404, detail="Este documento no tiene soporte cargado")
+        
+    if not contabo_service:
+        raise HTTPException(status_code=500, detail="Servicio de almacenamiento no disponible")
+        
+    content = contabo_service.download_file_as_bytes(document.support_file_key)
+    if not content:
+        raise HTTPException(status_code=404, detail="No se pudo descargar el archivo")
+        
+    filename = Path(document.support_file_key).name
+    # Intentar limpiar el nombre del archivo (quitar timestamp e ID único si es posible)
+    parts = filename.split('_', 3)
+    if len(parts) >= 4:
+        clean_filename = parts[3]
+    else:
+        clean_filename = filename
+        
+    return Response(
+        content=content,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f"attachment; filename={clean_filename}"
+        }
+    )
+
 

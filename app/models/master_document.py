@@ -36,6 +36,7 @@ class MasterDocument(Base):
     fecha = Column(Date, nullable=True)
     fecha_texto = Column(String(20), nullable=True)
     ubicacion = Column(String(500), nullable=True)
+    support_file_key = Column(String(500), nullable=True)
 
     is_active = Column(Boolean, default=True, nullable=False)
 

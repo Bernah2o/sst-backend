@@ -13,6 +13,7 @@ class MasterDocumentBase(BaseModel):
     fecha: Optional[date] = None
     fecha_texto: Optional[str] = None
     ubicacion: Optional[str] = None
+    support_file_key: Optional[str] = None
     is_active: bool = True
 
 
@@ -29,6 +30,7 @@ class MasterDocumentUpdate(BaseModel):
     fecha: Optional[date] = None
     fecha_texto: Optional[str] = None
     ubicacion: Optional[str] = None
+    support_file_key: Optional[str] = None
     is_active: Optional[bool] = None
 
 
