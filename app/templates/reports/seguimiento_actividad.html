@@ -31,14 +31,6 @@
                         <td class="meta-label">Hora:</td>
                         <td class="meta-value">{{ generation_time }}</td>
                     </tr>
-                    <tr>
-                        <td class="meta-label">ID Seguimiento:</td>
-                        <td class="meta-value">{{ seguimiento.id }}</td>
-                    </tr>
-                    <tr>
-                        <td class="meta-label">ID Actividad:</td>
-                        <td class="meta-value">{{ actividad.id }}</td>
-                    </tr>
                 </table>
             </div>
         </header>
@@ -124,34 +116,20 @@
                     <td class="label">Prioridad:</td>
                     <td class="value">{{ actividad.prioridad_label or actividad.prioridad }}</td>
                 </tr>
-                <tr>
-                    <td class="label">Responsable de la actividad:</td>
-                    <td class="value">{{ actividad.responsable or 'No definido' }}</td>
-                </tr>
-                <tr>
-                    <td class="label">Creación / última actualización:</td>
-                    <td class="value">
-                        Creada: {{ actividad.created_at or '-' }} |
-                        Actualizada: {{ actividad.updated_at or '-' }}
-                    </td>
-                </tr>
             </table>
 
             {% if actividad.descripcion %}
             <div class="text-block">
-                <h3>Descripción de la actividad</h3>
+                <h3>Descripción de la actividad <small style="font-weight: normal; font-size: 0.8em; color: #666;">(Máximo 40 palabras / 198 caracteres)</small></h3>
                 <p>{{ actividad.descripcion }}</p>
             </div>
             {% endif %}
 
-            {% if actividad.observaciones or seguimiento.observacion or seguimiento.motivo_inclusion %}
+            {% if actividad.observaciones or seguimiento.motivo_inclusion %}
             <div class="text-block">
-                <h3>Observaciones y notas</h3>
+                <h3>Observaciones y notas <small style="font-weight: normal; font-size: 0.8em; color: #666;">(Máximo 40 palabras / 198 caracteres por sección)</small></h3>
                 {% if seguimiento.motivo_inclusion %}
                 <p><strong>Motivo de inclusión al seguimiento:</strong> {{ seguimiento.motivo_inclusion }}</p>
-                {% endif %}
-                {% if seguimiento.observacion %}
-                <p><strong>Observación del seguimiento:</strong> {{ seguimiento.observacion }}</p>
                 {% endif %}
                 {% if actividad.observaciones %}
                 <p><strong>Observaciones de la actividad:</strong> {{ actividad.observaciones }}</p>
