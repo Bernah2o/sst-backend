@@ -140,9 +140,10 @@ def crear_master_document(
         .first()
     )
     if existente:
+        estado = "activo" if existente.is_active else "inactivo"
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Ya existe un documento con el código '{codigo_normalizado}' para esta empresa",
+            detail=f"Ya existe un documento ({estado}) con el código '{existente.codigo}' denominado '{existente.nombre_documento}' para esta empresa.",
         )
 
     # Actualizar código normalizado en los datos
@@ -188,9 +189,10 @@ def actualizar_master_document(
             .first()
         )
         if existente:
+            estado = "activo" if existente.is_active else "inactivo"
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Ya existe un documento con el código '{new_codigo}' para esta empresa",
+                detail=f"Ya existe un documento ({estado}) con el código '{existente.codigo}' denominado '{existente.nombre_documento}' para esta empresa.",
             )
         
         # Actualizar el código si fue proporcionado
@@ -206,14 +208,13 @@ def actualizar_master_document(
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
-def desactivar_master_document(
+def eliminar_master_document(
     document_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_supervisor_or_admin),
 ):
     document = _get_master_document_or_404(db, document_id)
-    document.is_active = False
-    document.updated_by = current_user.id
+    db.delete(document)
     db.commit()
     return None
 
