@@ -120,14 +120,14 @@
 
             {% if actividad.descripcion %}
             <div class="text-block">
-                <h3>Descripción de la actividad <small style="font-weight: normal; font-size: 0.8em; color: #666;">(Máximo 40 palabras / 198 caracteres)</small></h3>
+                <h3>Descripción de la actividad</h3>
                 <p>{{ actividad.descripcion }}</p>
             </div>
             {% endif %}
 
             {% if actividad.observaciones or seguimiento.motivo_inclusion %}
             <div class="text-block">
-                <h3>Observaciones y notas <small style="font-weight: normal; font-size: 0.8em; color: #666;">(Máximo 40 palabras / 198 caracteres por sección)</small></h3>
+                <h3>Observaciones y notas</h3>
                 {% if seguimiento.motivo_inclusion %}
                 <p><strong>Motivo de inclusión al seguimiento:</strong> {{ seguimiento.motivo_inclusion }}</p>
                 {% endif %}
@@ -138,49 +138,51 @@
             {% endif %}
         </section>
 
-        <section class="section">
-            <h2>Declaración</h2>
-            <p class="declaration-text">
-                Mediante la firma del presente documento, el responsable del Sistema de Gestión de
-                Seguridad y Salud en el Trabajo (SST) y el trabajador dejan constancia de la programación
-                y/o ejecución de la actividad descrita, como parte del seguimiento al estado de salud y
-                condiciones de trabajo del colaborador.
-            </p>
-        </section>
-
-        <section class="section signatures-section">
-            <div class="signature-box">
-                <div class="signature-line"></div>
-                <p class="signature-name">
-                    {% if actividad.responsable %}
-                        {{ actividad.responsable }}
-                    {% else %}
-                        Responsable SST
-                    {% endif %}
+        <div class="document-closing">
+            <section class="section">
+                <h2>Declaración</h2>
+                <p class="declaration-text">
+                    Mediante la firma del presente documento, el responsable del Sistema de Gestión de
+                    Seguridad y Salud en el Trabajo (SST) y el trabajador dejan constancia de la programación
+                    y/o ejecución de la actividad descrita, como parte del seguimiento al estado de salud y
+                    condiciones de trabajo del colaborador.
                 </p>
-                <p class="signature-role">Responsable del Sistema de Gestión SST</p>
-            </div>
+            </section>
 
-            <div class="signature-box">
-                <div class="signature-line"></div>
-                <p class="signature-name">
-                    {% if worker.full_name %}
-                        {{ worker.full_name }}
-                    {% else %}
-                        {{ seguimiento.nombre_trabajador }}
-                    {% endif %}
+            <section class="section signatures-section">
+                <div class="signature-box">
+                    <div class="signature-line"></div>
+                    <p class="signature-name">
+                        {% if actividad.responsable %}
+                            {{ actividad.responsable }}
+                        {% else %}
+                            Responsable SST
+                        {% endif %}
+                    </p>
+                    <p class="signature-role">Responsable del Sistema de Gestión SST</p>
+                </div>
+
+                <div class="signature-box">
+                    <div class="signature-line"></div>
+                    <p class="signature-name">
+                        {% if worker.full_name %}
+                            {{ worker.full_name }}
+                        {% else %}
+                            {{ seguimiento.nombre_trabajador }}
+                        {% endif %}
+                    </p>
+                    <p class="signature-role">Trabajador</p>
+                </div>
+            </section>
+
+            <footer class="footer">
+                <p>Este documento ha sido generado automáticamente por el Sistema de Gestión de SST.</p>
+                <p class="footer-note">
+                    La firma manuscrita o electrónica de las partes otorga validez a este registro de actividad
+                    de seguimiento.
                 </p>
-                <p class="signature-role">Trabajador</p>
-            </div>
-        </section>
-
-        <footer class="footer">
-            <p>Este documento ha sido generado automáticamente por el Sistema de Gestión de SST.</p>
-            <p class="footer-note">
-                La firma manuscrita o electrónica de las partes otorga validez a este registro de actividad
-                de seguimiento.
-            </p>
-        </footer>
+            </footer>
+        </div>
     </div>
 </body>
 </html>

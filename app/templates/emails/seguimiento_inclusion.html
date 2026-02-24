@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inclusión a Programa de Seguimiento SST</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 0;
+            background-color: #f4f7f9;
+        }
+        .container {
+            background-color: #ffffff;
+            margin: 20px auto;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            background: linear-gradient(135deg, #0d47a1 0%, #1976d2 100%);
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            letter-spacing: 1px;
+        }
+        .content {
+            padding: 30px;
+        }
+        .welcome-text {
+            font-size: 18px;
+            color: #0d47a1;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .info-box {
+            background-color: #e3f2fd;
+            border-left: 4px solid #1976d2;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .info-item {
+            margin-bottom: 10px;
+        }
+        .info-label {
+            font-weight: bold;
+            color: #555;
+            width: 150px;
+            display: inline-block;
+        }
+        .details-section {
+            margin-top: 25px;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+        }
+        .details-section h3 {
+            color: #333;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #777;
+            border-top: 1px solid #eee;
+        }
+        .button {
+            display: inline-block;
+            background-color: #1976d2;
+            color: white !important;
+            padding: 12px 25px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+        .sst-signature {
+            margin-top: 30px;
+            font-style: italic;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Gestión de Seguridad y Salud en el Trabajo</h1>
+        </div>
+        
+        <div class="content">
+            <p class="welcome-text">Hola {{ worker_name }},</p>
+            
+            <p>Le informamos que ha sido incluido formalmente en el <strong>Programa de Seguimiento de Salud Ocupacional</strong> de la compañía.</p>
+            
+            <div class="info-box">
+                <div class="info-item">
+                    <span class="info-label">Programa:</span>
+                    <span>{{ programa }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Fecha de Inicio:</span>
+                    <span>{{ fecha_inicio }}</span>
+                </div>
+                {% if valoracion_riesgo %}
+                <div class="info-item">
+                    <span class="info-label">Nivel de Riesgo:</span>
+                    <span>{{ valoracion_riesgo }}</span>
+                </div>
+                {% endif %}
+            </div>
+            
+            <div class="details-section">
+                <h3>Motivo de Inclusión:</h3>
+                <p>{{ motivo_inclusion or 'Seguimiento preventivo de salud ocupacional.' }}</p>
+            </div>
+            
+            <p>El objetivo de este seguimiento es velar por su bienestar integral y asegurar condiciones de trabajo óptimas para su salud.</p>
+            
+            <div style="text-align: center;">
+                <a href="{{ system_url }}" class="button">Ver Detalles en la Plataforma</a>
+            </div>
+            
+            <div class="sst-signature">
+                Atentamente,<br>
+                <strong>Área de Seguridad y Salud en el Trabajo (SST)</strong>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>Este es un comunicado oficial del Sistema de Gestión SST.</p>
+            <p>Por favor, no responda a este correo electrónico.</p>
+        </div>
+    </div>
+</body>
+</html>

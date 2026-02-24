@@ -49,7 +49,7 @@ from .reinduction import ReinductionRecord, ReinductionStatus
 from .course import Course, CourseModule, CourseMaterial
 from .evaluation import Evaluation, Question, Answer, UserEvaluation, UserAnswer
 from .survey import Survey, SurveyQuestion, UserSurvey, UserSurveyAnswer
-from .notification import Notification, NotificationTemplate
+from .notification import Notification, NotificationTemplate, NotificationType, NotificationStatus, NotificationPriority
 from .certificate import Certificate
 from .attendance import Attendance
 from .session import Session
@@ -164,6 +164,9 @@ __all__ = [
     "UserSurveyAnswer",
     "Notification",
     "NotificationTemplate",
+    "NotificationType",
+    "NotificationStatus",
+    "NotificationPriority",
     "Certificate",
     "Attendance",
     "Session",
