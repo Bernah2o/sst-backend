@@ -39,7 +39,7 @@ class AuditLog(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Nullable for system actions
-    action = Column(SQLEnum(AuditAction), nullable=False)
+    action = Column(SQLEnum(AuditAction, name="auditaction", values_callable=lambda x: [e.value for e in x]), nullable=False)
     resource_type = Column(String(100), nullable=False)  # e.g., 'user', 'course', 'evaluation'
     resource_id = Column(Integer)  # ID of the affected resource
     resource_name = Column(String(255))  # Name/title of the affected resource

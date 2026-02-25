@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -9,6 +9,7 @@ from app.database import get_db
 from app.dependencies import get_current_user, get_current_active_user
 from app.models.user import User
 from app.models.worker import Worker
+from app.models.audit import AuditLog, AuditAction
 from app.schemas.user import (
     Token,
     UserLogin,
@@ -49,6 +50,7 @@ async def login_info():
 @router.post("/login")
 async def login(
     user_credentials: UserLogin,
+    request: Request,
     db: Session = Depends(get_db)
 ) -> Any:
     """
@@ -87,12 +89,28 @@ async def login(
         }
     }
     
+    
+    # Audit log login action
+    audit_log = AuditLog.log_action(
+        user_id=user.id,
+        action=AuditAction.LOGIN,
+        resource_type="auth",
+        resource_id=user.id,
+        resource_name=user.email,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        details=f"Inicio de sesión exitoso para {user.email}"
+    )
+    db.add(audit_log)
+    db.commit()
+
     return response
 
 
 @router.post("/register", response_model=MessageResponse)
 async def register(
     user_data: UserRegister,
+    request: Request,
     db: Session = Depends(get_db)
 ) -> Any:
     """
@@ -182,6 +200,20 @@ async def register(
             detail="Error interno del servidor durante el registro"
         )
     
+    # Audit log registration
+    audit_log = AuditLog.log_action(
+        user_id=user.id,
+        action=AuditAction.CREATE,
+        resource_type="user",
+        resource_id=user.id,
+        resource_name=user.full_name,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        details=f"Usuario registrado exitosamente: {user.email}"
+    )
+    db.add(audit_log)
+    db.commit()
+
     return MessageResponse(message="User registered successfully")
 
 
@@ -218,15 +250,26 @@ async def refresh_token(
 
 @router.post("/logout", response_model=MessageResponse)
 async def logout(
+    request: Request,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Any:
     """
     Logout user (client should discard tokens)
     """
-    # In a more sophisticated implementation, you might want to:
-    # 1. Blacklist the token
-    # 2. Store logout event in audit log
-    # 3. Clear any server-side sessions
+    # Audit log logout
+    audit_log = AuditLog.log_action(
+        user_id=current_user.id,
+        action=AuditAction.LOGOUT,
+        resource_type="auth",
+        resource_id=current_user.id,
+        resource_name=current_user.email,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        details=f"Cierre de sesión para {current_user.email}"
+    )
+    db.add(audit_log)
+    db.commit()
     
     return MessageResponse(message="Successfully logged out")
 

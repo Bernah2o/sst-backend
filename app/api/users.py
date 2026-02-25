@@ -35,12 +35,23 @@ async def get_current_user_profile(
 @router.put("/profile", response_model=UserResponse)
 async def update_current_user_profile(
     profile_update: UserProfile,
+    request: Request,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:
     """
     Update current user profile
     """
+    # Capture old values
+    old_values = {
+        "first_name": current_user.first_name,
+        "last_name": current_user.last_name,
+        "phone": current_user.phone,
+        "emergency_contact_name": current_user.emergency_contact_name,
+        "emergency_contact_phone": current_user.emergency_contact_phone,
+        "profile_picture": current_user.profile_picture
+    }
+    
     # Update user fields
     update_data = profile_update.dict(exclude_unset=True)
     
@@ -61,6 +72,32 @@ async def update_current_user_profile(
     
     db.commit()
     db.refresh(current_user)
+    
+    # Capture new values
+    new_values = {
+        "first_name": current_user.first_name,
+        "last_name": current_user.last_name,
+        "phone": current_user.phone,
+        "emergency_contact_name": current_user.emergency_contact_name,
+        "emergency_contact_phone": current_user.emergency_contact_phone,
+        "profile_picture": current_user.profile_picture
+    }
+    
+    # Audit log
+    audit_log = AuditLog.log_action(
+        user_id=current_user.id,
+        action=AuditAction.UPDATE,
+        resource_type="user",
+        resource_id=current_user.id,
+        resource_name=current_user.full_name,
+        old_values=old_values,
+        new_values=new_values,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        details="Perfil actualizado por el usuario"
+    )
+    db.add(audit_log)
+    db.commit()
     
     return current_user
 
