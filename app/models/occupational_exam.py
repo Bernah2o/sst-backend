@@ -49,7 +49,10 @@ class OccupationalExam(Base):
     general_recommendations = Column(Text)  # Recomendaciones generales
     
     # Concepto Médico
-    medical_aptitude_concept = Column(SQLEnum(MedicalAptitude), nullable=False)
+    medical_aptitude_concept = Column(
+        SQLEnum(MedicalAptitude, name="medicalaptitude_enum", values_callable=lambda x: [e.value for e in x]), 
+        nullable=False
+    )
     
     # Información adicional
     observations = Column(Text)  # Observaciones adicionales

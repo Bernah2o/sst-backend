@@ -29,10 +29,17 @@ class Seguimiento(Base):
     fecha_ingreso = Column(Date, nullable=True)
     
     # Estado del seguimiento
-    estado = Column(Enum(EstadoSeguimiento), default=EstadoSeguimiento.INICIADO, nullable=False)
+    estado = Column(
+        Enum(EstadoSeguimiento, name="estadoseguimiento_enum", values_callable=lambda x: [e.value for e in x]), 
+        default=EstadoSeguimiento.INICIADO, 
+        nullable=False
+    )
     
     # Atributos de gestión del seguimiento
-    valoracion_riesgo = Column(Enum(ValoracionRiesgo), nullable=True)
+    valoracion_riesgo = Column(
+        Enum(ValoracionRiesgo, name="valoracionriesgo_enum", values_callable=lambda x: [e.value for e in x]), 
+        nullable=True
+    )
     fecha_inicio = Column(Date, nullable=True)
     fecha_final = Column(Date, nullable=True)
     observacion = Column(Text, nullable=True)

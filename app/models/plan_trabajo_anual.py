@@ -49,7 +49,10 @@ class PlanTrabajoAnual(Base):
     formula = Column(String(500), default="N° de Actividades Programadas / N° de Actividades Ejecutadas")
     encargado_sgsst = Column(String(200), nullable=True)
     aprobado_por = Column(String(200), nullable=True)
-    estado = Column(SAEnum(EstadoPlan), default=EstadoPlan.BORRADOR)
+    estado = Column(
+        SAEnum(EstadoPlan, name="estadoplan", values_callable=lambda obj: [e.value for e in obj]), 
+        default=EstadoPlan.BORRADOR
+    )
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -67,8 +70,14 @@ class PlanTrabajoActividad(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     plan_id = Column(Integer, ForeignKey("plan_trabajo_anual.id"), nullable=False)
-    ciclo = Column(SAEnum(CicloPhva), nullable=False)
-    categoria = Column(SAEnum(CategoriaActividad), nullable=False)
+    ciclo = Column(
+        SAEnum(CicloPhva, name="ciclophva", values_callable=lambda obj: [e.value for e in obj]), 
+        nullable=False
+    )
+    categoria = Column(
+        SAEnum(CategoriaActividad, name="categoriaactividad", values_callable=lambda obj: [e.value for e in obj]), 
+        nullable=False
+    )
     estandar = Column(String(200), nullable=True)
     descripcion = Column(Text, nullable=False)
     frecuencia = Column(String(100), nullable=True)

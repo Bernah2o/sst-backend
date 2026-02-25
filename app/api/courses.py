@@ -1,7 +1,7 @@
 from typing import Any, List, Union
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_
@@ -10,10 +10,12 @@ import os
 from app.database import get_db
 from app.dependencies import get_current_active_user, has_role_or_custom
 from app.models.user import User
+from app.models.audit import AuditLog, AuditAction
 
 
 def check_and_complete_course(db: Session, user_id: int, course_id: int):
     """Check if course is truly completed and mark enrollment as completed if so"""
+    from app.models.enrollment import Enrollment, EnrollmentStatus
     enrollment = (
         db.query(Enrollment)
         .filter(
@@ -205,6 +207,7 @@ async def get_courses(
 @router.post("", response_model=CourseResponse)
 async def create_course(
     course_data: CourseCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ) -> Any:
@@ -222,6 +225,21 @@ async def create_course(
     db.add(course)
     db.commit()
     db.refresh(course)
+
+    # Audit log
+    audit_log = AuditLog.log_action(
+        user_id=current_user.id,
+        action=AuditAction.CREATE,
+        resource_type="course",
+        resource_id=course.id,
+        resource_name=course.title,
+        new_values=course_data.dict(),
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        details=f"Curso creado por {current_user.email}"
+    )
+    db.add(audit_log)
+    db.commit()
 
     return CourseResponse.from_orm(course)
 
@@ -428,6 +446,7 @@ async def get_course(
 async def update_course(
     course_id: int,
     course_data: CourseUpdate,
+    request: Request,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ) -> Any:
@@ -446,6 +465,14 @@ async def update_course(
             status_code=status.HTTP_404_NOT_FOUND, detail="Curso no encontrado"
         )
 
+    # Capture old values
+    old_values = {
+        "title": course.title,
+        "description": course.description,
+        "status": course.status.value if hasattr(course.status, 'value') else course.status,
+        "course_type": course.course_type.value if hasattr(course.course_type, 'value') else course.course_type
+    }
+    
     # Update course fields
     update_data = course_data.dict(exclude_unset=True)
     for field, value in update_data.items():
@@ -454,12 +481,29 @@ async def update_course(
     db.commit()
     db.refresh(course)
 
+    # Audit log
+    audit_log = AuditLog.log_action(
+        user_id=current_user.id,
+        action=AuditAction.UPDATE,
+        resource_type="course",
+        resource_id=course.id,
+        resource_name=course.title,
+        old_values=old_values,
+        new_values=update_data,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        details=f"Curso actualizado por {current_user.email}"
+    )
+    db.add(audit_log)
+    db.commit()
+
     return CourseResponse.from_orm(course)
 
 
 @router.delete("/{course_id}", response_model=MessageResponse)
 async def delete_course(
     course_id: int,
+    request: Request,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ) -> Any:
@@ -501,7 +545,23 @@ async def delete_course(
     # Since modules and materials have cascade="all, delete-orphan", they will be deleted automatically
     # We only need to handle the course deletion itself
     try:
+        # Capture data before deletion
+        course_title = course.title
+        
         db.delete(course)
+        
+        # Audit log
+        audit_log = AuditLog.log_action(
+            user_id=current_user.id,
+            action=AuditAction.DELETE,
+            resource_type="course",
+            resource_id=course_id,
+            resource_name=course_title,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            details=f"Curso eliminado por {current_user.email}"
+        )
+        db.add(audit_log)
         db.commit()
 
     except Exception as e:
