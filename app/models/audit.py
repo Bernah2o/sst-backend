@@ -17,21 +17,21 @@ from app.database import Base
 
 
 class AuditAction(str, Enum):
-    CREATE = "create"
-    READ = "read"
-    UPDATE = "update"
-    DELETE = "delete"
-    LOGIN = "login"
-    LOGOUT = "logout"
-    EXPORT = "export"
-    IMPORT = "import"
-    DOWNLOAD = "download"
-    UPLOAD = "upload"
-    APPROVE = "approve"
-    REJECT = "reject"
-    SUBMIT = "submit"
-    COMPLETE = "complete"
-    CANCEL = "cancel"
+    CREATE = "CREATE"
+    READ = "READ"
+    UPDATE = "UPDATE"
+    DELETE = "DELETE"
+    LOGIN = "LOGIN"
+    LOGOUT = "LOGOUT"
+    EXPORT = "EXPORT"
+    IMPORT = "IMPORT"
+    DOWNLOAD = "DOWNLOAD"
+    UPLOAD = "UPLOAD"
+    APPROVE = "APPROVE"
+    REJECT = "REJECT"
+    SUBMIT = "SUBMIT"
+    COMPLETE = "COMPLETE"
+    CANCEL = "CANCEL"
 
 
 class AuditLog(Base):
