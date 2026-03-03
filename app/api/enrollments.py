@@ -831,6 +831,18 @@ async def delete_enrollment(
             )
         ).delete()
 
+        # 6b. Delete reinduction records
+        from app.models.reinduction import ReinductionRecord
+
+        reinduction_records_count = (
+            db.query(ReinductionRecord)
+            .filter(ReinductionRecord.enrollment_id == enrollment_id)
+            .count()
+        )
+        db.query(ReinductionRecord).filter(
+            ReinductionRecord.enrollment_id == enrollment_id
+        ).delete()
+
         # 7. Finally, delete the enrollment itself
         db.delete(enrollment)
 
@@ -844,6 +856,7 @@ async def delete_enrollment(
             f"{total_evaluations_count} evaluaciones ({evaluations_count} con enrollment_id + {orphaned_evaluations_count} huérfanas), "
             f"{user_answers_count} respuestas de evaluación, "
             f"{surveys_count} encuestas, {survey_answers_count} respuestas de encuesta, {certificates_count} certificados, "
+            f"{reinduction_records_count} registros de reinducción, "
             f"y la inscripción para el usuario {user.email if user else 'N/A'} en el curso {course.title if course else 'N/A'}"
         )
 
