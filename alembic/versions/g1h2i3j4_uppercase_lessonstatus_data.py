@@ -5,12 +5,13 @@ Revises: f1g2h3i4
 Create Date: 2026-02-26 15:10:00.000000
 
 """
+
 from alembic import op
 
 
 # revision identifiers, used by Alembic.
-revision = 'g1h2i3j4'
-down_revision = 'f1g2h3i4'
+revision = "g1h2i3j4"
+down_revision = "f1g2h3i4"
 branch_labels = None
 depends_on = None
 
