@@ -284,6 +284,7 @@ async def mark_course_completed(
     # Check and update reinduction records if applicable
     try:
         from app.services.reinduction_service import ReinductionService
+
         reinduction_service = ReinductionService(db)
         reinduction_service.check_completed_reinducciones()
     except Exception as e:
@@ -557,7 +558,12 @@ async def get_user_enrollments(
         )
 
     # Get user enrollments with eager loading
-    enrollments = db.query(Enrollment).options(joinedload(Enrollment.course)).filter(Enrollment.user_id == user_id).all()
+    enrollments = (
+        db.query(Enrollment)
+        .options(joinedload(Enrollment.course))
+        .filter(Enrollment.user_id == user_id)
+        .all()
+    )
 
     enrollment_details = []
     for enrollment in enrollments:
@@ -673,6 +679,46 @@ async def delete_enrollment(
         )
         db.query(UserModuleProgress).filter(
             UserModuleProgress.enrollment_id == enrollment_id
+        ).delete()
+
+        # 3b. Delete interactive lesson progress related to this enrollment
+        from app.models.interactive_progress import (
+            UserLessonProgress,
+            UserSlideProgress,
+        )
+
+        # first remove any slide progress tied to those lesson progress rows
+        slide_progress_count = (
+            db.query(UserSlideProgress)
+            .join(
+                UserLessonProgress,
+                UserSlideProgress.lesson_progress_id == UserLessonProgress.id,
+            )
+            .filter(UserLessonProgress.enrollment_id == enrollment_id)
+            .count()
+        )
+        # bulk delete slides using subquery to avoid join-delete restriction
+        from sqlalchemy import select
+
+        subq = (
+            select(UserSlideProgress.id)
+            .join(
+                UserLessonProgress,
+                UserSlideProgress.lesson_progress_id == UserLessonProgress.id,
+            )
+            .filter(UserLessonProgress.enrollment_id == enrollment_id)
+        )
+        db.query(UserSlideProgress).filter(UserSlideProgress.id.in_(subq)).delete(
+            synchronize_session=False
+        )
+
+        lesson_progress_count = (
+            db.query(UserLessonProgress)
+            .filter(UserLessonProgress.enrollment_id == enrollment_id)
+            .count()
+        )
+        db.query(UserLessonProgress).filter(
+            UserLessonProgress.enrollment_id == enrollment_id
         ).delete()
 
         # 4. Delete user evaluations and their answers
@@ -794,6 +840,7 @@ async def delete_enrollment(
             message=f"Inscripción eliminada permanentemente. Removidos: {total_attendance_count} registros de asistencia "
             f"({attendance_count} con enrollment_id + {orphaned_attendance_count} huérfanos), "
             f"{material_progress_count} registros de progreso de material, {module_progress_count} registros de progreso de módulo, "
+            f"{lesson_progress_count} registros de progreso de lección interactiva ({slide_progress_count} slides), "
             f"{total_evaluations_count} evaluaciones ({evaluations_count} con enrollment_id + {orphaned_evaluations_count} huérfanas), "
             f"{user_answers_count} respuestas de evaluación, "
             f"{surveys_count} encuestas, {survey_answers_count} respuestas de encuesta, {certificates_count} certificados, "
@@ -830,9 +877,12 @@ async def get_course_workers(
         )
 
     # Get all enrollments for this course with eager loading
-    enrollments = db.query(Enrollment).options(
-        joinedload(Enrollment.user).selectinload(User.worker)
-    ).filter(Enrollment.course_id == course_id).all()
+    enrollments = (
+        db.query(Enrollment)
+        .options(joinedload(Enrollment.user).selectinload(User.worker))
+        .filter(Enrollment.course_id == course_id)
+        .all()
+    )
 
     # Get user details for each enrollment
     enrolled_workers = []
@@ -1435,6 +1485,7 @@ async def update_enrollment(
     if enrollment_data.status == EnrollmentStatus.COMPLETED:
         try:
             from app.services.reinduction_service import ReinductionService
+
             reinduction_service = ReinductionService(db)
             reinduction_service.check_completed_reinducciones()
         except Exception as e:
