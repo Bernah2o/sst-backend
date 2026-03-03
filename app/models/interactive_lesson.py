@@ -21,19 +21,40 @@ from app.database import Base
 
 class LessonNavigationType(str, Enum):
     """Tipo de navegación en la lección"""
+
     SEQUENTIAL = "sequential"  # Solo siguiente/anterior
     FREE = "free"  # Navegación libre entre slides
+
+    @classmethod
+    def _missing_(cls, value: object) -> "LessonNavigationType":
+        if isinstance(value, str):
+            v = value.lower()
+            for member in cls:
+                if member.value == v or member.name.lower() == v:
+                    return member
+        return super()._missing_(value)
 
 
 class LessonStatus(str, Enum):
     """Estado de la lección interactiva"""
+
     DRAFT = "draft"
     PUBLISHED = "published"
     ARCHIVED = "archived"
 
+    @classmethod
+    def _missing_(cls, value: object) -> "LessonStatus":
+        if isinstance(value, str):
+            v = value.lower()
+            for member in cls:
+                if member.value == v or member.name.lower() == v:
+                    return member
+        return super()._missing_(value)
+
 
 class SlideContentType(str, Enum):
     """Tipo de contenido del slide"""
+
     TEXT = "text"  # Contenido de texto rico
     IMAGE = "image"  # Imagen con descripción
     VIDEO = "video"  # Video embebido
@@ -41,9 +62,20 @@ class SlideContentType(str, Enum):
     QUIZ = "quiz"  # Quiz inline (pregunta en el slide)
     INTERACTIVE = "interactive"  # Actividad interactiva
 
+    @classmethod
+    def _missing_(cls, value: object) -> "SlideContentType":
+        # allow case-insensitive and name/value interchange
+        if isinstance(value, str):
+            v = value.lower()
+            for member in cls:
+                if member.value == v or member.name.lower() == v:
+                    return member
+        return super()._missing_(value)
+
 
 class ActivityType(str, Enum):
     """Tipo de actividad interactiva"""
+
     DRAG_DROP = "drag_drop"  # Arrastrar elementos a zonas
     MATCHING = "matching"  # Emparejar conceptos
     ORDERING = "ordering"  # Ordenar secuencia
@@ -53,6 +85,7 @@ class ActivityType(str, Enum):
 
 class QuestionType(str, Enum):
     """Tipo de pregunta para quiz inline"""
+
     MULTIPLE_CHOICE = "multiple_choice"
     TRUE_FALSE = "true_false"
     OPEN_TEXT = "open_text"
@@ -60,6 +93,7 @@ class QuestionType(str, Enum):
 
 class InteractiveLesson(Base):
     """Lección interactiva con slides y actividades"""
+
     __tablename__ = "interactive_lessons"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -68,11 +102,25 @@ class InteractiveLesson(Base):
     description = Column(Text)
     thumbnail = Column(String(500))
     order_index = Column(Integer, default=0)
+    # navigation_type values are lower-case strings; ensure the
+    # database enum uses those values rather than names to avoid
+    # mismatches when the database already contains lowercase data.
     navigation_type = Column(
-        SQLEnum(LessonNavigationType),
-        default=LessonNavigationType.SEQUENTIAL
+        SQLEnum(
+            LessonNavigationType,
+            name="lessonnavigationtype",
+            values_callable=lambda enum: [e.value for e in enum],
+        ),
+        default=LessonNavigationType.SEQUENTIAL,
     )
-    status = Column(SQLEnum(LessonStatus), default=LessonStatus.DRAFT)
+    status = Column(
+        SQLEnum(
+            LessonStatus,
+            name="lessonstatus",
+            values_callable=lambda enum: [e.value for e in enum],
+        ),
+        default=LessonStatus.DRAFT,
+    )
     is_required = Column(Boolean, default=True)
     estimated_duration_minutes = Column(Integer)
     passing_score = Column(Float, default=70.0)  # Para quizzes inline
@@ -87,18 +135,16 @@ class InteractiveLesson(Base):
         "LessonSlide",
         back_populates="lesson",
         cascade="all, delete-orphan",
-        order_by="LessonSlide.order_index"
+        order_by="LessonSlide.order_index",
     )
     activities = relationship(
         "InteractiveActivity",
         back_populates="lesson",
         cascade="all, delete-orphan",
-        order_by="InteractiveActivity.order_index"
+        order_by="InteractiveActivity.order_index",
     )
     user_progress = relationship(
-        "UserLessonProgress",
-        back_populates="lesson",
-        cascade="all, delete-orphan"
+        "UserLessonProgress", back_populates="lesson", cascade="all, delete-orphan"
     )
 
     @property
@@ -117,13 +163,27 @@ class InteractiveLesson(Base):
 
 class LessonSlide(Base):
     """Slide individual de una lección interactiva"""
+
     __tablename__ = "lesson_slides"
 
     id = Column(Integer, primary_key=True, index=True)
     lesson_id = Column(Integer, ForeignKey("interactive_lessons.id"), nullable=False)
     title = Column(String(255))
     order_index = Column(Integer, default=0)
-    slide_type = Column(SQLEnum(SlideContentType), nullable=False)
+    # use the Python enum values (lowercase) rather than names
+    # so that SQLAlchemy will map stored strings like 'text' correctly.
+    # values_callable is required because the default Enum type
+    # persists by member name (e.g. 'TEXT').  By providing a values
+    # list we ensure both the DB type and lookup use the lowercase
+    # values defined in SlideContentType.
+    slide_type = Column(
+        SQLEnum(
+            SlideContentType,
+            name="slidecontenttype",
+            values_callable=lambda enum: [e.value for e in enum],
+        ),
+        nullable=False,
+    )
 
     # Content fields (JSON para flexibilidad)
     # Estructura varía según slide_type:
@@ -144,12 +204,10 @@ class LessonSlide(Base):
         "InlineQuiz",
         back_populates="slide",
         uselist=False,
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
     user_progress = relationship(
-        "UserSlideProgress",
-        back_populates="slide",
-        cascade="all, delete-orphan"
+        "UserSlideProgress", back_populates="slide", cascade="all, delete-orphan"
     )
 
     def __repr__(self):
@@ -158,10 +216,13 @@ class LessonSlide(Base):
 
 class InlineQuiz(Base):
     """Quiz integrado en un slide"""
+
     __tablename__ = "inline_quizzes"
 
     id = Column(Integer, primary_key=True, index=True)
-    slide_id = Column(Integer, ForeignKey("lesson_slides.id"), nullable=False, unique=True)
+    slide_id = Column(
+        Integer, ForeignKey("lesson_slides.id"), nullable=False, unique=True
+    )
     question_text = Column(Text, nullable=False)
     question_type = Column(SQLEnum(QuestionType), nullable=False)
     points = Column(Float, default=1.0)
@@ -176,7 +237,7 @@ class InlineQuiz(Base):
         "InlineQuizAnswer",
         back_populates="quiz",
         cascade="all, delete-orphan",
-        order_by="InlineQuizAnswer.order_index"
+        order_by="InlineQuizAnswer.order_index",
     )
 
     def __repr__(self):
@@ -185,6 +246,7 @@ class InlineQuiz(Base):
 
 class InlineQuizAnswer(Base):
     """Respuesta de un quiz inline"""
+
     __tablename__ = "inline_quiz_answers"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -203,11 +265,14 @@ class InlineQuizAnswer(Base):
 
 class InteractiveActivity(Base):
     """Actividad interactiva (drag & drop, matching, etc.)"""
+
     __tablename__ = "interactive_activities"
 
     id = Column(Integer, primary_key=True, index=True)
     lesson_id = Column(Integer, ForeignKey("interactive_lessons.id"), nullable=False)
-    slide_id = Column(Integer, ForeignKey("lesson_slides.id"), nullable=True)  # Opcional
+    slide_id = Column(
+        Integer, ForeignKey("lesson_slides.id"), nullable=True
+    )  # Opcional
     title = Column(String(255), nullable=False)
     instructions = Column(Text)
     activity_type = Column(SQLEnum(ActivityType), nullable=False)
@@ -233,9 +298,7 @@ class InteractiveActivity(Base):
     lesson = relationship("InteractiveLesson", back_populates="activities")
     slide = relationship("LessonSlide")
     user_attempts = relationship(
-        "UserActivityAttempt",
-        back_populates="activity",
-        cascade="all, delete-orphan"
+        "UserActivityAttempt", back_populates="activity", cascade="all, delete-orphan"
     )
 
     def __repr__(self):
