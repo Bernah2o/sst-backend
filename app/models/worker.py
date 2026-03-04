@@ -153,7 +153,7 @@ class Worker(Base):
     tiene_restricciones_activas = Column(Boolean, default=False, nullable=False, index=True)
     
     # Rol asignado por el admin
-    assigned_role = Column(SQLEnum(UserRole), default=UserRole.EMPLOYEE, nullable=False)
+    assigned_role = Column(SQLEnum(UserRole, values_callable=lambda obj: [e.value for e in obj]), default=UserRole.EMPLOYEE, nullable=False)
     
     # Indica si el trabajador ya se registró en el sistema
     is_registered = Column(Boolean, default=False, nullable=False)

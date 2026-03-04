@@ -224,7 +224,10 @@ class InlineQuiz(Base):
         Integer, ForeignKey("lesson_slides.id"), nullable=False, unique=True
     )
     question_text = Column(Text, nullable=False)
-    question_type = Column(SQLEnum(QuestionType), nullable=False)
+    question_type = Column(
+        SQLEnum(QuestionType, values_callable=lambda enum: [e.value for e in enum]),
+        nullable=False,
+    )
     points = Column(Float, default=1.0)
     explanation = Column(Text)  # Feedback después de responder
     required_to_continue = Column(Boolean, default=False)  # Debe responder para avanzar
@@ -275,7 +278,10 @@ class InteractiveActivity(Base):
     )  # Opcional
     title = Column(String(255), nullable=False)
     instructions = Column(Text)
-    activity_type = Column(SQLEnum(ActivityType), nullable=False)
+    activity_type = Column(
+        SQLEnum(ActivityType, values_callable=lambda enum: [e.value for e in enum]),
+        nullable=False,
+    )
     order_index = Column(Integer, default=0)
 
     # Configuración de la actividad (JSON)
