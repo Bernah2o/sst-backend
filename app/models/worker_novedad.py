@@ -37,10 +37,27 @@ class WorkerNovedad(Base):
     worker_id = Column(Integer, ForeignKey("workers.id"), nullable=False)
     
     # Información básica de la novedad
-    tipo = Column(String(50), nullable=False)  # Using string instead of SQLEnum
+    # Use the DB enum type and map to Python Enum values so SQLAlchemy
+    # will read/write proper Enum members (and comparisons in code work).
+    tipo = Column(
+        SQLEnum(
+            NovedadType,
+            name="novedadtype",
+            values_callable=lambda enum: [e.value for e in enum],
+        ),
+        nullable=False,
+    )
     titulo = Column(String(200), nullable=False)
     descripcion = Column(Text)
-    status = Column(String(20), default="pendiente", nullable=False)  # Using string instead of SQLEnum
+    status = Column(
+        SQLEnum(
+            NovedadStatus,
+            name="novedadstatus",
+            values_callable=lambda enum: [e.value for e in enum],
+        ),
+        default=NovedadStatus.PENDIENTE,
+        nullable=False,
+    )
     
     # Fechas para licencias, incapacidades y permisos
     fecha_inicio = Column(Date, nullable=True)
