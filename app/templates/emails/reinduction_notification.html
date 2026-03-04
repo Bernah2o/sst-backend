@@ -77,7 +77,7 @@
         {% else %}
             <p>Estimado/a <strong>{{ worker_name }}</strong>,</p>
             {% if is_overdue %}
-                <p><strong>URGENTE:</strong> Tu reinducción anual del año {{ year }} está vencida desde el {{ due_date }}. Han pasado {{ abs(days_left) }} días desde la fecha límite.</p>
+                <p><strong>URGENTE:</strong> Tu reinducción anual del año {{ year }} está vencida desde el {{ due_date }}. Han pasado {{ days_left | abs }} días desde la fecha límite.</p>
             {% elif days_left <= 7 %}
                 <p><strong>RECORDATORIO:</strong> Tu reinducción anual del año {{ year }} debe completarse antes del {{ due_date }}. Quedan solo {{ days_left }} día{{ 's' if days_left != 1 else '' }}.</p>
             {% else %}
