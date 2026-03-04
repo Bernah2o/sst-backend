@@ -17,6 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from app.database import Base
+from app.utils.db_utils import CaseInsensitiveEnumType
 
 
 class LessonNavigationType(str, Enum):
@@ -106,21 +107,11 @@ class InteractiveLesson(Base):
     # database enum uses those values rather than names to avoid
     # mismatches when the database already contains lowercase data.
     navigation_type = Column(
-        SQLEnum(
-            LessonNavigationType,
-            name="lessonnavigationtype",
-            values_callable=lambda enum: [e.value for e in enum],
-            native_enum=False,
-        ),
+        CaseInsensitiveEnumType(LessonNavigationType),
         default=LessonNavigationType.SEQUENTIAL,
     )
     status = Column(
-        SQLEnum(
-            LessonStatus,
-            name="lessonstatus",
-            values_callable=lambda enum: [e.value for e in enum],
-            native_enum=False,
-        ),
+        CaseInsensitiveEnumType(LessonStatus),
         default=LessonStatus.DRAFT,
     )
     is_required = Column(Boolean, default=True)
@@ -179,12 +170,7 @@ class LessonSlide(Base):
     # list we ensure both the DB type and lookup use the lowercase
     # values defined in SlideContentType.
     slide_type = Column(
-        SQLEnum(
-            SlideContentType,
-            name="slidecontenttype",
-            values_callable=lambda enum: [e.value for e in enum],
-            native_enum=False,
-        ),
+        CaseInsensitiveEnumType(SlideContentType),
         nullable=False,
     )
 
@@ -228,7 +214,7 @@ class InlineQuiz(Base):
     )
     question_text = Column(Text, nullable=False)
     question_type = Column(
-        SQLEnum(QuestionType, values_callable=lambda enum: [e.value for e in enum], native_enum=False),
+        CaseInsensitiveEnumType(QuestionType),
         nullable=False,
     )
     points = Column(Float, default=1.0)
@@ -282,7 +268,7 @@ class InteractiveActivity(Base):
     title = Column(String(255), nullable=False)
     instructions = Column(Text)
     activity_type = Column(
-        SQLEnum(ActivityType, values_callable=lambda enum: [e.value for e in enum], native_enum=False),
+        CaseInsensitiveEnumType(ActivityType),
         nullable=False,
     )
     order_index = Column(Integer, default=0)
