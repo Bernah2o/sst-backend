@@ -35,7 +35,7 @@ class ReinductionRecord(Base):
     worker_id = Column(Integer, ForeignKey("workers.id"), nullable=False)
     year = Column(Integer, nullable=False)  # Año de la reinducción requerida
     due_date = Column(Date, nullable=False)  # Fecha límite para completar la reinducción
-    status = Column(SQLEnum(ReinductionStatus), default=ReinductionStatus.PENDING, nullable=False)
+    status = Column(SQLEnum(ReinductionStatus, values_callable=lambda enum: [e.value for e in enum]), default=ReinductionStatus.PENDING, nullable=False)
     
     # Información del curso asignado
     assigned_course_id = Column(Integer, ForeignKey("courses.id"), nullable=True)

@@ -50,7 +50,7 @@ class Survey(Base):
     instructions = Column(Text)
     is_anonymous = Column(Boolean, default=False)
     allow_multiple_responses = Column(Boolean, default=False)
-    status = Column(SQLEnum(SurveyStatus), default=SurveyStatus.DRAFT)
+    status = Column(SQLEnum(SurveyStatus, values_callable=lambda enum: [e.value for e in enum]), default=SurveyStatus.DRAFT)
     course_id = Column(Integer, ForeignKey("courses.id"), nullable=True)  # Link to course
     is_course_survey = Column(Boolean, default=False)  # True if this is a course satisfaction survey
     required_for_completion = Column(Boolean, default=False)  # True if required to complete course
@@ -77,7 +77,7 @@ class SurveyQuestion(Base):
     id = Column(Integer, primary_key=True, index=True)
     survey_id = Column(Integer, ForeignKey("surveys.id"), nullable=False)
     question_text = Column(Text, nullable=False)
-    question_type = Column(SQLEnum(SurveyQuestionType), nullable=False)
+    question_type = Column(SQLEnum(SurveyQuestionType, values_callable=lambda enum: [e.value for e in enum]), nullable=False)
     options = Column(Text)  # JSON array of options for multiple choice
     is_required = Column(Boolean, default=False)
     order_index = Column(Integer, default=0)
@@ -102,7 +102,7 @@ class UserSurvey(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Nullable for anonymous surveys
     survey_id = Column(Integer, ForeignKey("surveys.id"), nullable=False)
     enrollment_id = Column(Integer, ForeignKey("enrollments.id"), nullable=True)  # Link to course enrollment
-    status = Column(SQLEnum(UserSurveyStatus), default=UserSurveyStatus.NOT_STARTED)
+    status = Column(SQLEnum(UserSurveyStatus, values_callable=lambda enum: [e.value for e in enum]), default=UserSurveyStatus.NOT_STARTED)
     anonymous_token = Column(String(255))  # For anonymous surveys
     started_at = Column(DateTime)
     completed_at = Column(DateTime)

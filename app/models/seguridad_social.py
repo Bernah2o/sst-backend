@@ -16,7 +16,7 @@ class SeguridadSocial(Base):
     __tablename__ = "seguridad_social"
 
     id = Column(Integer, primary_key=True, index=True)
-    tipo = Column(SQLEnum(TipoSeguridadSocial), nullable=False, index=True)
+    tipo = Column(SQLEnum(TipoSeguridadSocial, values_callable=lambda enum: [e.value for e in enum]), nullable=False, index=True)
     nombre = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     

@@ -107,8 +107,8 @@ class Worker(Base):
     
     # Información Personal
     photo = Column(String(255))  # URL de la foto
-    gender = Column(SQLEnum(Gender), nullable=False)
-    document_type = Column(SQLEnum(DocumentType), nullable=False)
+    gender = Column(SQLEnum(Gender, values_callable=lambda enum: [e.value for e in enum]), nullable=False)
+    document_type = Column(SQLEnum(DocumentType, values_callable=lambda enum: [e.value for e in enum]), nullable=False)
     document_number = Column(String(50), unique=True, nullable=False, index=True)
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
@@ -117,10 +117,10 @@ class Worker(Base):
     phone = Column(String(20))
     
     # Información Laboral
-    contract_type = Column(SQLEnum(ContractType), nullable=False)
-    work_modality = Column(SQLEnum(WorkModality), nullable=True)
+    contract_type = Column(SQLEnum(ContractType, values_callable=lambda enum: [e.value for e in enum]), nullable=False)
+    work_modality = Column(SQLEnum(WorkModality, values_callable=lambda enum: [e.value for e in enum]), nullable=True)
     profession = Column(String(100))
-    risk_level = Column(SQLEnum(RiskLevel), nullable=False)
+    risk_level = Column(SQLEnum(RiskLevel, values_callable=lambda enum: [e.value for e in enum]), nullable=False)
     position = Column(String(100), nullable=False)
     cargo_id = Column(Integer, ForeignKey("cargos.id"), nullable=True, index=True)
     occupation = Column(String(100))
@@ -143,7 +143,7 @@ class Worker(Base):
     direccion = Column(String(255))  # Dirección completa del trabajador
     
     # Información Médica
-    blood_type = Column(SQLEnum(BloodType))
+    blood_type = Column(SQLEnum(BloodType, values_callable=lambda enum: [e.value for e in enum]))
     
     # Observaciones
     observations = Column(Text)
@@ -153,7 +153,7 @@ class Worker(Base):
     tiene_restricciones_activas = Column(Boolean, default=False, nullable=False, index=True)
     
     # Rol asignado por el admin
-    assigned_role = Column(SQLEnum(UserRole), default=UserRole.EMPLOYEE, nullable=False)
+    assigned_role = Column(SQLEnum(UserRole, values_callable=lambda enum: [e.value for e in enum]), default=UserRole.EMPLOYEE, nullable=False)
     
     # Indica si el trabajador ya se registró en el sistema
     is_registered = Column(Boolean, default=False, nullable=False)
