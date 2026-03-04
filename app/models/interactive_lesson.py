@@ -110,6 +110,7 @@ class InteractiveLesson(Base):
             LessonNavigationType,
             name="lessonnavigationtype",
             values_callable=lambda enum: [e.value for e in enum],
+            native_enum=False,
         ),
         default=LessonNavigationType.SEQUENTIAL,
     )
@@ -118,6 +119,7 @@ class InteractiveLesson(Base):
             LessonStatus,
             name="lessonstatus",
             values_callable=lambda enum: [e.value for e in enum],
+            native_enum=False,
         ),
         default=LessonStatus.DRAFT,
     )
@@ -181,6 +183,7 @@ class LessonSlide(Base):
             SlideContentType,
             name="slidecontenttype",
             values_callable=lambda enum: [e.value for e in enum],
+            native_enum=False,
         ),
         nullable=False,
     )
@@ -225,7 +228,7 @@ class InlineQuiz(Base):
     )
     question_text = Column(Text, nullable=False)
     question_type = Column(
-        SQLEnum(QuestionType, values_callable=lambda enum: [e.value for e in enum]),
+        SQLEnum(QuestionType, values_callable=lambda enum: [e.value for e in enum], native_enum=False),
         nullable=False,
     )
     points = Column(Float, default=1.0)
@@ -279,7 +282,7 @@ class InteractiveActivity(Base):
     title = Column(String(255), nullable=False)
     instructions = Column(Text)
     activity_type = Column(
-        SQLEnum(ActivityType, values_callable=lambda enum: [e.value for e in enum]),
+        SQLEnum(ActivityType, values_callable=lambda enum: [e.value for e in enum], native_enum=False),
         nullable=False,
     )
     order_index = Column(Integer, default=0)

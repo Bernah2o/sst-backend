@@ -32,7 +32,7 @@ class User(Base):
     department = Column(String(100))
     position = Column(String(100))
     hire_date = Column(DateTime)
-    role = Column(SQLEnum(UserRole, values_callable=lambda obj: [e.value for e in obj]), default=UserRole.EMPLOYEE, nullable=False)
+    role = Column(SQLEnum(UserRole, values_callable=lambda obj: [e.value for e in obj], native_enum=False), default=UserRole.EMPLOYEE, nullable=False)
     custom_role_id = Column(Integer, ForeignKey("custom_roles.id"), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     is_verified = Column(Boolean, default=False, nullable=False)
