@@ -45,18 +45,9 @@ class Notification(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     title = Column(String(255), nullable=False)
     message = Column(Text, nullable=False)
-    notification_type = Column(
-        SQLEnum(NotificationType, values_callable=lambda enum: [e.value for e in enum]),
-        nullable=False,
-    )
-    status = Column(
-        SQLEnum(NotificationStatus, values_callable=lambda enum: [e.value for e in enum]),
-        default=NotificationStatus.PENDING,
-    )
-    priority = Column(
-        SQLEnum(NotificationPriority, values_callable=lambda enum: [e.value for e in enum]),
-        default=NotificationPriority.NORMAL,
-    )
+    notification_type = Column(SQLEnum(NotificationType), nullable=False)
+    status = Column(SQLEnum(NotificationStatus), default=NotificationStatus.PENDING)
+    priority = Column(SQLEnum(NotificationPriority), default=NotificationPriority.NORMAL)
     scheduled_at = Column(DateTime)  # When to send the notification
     sent_at = Column(DateTime)  # When it was actually sent
     read_at = Column(DateTime)  # When user read it (for in-app notifications)

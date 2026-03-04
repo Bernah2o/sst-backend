@@ -41,7 +41,7 @@ def upgrade() -> None:
         'workmodality': "('ON_SITE', 'REMOTE', 'TELEWORK', 'HOME_OFFICE', 'MOBILE')",
         'risklevel': "('LEVEL_I', 'LEVEL_II', 'LEVEL_III', 'LEVEL_IV', 'LEVEL_V')",
         'bloodtype': "('A_POSITIVE', 'A_NEGATIVE', 'B_POSITIVE', 'B_NEGATIVE', 'AB_POSITIVE', 'AB_NEGATIVE', 'O_POSITIVE', 'O_NEGATIVE')",
-        'userrole': "('ADMIN', 'TRAINER', 'EMPLOYEE', 'SUPERVISOR')"
+        'userrole': "('admin', 'trainer', 'employee', 'supervisor')"
     }
     
     for enum_name, enum_values in enum_types.items():

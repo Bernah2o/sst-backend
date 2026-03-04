@@ -45,14 +45,8 @@ class Course(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=False, index=True)
     description = Column(Text)
-    course_type = Column(
-        SQLEnum(CourseType, values_callable=lambda enum: [e.value for e in enum]),
-        nullable=False,
-    )
-    status = Column(
-        SQLEnum(CourseStatus, values_callable=lambda enum: [e.value for e in enum]),
-        default=CourseStatus.DRAFT,
-    )
+    course_type = Column(SQLEnum(CourseType), nullable=False)
+    status = Column(SQLEnum(CourseStatus), default=CourseStatus.DRAFT)
     duration_hours = Column(Float)  # Duration in hours
     passing_score = Column(Float, default=70.0)  # Minimum score to pass
     max_attempts = Column(Integer, default=3)

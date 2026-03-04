@@ -86,7 +86,7 @@ def upgrade() -> None:
     sa.Column('department', sa.String(length=100), nullable=True),
     sa.Column('position', sa.String(length=100), nullable=True),
     sa.Column('hire_date', sa.DateTime(), nullable=True),
-    sa.Column('role', sa.Enum('ADMIN', 'TRAINER', 'EMPLOYEE', 'SUPERVISOR', name='userrole'), nullable=False),
+    sa.Column('role', sa.Enum('admin', 'trainer', 'employee', 'supervisor', name='userrole'), nullable=False),
     sa.Column('custom_role_id', sa.Integer(), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('is_verified', sa.Boolean(), nullable=False),

@@ -107,8 +107,8 @@ class Contractor(Base):
     
     # Información Personal
     photo = Column(String(255))  # URL de la foto
-    gender = Column(SQLEnum(Gender, values_callable=lambda enum: [e.value for e in enum]), nullable=False)
-    document_type = Column(SQLEnum(DocumentType, values_callable=lambda enum: [e.value for e in enum]), nullable=False)
+    gender = Column(SQLEnum(Gender), nullable=False)
+    document_type = Column(SQLEnum(DocumentType), nullable=False)
     document_number = Column(String(50), unique=True, nullable=False, index=True)
     first_name = Column(String(100), nullable=False)
     second_name = Column(String(100), nullable=True)  # Segundo nombre (opcional)
@@ -119,10 +119,10 @@ class Contractor(Base):
     phone = Column(String(20))
     
     # Información Laboral
-    contract_type = Column(SQLEnum(ContractType, values_callable=lambda enum: [e.value for e in enum]), nullable=False)
-    work_modality = Column(SQLEnum(WorkModality, values_callable=lambda enum: [e.value for e in enum]), nullable=True)
+    contract_type = Column(SQLEnum(ContractType), nullable=False)
+    work_modality = Column(SQLEnum(WorkModality), nullable=True)
     profession = Column(String(100))
-    risk_level = Column(SQLEnum(RiskLevel, values_callable=lambda enum: [e.value for e in enum]), nullable=False)
+    risk_level = Column(SQLEnum(RiskLevel), nullable=False)
     position = Column(String(100), nullable=False)
     occupation = Column(String(100))
     contract_value = Column(Numeric(12, 2))  # Valor del contrato
@@ -144,7 +144,7 @@ class Contractor(Base):
     direccion = Column(String(255))  # Dirección completa del contratista
     
     # Información Médica
-    blood_type = Column(SQLEnum(BloodType, values_callable=lambda enum: [e.value for e in enum]))
+    blood_type = Column(SQLEnum(BloodType))
     
     # Observaciones
     observations = Column(Text)
@@ -153,7 +153,7 @@ class Contractor(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     
     # Rol asignado (solo empleado para contratistas)
-    assigned_role = Column(SQLEnum(UserRole, values_callable=lambda enum: [e.value for e in enum]), default=UserRole.EMPLOYEE, nullable=False)
+    assigned_role = Column(SQLEnum(UserRole, values_callable=lambda obj: [e.value for e in obj]), default=UserRole.EMPLOYEE, nullable=False)
     
     # Indica si el contratista ya se registró en el sistema
     is_registered = Column(Boolean, default=False, nullable=False)
