@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 # En producción: Variables del sistema o .env.production
 # Detectar automáticamente qué archivo usar
 env_file = '.env.production' if os.path.exists('.env.production') else '.env'
-print(f"[CONFIG] Cargando variables de entorno desde: {env_file}")
+#print(f"[CONFIG] Cargando variables de entorno desde: {env_file}")
 # load_dotenv no sobrescribe variables ya existentes en el sistema
 load_dotenv(env_file, override=False)
 
