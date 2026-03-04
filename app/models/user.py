@@ -14,8 +14,6 @@ class UserRole(str, Enum):
     EMPLOYEE = "employee"
     SUPERVISOR = "supervisor"
 
-print(f"DEBUG: UserRole values: {[e.value for e in UserRole]}")
-
 
 
 class User(Base):
