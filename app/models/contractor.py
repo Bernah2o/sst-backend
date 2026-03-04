@@ -8,6 +8,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 
 from app.database import Base
 from app.models.user import UserRole
+from app.utils.db_utils import CaseInsensitiveEnumType
 
 
 class Gender(str, Enum):
@@ -153,7 +154,7 @@ class Contractor(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     
     # Rol asignado (solo empleado para contratistas)
-    assigned_role = Column(SQLEnum(UserRole, values_callable=lambda obj: [e.value for e in obj], native_enum=False), default=UserRole.EMPLOYEE, nullable=False)
+    assigned_role = Column(CaseInsensitiveEnumType(UserRole), default=UserRole.EMPLOYEE, nullable=False)
     
     # Indica si el contratista ya se registró en el sistema
     is_registered = Column(Boolean, default=False, nullable=False)
