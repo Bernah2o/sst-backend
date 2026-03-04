@@ -60,6 +60,7 @@ class User(Base):
     audit_logs = relationship("AuditLog", back_populates="user")
     enrollments = relationship("Enrollment", back_populates="user")
     created_virtual_sessions = relationship("VirtualSession", back_populates="creator")
+    worker = relationship("Contractor", back_populates="user", foreign_keys="Contractor.user_id")
     
     # Progress relationships
     material_progress = relationship("UserMaterialProgress", back_populates="user")
