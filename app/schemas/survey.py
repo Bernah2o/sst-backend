@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from enum import Enum
@@ -91,6 +91,7 @@ class UserSurveyBase(BaseModel):
     survey_id: int
     user_id: Optional[int] = None  # Nullable for anonymous surveys
     anonymous_token: Optional[str] = Field(None, max_length=255)
+    response_date: Optional[date] = None  # Fecha diligenciada por el trabajador
 
 
 class UserSurveyCreate(UserSurveyBase):
@@ -101,6 +102,7 @@ class UserSurveyUpdate(BaseModel):
     status: Optional[UserSurveyStatus] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    response_date: Optional[date] = None
 
 
 class UserSurveyResponse(UserSurveyBase):
@@ -189,15 +191,30 @@ class SurveyListResponse(BaseModel):
 class SurveySubmission(BaseModel):
     answers: List[UserSurveyAnswerBase]
     anonymous_token: Optional[str] = None
+    response_date: date
 
 
 # Survey Statistics Schema
+class QuestionAnalysis(BaseModel):
+    question_id: int
+    question_text: str
+    question_type: str
+    total_answers: int
+    missing_answers: int = 0
+    counts: Optional[dict] = None
+    average: Optional[float] = None
+    min_value: Optional[int] = None
+    max_value: Optional[int] = None
+    samples: Optional[List[str]] = None
+
+
 class SurveyStatistics(BaseModel):
     survey_id: int
     total_responses: int
+    completed_responses: int
     completion_rate: float
     average_completion_time: Optional[float] = None  # in minutes
-    question_statistics: List[dict] = []  # Question-specific stats
+    question_statistics: List[QuestionAnalysis] = []
 
 
 # Enhanced Answer Schema for better presentation
@@ -222,6 +239,7 @@ class EmployeeResponse(BaseModel):
     employee_email: str
     cargo: Optional[str] = None
     telefono: Optional[str] = None
+    response_date: Optional[date] = None
     submission_date: Optional[datetime] = None
     submission_status: str = "completed"
     response_time_minutes: Optional[float] = None

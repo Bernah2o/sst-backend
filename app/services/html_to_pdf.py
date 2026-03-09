@@ -600,6 +600,47 @@ class HTMLToPDFConverter:
                 f"Error en reporte ocupacional: {str(e)}"
             )
 
+    def generate_survey_year_report_pdf(self, template_data, output_path=None):
+        try:
+            now = datetime.now()
+            logo_base64 = self._load_logo_base64()
+
+            if not isinstance(template_data, dict):
+                if hasattr(template_data, "__dict__"):
+                    template_data = template_data.__dict__
+                else:
+                    template_data = {}
+
+            context = {
+                "logo_base64": logo_base64,
+                "survey_title": template_data.get("survey_title", ""),
+                "survey_description": template_data.get("survey_description"),
+                "course_title": template_data.get("course_title"),
+                "year": template_data.get("year"),
+                "total_responses": template_data.get("total_responses", 0),
+                "completed_responses": template_data.get("completed_responses", 0),
+                "completion_rate": template_data.get("completion_rate", 0),
+                "question_statistics": template_data.get("question_statistics", []),
+                "generated_at": now.strftime("%d/%m/%Y %H:%M:%S"),
+            }
+
+            html_content = self.render_template("survey_year_report.html", context)
+
+            css_path = os.path.join(self.template_dir, "css", "survey_year_report.css")
+            if os.path.exists(css_path):
+                css_url = self._get_file_url(css_path)
+                html_content = html_content.replace(
+                    'href="css/survey_year_report.css"', f'href="{css_url}"'
+                )
+
+            return self.generate_pdf(html_content, ["survey_year_report.css"], output_path)
+
+        except Exception as e:
+            logger.error(f"Error en generate_survey_year_report_pdf: {str(e)}")
+            return self._generate_emergency_pdf(
+                f"Error en reporte de encuesta: {str(e)}"
+            )
+
     def generate_attendance_certificate_pdf(self, attendance_data, participant_data, output_path=None):
         """
         Genera un PDF de certificado de asistencia individual en formato horizontal.

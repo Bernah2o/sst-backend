@@ -5,6 +5,7 @@ from typing import Optional
 from sqlalchemy import (
     Boolean,
     Column,
+    Date,
     DateTime,
     Enum as SQLEnum,
     ForeignKey,
@@ -104,6 +105,7 @@ class UserSurvey(Base):
     enrollment_id = Column(Integer, ForeignKey("enrollments.id"), nullable=True)  # Link to course enrollment
     status = Column(SQLEnum(UserSurveyStatus), default=UserSurveyStatus.NOT_STARTED)
     anonymous_token = Column(String(255))  # For anonymous surveys
+    response_date = Column(Date, nullable=True)  # Fecha diligenciada por el trabajador
     started_at = Column(DateTime)
     completed_at = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

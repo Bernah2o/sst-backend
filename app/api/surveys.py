@@ -2,6 +2,7 @@ from typing import Any, List
 from datetime import datetime, date
 import time
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func
@@ -18,11 +19,12 @@ from app.schemas.survey import (
     SurveyQuestionResponse, UserSurveyCreate, UserSurveyResponse,
     UserSurveyAnswerCreate, UserSurveyAnswerResponse,
     SurveySubmission, SurveyStatistics, SurveyPresentation,
-    SurveyDetailedResults, EmployeeResponse, AnswerDetail
+    SurveyDetailedResults, EmployeeResponse, AnswerDetail, QuestionAnalysis
 )
 from pydantic import BaseModel
 from app.schemas.common import MessageResponse, PaginatedResponse
 from typing import List
+from app.services.html_to_pdf import HTMLToPDFConverter
 
 # Schema for assigning general surveys
 class SurveyAssignment(BaseModel):
@@ -30,6 +32,153 @@ class SurveyAssignment(BaseModel):
     user_ids: List[int]
 
 router = APIRouter()
+
+
+def _user_survey_year_expr():
+    return func.extract(
+        "year",
+        func.coalesce(UserSurvey.response_date, func.date(UserSurvey.completed_at)),
+    )
+
+
+def _build_question_analysis(
+    db: Session,
+    survey: Survey,
+    year: int = None,
+) -> List[QuestionAnalysis]:
+    base_user_surveys = db.query(UserSurvey.id).filter(
+        and_(
+            UserSurvey.survey_id == survey.id,
+            UserSurvey.status == UserSurveyStatus.COMPLETED,
+        )
+    )
+
+    if year is not None:
+        base_user_surveys = base_user_surveys.filter(_user_survey_year_expr() == year)
+
+    user_survey_ids = [row.id for row in base_user_surveys.all()]
+    total_completed = len(user_survey_ids)
+
+    if total_completed == 0:
+        return [
+            QuestionAnalysis(
+                question_id=q.id,
+                question_text=q.question_text,
+                question_type=q.question_type.value,
+                total_answers=0,
+                missing_answers=0,
+            )
+            for q in (survey.questions or [])
+        ]
+
+    answers = (
+        db.query(UserSurveyAnswer)
+        .filter(UserSurveyAnswer.user_survey_id.in_(user_survey_ids))
+        .all()
+    )
+
+    answers_by_question: dict[int, list[UserSurveyAnswer]] = {}
+    for ans in answers:
+        answers_by_question.setdefault(ans.question_id, []).append(ans)
+
+    import json
+
+    result: List[QuestionAnalysis] = []
+    for q in (survey.questions or []):
+        q_answers = answers_by_question.get(q.id, [])
+        qt = q.question_type.value
+
+        counts = None
+        avg = None
+        samples = None
+        min_allowed = q.min_value
+        max_allowed = q.max_value
+
+        if qt == "rating":
+            if min_allowed is None:
+                min_allowed = 1
+            if max_allowed is None:
+                max_allowed = 5
+
+        if qt in ["single_choice", "yes_no"]:
+            counts = {}
+            if q.options:
+                try:
+                    for opt in json.loads(q.options):
+                        counts[str(opt)] = 0
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            for a in q_answers:
+                key = (a.answer_text or "").strip() or "(Sin respuesta)"
+                counts[key] = counts.get(key, 0) + 1
+
+        elif qt == "multiple_choice":
+            counts = {}
+            if q.options:
+                try:
+                    for opt in json.loads(q.options):
+                        counts[str(opt)] = 0
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            for a in q_answers:
+                if a.selected_options:
+                    try:
+                        selected = json.loads(a.selected_options)
+                        if isinstance(selected, list):
+                            for opt in selected:
+                                key = str(opt)
+                                counts[key] = counts.get(key, 0) + 1
+                            continue
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                key = (a.answer_text or "").strip()
+                if key:
+                    counts[key] = counts.get(key, 0) + 1
+
+        elif qt in ["rating", "scale"]:
+            values = [a.answer_value for a in q_answers if a.answer_value is not None]
+            counts = {}
+            for v in values:
+                key = str(v)
+                counts[key] = counts.get(key, 0) + 1
+            if values:
+                avg = round(sum(values) / len(values), 2)
+
+        elif qt in ["text", "textarea"]:
+            texts = [
+                (a.answer_text or "").strip()
+                for a in q_answers
+                if (a.answer_text or "").strip()
+            ]
+            samples = texts[:20]
+
+        else:
+            texts = [
+                (a.answer_text or "").strip()
+                for a in q_answers
+                if (a.answer_text or "").strip()
+            ]
+            samples = texts[:20] if texts else None
+
+        answered_count = len(q_answers)
+        missing = max(total_completed - answered_count, 0)
+
+        result.append(
+            QuestionAnalysis(
+                question_id=q.id,
+                question_text=q.question_text,
+                question_type=qt,
+                total_answers=answered_count,
+                missing_answers=missing,
+                counts=counts,
+                average=avg,
+                min_value=min_allowed,
+                max_value=max_allowed,
+                samples=samples,
+            )
+        )
+
+    return result
 
 
 @router.get("/", response_model=PaginatedResponse[SurveyListResponse])
@@ -1148,7 +1297,7 @@ async def submit_survey(
     Submit survey responses
     """
     # Check if survey exists and is active
-    survey = db.query(Survey).filter(
+    survey = db.query(Survey).options(joinedload(Survey.questions)).filter(
         and_(
             Survey.id == survey_id,
             Survey.status == SurveyStatus.PUBLISHED
@@ -1161,19 +1310,96 @@ async def submit_survey(
             detail="Encuesta no encontrada o no activa"
         )
     
-    # Check if user has already submitted this survey (only completed ones)
-    existing_submission = db.query(UserSurvey).filter(
+    submission_year = submission_data.response_date.year
+
+    existing_submission_query = db.query(UserSurvey).filter(
         and_(
             UserSurvey.user_id == current_user.id,
             UserSurvey.survey_id == survey_id,
-            UserSurvey.status == UserSurveyStatus.COMPLETED
+            UserSurvey.status == UserSurveyStatus.COMPLETED,
         )
-    ).first()
-    
+    )
+
+    if survey.allow_multiple_responses:
+        existing_submission_query = existing_submission_query.filter(
+            and_(
+                UserSurvey.response_date.isnot(None),
+                func.extract("year", UserSurvey.response_date) == submission_year,
+            )
+        )
+
+    existing_submission = existing_submission_query.first()
+
     if existing_submission:
+        if survey.allow_multiple_responses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Encuesta ya enviada para el año {submission_year}",
+            )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Encuesta ya enviada"
+            detail="Encuesta ya enviada",
+        )
+
+    questions = list(survey.questions or [])
+    if not questions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La encuesta no tiene preguntas configuradas",
+        )
+
+    answers_by_question_id = {}
+    for answer in submission_data.answers:
+        if answer.question_id in answers_by_question_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Respuesta duplicada para la pregunta {answer.question_id}",
+            )
+        answers_by_question_id[answer.question_id] = answer
+
+    def is_question_answered(question: SurveyQuestion, answer: Any) -> bool:
+        qt = question.question_type.value
+        if qt in ["text", "textarea", "single_choice", "yes_no"]:
+            return bool((answer.answer_text or "").strip())
+        if qt in ["rating", "scale"]:
+            if answer.answer_value is None:
+                return False
+            min_allowed = question.min_value
+            max_allowed = question.max_value
+            if qt == "rating":
+                if min_allowed is None:
+                    min_allowed = 1
+                if max_allowed is None:
+                    max_allowed = 5
+
+            if min_allowed is not None and answer.answer_value < min_allowed:
+                return False
+            if max_allowed is not None and answer.answer_value > max_allowed:
+                return False
+            return True
+        if qt == "multiple_choice":
+            if answer.selected_options:
+                try:
+                    import json
+
+                    selected = json.loads(answer.selected_options)
+                    return isinstance(selected, list) and len(selected) > 0
+                except (json.JSONDecodeError, TypeError):
+                    return bool(answer.selected_options.strip())
+            return bool((answer.answer_text or "").strip())
+        return bool((answer.answer_text or "").strip()) or answer.answer_value is not None or bool(answer.selected_options)
+
+    unanswered_questions = []
+    for q in questions:
+        a = answers_by_question_id.get(q.id)
+        if not a or not is_question_answered(q, a):
+            unanswered_questions.append(q)
+
+    if unanswered_questions:
+        missing = ", ".join(str(q.order_index + 1) for q in sorted(unanswered_questions, key=lambda x: x.order_index))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Debe contestar todas las preguntas antes de enviar. Faltan: {missing}",
         )
     
     # Get enrollment if this is a course survey
@@ -1211,52 +1437,42 @@ async def submit_survey(
         )
     ).first()
     
-    if existing_not_started:
-        # Update existing record
+    if existing_not_started and not survey.allow_multiple_responses:
         user_survey = existing_not_started
-        user_survey.enrollment_id = enrollment_id
-        user_survey.status = UserSurveyStatus.COMPLETED
-        user_survey.started_at = datetime.now()
-        user_survey.completed_at = datetime.now()
     else:
-        # Create new user survey record
         user_survey = UserSurvey(
             user_id=current_user.id,
             survey_id=survey_id,
-            enrollment_id=enrollment_id,
-            status=UserSurveyStatus.COMPLETED,
-            started_at=datetime.now(),
-            completed_at=datetime.now()
         )
         db.add(user_survey)
+
+    user_survey.enrollment_id = enrollment_id
+    user_survey.status = UserSurveyStatus.COMPLETED
+    user_survey.response_date = submission_data.response_date
+    user_survey.started_at = datetime.now()
+    user_survey.completed_at = datetime.now()
     
     db.flush()  # Get the ID without committing
     
-    # Create answers
+    db.query(UserSurveyAnswer).filter(UserSurveyAnswer.user_survey_id == user_survey.id).delete()
+
+    question_ids = {q.id for q in questions}
     for answer_data in submission_data.answers:
-        # Verify question belongs to this survey
-        question = db.query(SurveyQuestion).filter(
-            and_(
-                SurveyQuestion.id == answer_data.question_id,
-                SurveyQuestion.survey_id == survey_id
-            )
-        ).first()
-        
-        if not question:
+        if answer_data.question_id not in question_ids:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Pregunta {answer_data.question_id} no encontrada en esta encuesta"
+                detail=f"Pregunta {answer_data.question_id} no encontrada en esta encuesta",
             )
-        
-        answer = UserSurveyAnswer(
-            user_survey_id=user_survey.id,
-            question_id=answer_data.question_id,
-            answer_text=answer_data.answer_text,
-            answer_value=answer_data.answer_value,
-            selected_options=answer_data.selected_options
+
+        db.add(
+            UserSurveyAnswer(
+                user_survey_id=user_survey.id,
+                question_id=answer_data.question_id,
+                answer_text=answer_data.answer_text,
+                answer_value=answer_data.answer_value,
+                selected_options=answer_data.selected_options,
+            )
         )
-        
-        db.add(answer)
     
     db.commit()
     db.refresh(user_survey)
@@ -1322,6 +1538,7 @@ async def get_survey_responses(
 @router.get("/{survey_id}/statistics", response_model=SurveyStatistics)
 async def get_survey_statistics(
     survey_id: int,
+    year: int = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:
@@ -1342,41 +1559,34 @@ async def get_survey_statistics(
             detail="Survey not found"
         )
     
-    # Get response statistics
-    total_responses = db.query(UserSurvey).filter(UserSurvey.survey_id == survey_id).count()
-    completed_responses = db.query(UserSurvey).filter(
+    survey_obj = db.query(Survey).options(joinedload(Survey.questions)).filter(Survey.id == survey_id).first()
+    if not survey_obj:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Survey not found",
+        )
+
+    completed_query = db.query(UserSurvey).filter(
         and_(
             UserSurvey.survey_id == survey_id,
-            UserSurvey.status == UserSurveyStatus.COMPLETED
+            UserSurvey.status == UserSurveyStatus.COMPLETED,
         )
-    ).count()
-    
-    # Get question statistics
-    questions = db.query(SurveyQuestion).filter(SurveyQuestion.survey_id == survey_id).all()
-    question_stats = []
-    
-    for question in questions:
-        answers = db.query(UserSurveyAnswer).filter(
-            UserSurveyAnswer.question_id == question.id
-        ).all()
-        
-        question_stats.append({
-            "question_id": question.id,
-            "question_text": question.question_text,
-            "question_type": question.question_type,
-            "total_answers": len(answers),
-            "answers": [{
-                "answer_text": answer.answer_text,
-                "answer_value": answer.answer_value
-            } for answer in answers]
-        })
-    
+    )
+
+    if year is not None:
+        completed_query = completed_query.filter(_user_survey_year_expr() == year)
+
+    completed_responses = completed_query.count()
+    total_responses = completed_responses
+
+    question_stats = _build_question_analysis(db=db, survey=survey_obj, year=year)
+
     return SurveyStatistics(
         survey_id=survey_id,
         total_responses=total_responses,
         completed_responses=completed_responses,
         completion_rate=completed_responses / total_responses if total_responses > 0 else 0,
-        question_statistics=question_stats
+        question_statistics=question_stats,
     )
 
 
@@ -1551,6 +1761,7 @@ async def get_survey_presentation(
 @router.get("/{survey_id}/detailed-results", response_model=SurveyDetailedResults)
 async def get_survey_detailed_results(
     survey_id: int,
+    year: int = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ) -> Any:
@@ -1575,11 +1786,19 @@ async def get_survey_detailed_results(
             detail="Survey not found"
         )
     
-    # Get all user surveys for this survey
-    user_surveys = db.query(UserSurvey).options(
+    user_surveys_query = db.query(UserSurvey).options(
         joinedload(UserSurvey.user),
         joinedload(UserSurvey.answers)
-    ).filter(UserSurvey.survey_id == survey_id).all()
+    ).filter(UserSurvey.survey_id == survey_id)
+
+    if year is not None:
+        user_surveys_query = user_surveys_query.filter(
+            and_(
+                _user_survey_year_expr() == year,
+            )
+        )
+
+    user_surveys = user_surveys_query.all()
     
     # Build employee responses with enhanced structure
     employee_responses = []
@@ -1598,7 +1817,7 @@ async def get_survey_detailed_results(
                 if answer:
                     # Format display value based on question type
                     display_value = ""
-                    if question.question_type.value == "MULTIPLE_CHOICE" or question.question_type.value == "SINGLE_CHOICE":
+                    if question.question_type.value in ["multiple_choice", "single_choice"]:
                         # For multiple/single choice, use selected_options if available, otherwise answer_text
                         if answer.selected_options:
                             try:
@@ -1612,12 +1831,12 @@ async def get_survey_detailed_results(
                                 display_value = answer.selected_options
                         else:
                             display_value = answer.answer_text or "Sin respuesta"
-                    elif question.question_type.value in ["SCALE"]:
+                    elif question.question_type.value in ["scale", "rating"]:
                         if answer.answer_value is not None:
                             display_value = f"{answer.answer_value}/{question.max_value or 10}"
                         else:
                             display_value = "Sin calificación"
-                    elif question.question_type.value in ["TEXT"]:
+                    elif question.question_type.value in ["text", "textarea", "yes_no"]:
                         display_value = answer.answer_text or "Sin respuesta"
                     else:
                         display_value = answer.answer_text or "Sin respuesta"
@@ -1664,6 +1883,7 @@ async def get_survey_detailed_results(
                 employee_email=user_survey.user.email,
                 cargo=worker.position if worker else "No especificado",
                 telefono=worker.phone if worker else "No especificado",
+                response_date=user_survey.response_date,
                 submission_date=user_survey.completed_at,
                 submission_status=submission_status,
                 response_time_minutes=response_time_minutes,
@@ -1688,6 +1908,95 @@ async def get_survey_detailed_results(
         questions=survey.questions,
         employee_responses=employee_responses
     )
+
+
+@router.get("/{survey_id}/report/pdf")
+async def get_survey_year_pdf_report(
+    survey_id: int,
+    year: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions",
+        )
+
+    survey = db.query(Survey).options(
+        joinedload(Survey.questions),
+        joinedload(Survey.course),
+    ).filter(Survey.id == survey_id).first()
+
+    if not survey:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Survey not found",
+        )
+
+    question_stats = _build_question_analysis(db=db, survey=survey, year=year)
+
+    completed_query = db.query(UserSurvey).filter(
+        and_(
+            UserSurvey.survey_id == survey_id,
+            UserSurvey.status == UserSurveyStatus.COMPLETED,
+            _user_survey_year_expr() == year,
+        )
+    )
+    completed_responses = completed_query.count()
+    total_responses = completed_responses
+    completion_rate = 1.0 if total_responses > 0 else 0
+
+    converter = HTMLToPDFConverter()
+    pdf_content = converter.generate_survey_year_report_pdf(
+        {
+            "survey_id": survey.id,
+            "survey_title": survey.title,
+            "survey_description": survey.description,
+            "course_title": survey.course.title if survey.course else None,
+            "year": year,
+            "total_responses": total_responses,
+            "completed_responses": completed_responses,
+            "completion_rate": completion_rate,
+            "question_statistics": question_stats,
+        }
+    )
+
+    filename = f"reporte_encuesta_{survey_id}_{year}.pdf"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(content=pdf_content, media_type="application/pdf", headers=headers)
+
+
+@router.get("/{survey_id}/available-years", response_model=List[int])
+async def get_survey_available_years(
+    survey_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions",
+        )
+
+    exists = db.query(Survey.id).filter(Survey.id == survey_id).first()
+    if not exists:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Survey not found",
+        )
+
+    year_expr = _user_survey_year_expr().label("year")
+    years = (
+        db.query(year_expr)
+        .filter(UserSurvey.survey_id == survey_id)
+        .filter(year_expr.isnot(None))
+        .distinct()
+        .order_by(year_expr.desc())
+        .all()
+    )
+
+    return [int(row.year) for row in years if row.year is not None]
 
 
 @router.post("/cleanup/orphaned-answers", response_model=MessageResponse)
