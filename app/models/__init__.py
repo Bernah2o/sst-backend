@@ -125,6 +125,15 @@ from .estandares_minimos import (
     CicloPHVA,
     ValorCumplimiento,
 )
+from .programa_inspecciones import (
+    ProgramaInspecciones,
+    InspeccionProgramada,
+    InspeccionSeguimiento,
+    EstadoPrograma,
+    CicloInspeccion,
+    TipoInspeccion,
+    FrecuenciaInspeccion,
+)
 
 __all__ = [
     "User",
@@ -302,4 +311,12 @@ __all__ = [
     "NivelCumplimiento",
     "CicloPHVA",
     "ValorCumplimiento",
+    # Programa de Inspecciones
+    "ProgramaInspecciones",
+    "InspeccionProgramada",
+    "InspeccionSeguimiento",
+    "EstadoPrograma",
+    "CicloInspeccion",
+    "TipoInspeccion",
+    "FrecuenciaInspeccion",
 ]
