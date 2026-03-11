@@ -908,12 +908,14 @@ async def update_survey(
     # Handle questions update if provided
     if survey_data.questions is not None:
         if has_responses and not force_update:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"No se pueden modificar las preguntas porque la encuesta ya tiene {user_surveys_count} respuestas. Use 'force_update=true' para forzar la actualización (esto puede afectar la integridad de las respuestas existentes)."
-            )
+            if not update_data:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"No se pueden modificar las preguntas porque la encuesta ya tiene {user_surveys_count} respuestas. Use 'force_update=true' para forzar la actualización (esto puede afectar la integridad de las respuestas existentes)."
+                )
+            survey_data.questions = None
         
-        if force_update and has_responses:
+        if force_update and has_responses and survey_data.questions is not None:
             # When forcing update with existing responses, we need to handle this carefully
             # First, get existing questions with their IDs
             existing_questions = {q.id: q for q in survey.questions}
@@ -957,7 +959,7 @@ async def update_survey(
                 
                 # Delete the questions
                 db.query(SurveyQuestion).filter(SurveyQuestion.id.in_(questions_to_delete)).delete()
-        else:
+        elif survey_data.questions is not None:
             # No responses or not forcing - safe to delete and recreate all questions
             db.query(SurveyQuestion).filter(SurveyQuestion.survey_id == survey_id).delete()
             

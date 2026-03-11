@@ -9,108 +9,76 @@
 </head>
 <body>
     <div class="container">
-
-        <!-- ENCABEZADO -->
         <header>
             <div class="logo">
                 {% if logo_base64 %}
                 <img src="data:image/png;base64,{{ logo_base64 }}" alt="Logo">
                 {% else %}
-                <div class="logo-placeholder">SST</div>
+                <div class="logo-placeholder">Logo no disponible</div>
                 {% endif %}
             </div>
             <div class="header-info">
-                <div class="doc-label">INFORME DE RESULTADOS — SISTEMA DE GESTIÓN SST</div>
-                <h1>{{ survey_title }}</h1>
-                {% if survey_description %}
-                <div class="survey-desc">{{ survey_description }}</div>
-                {% endif %}
-                <div class="meta-row">
-                    <span class="meta-badge">Año: {{ year }}</span>
-                    {% if course_title %}
-                    <span class="meta-badge">Curso: {{ course_title }}</span>
-                    {% endif %}
-                    <span class="meta-badge">Generado: {{ generated_at }}</span>
+                <h1>REPORTE DE ENCUESTA</h1>
+                <h2>{{ survey_title }}</h2>
+                <div class="meta">
+                    <span>Año: {{ year }}</span>
+                    <span>Generado: {{ generated_at }}</span>
                 </div>
+                {% if course_title %}
+                <div class="course">Curso: {{ course_title }}</div>
+                {% endif %}
             </div>
         </header>
 
-        <!-- RESUMEN EJECUTIVO -->
-        <section class="executive-summary">
-            <h2 class="section-title">Resumen Ejecutivo</h2>
-            <div class="kpi-grid">
-                <div class="kpi-card kpi-blue">
-                    <div class="kpi-value">{{ total_responses }}</div>
-                    <div class="kpi-label">Total Respuestas</div>
-                </div>
-                <div class="kpi-card kpi-green">
-                    <div class="kpi-value">{{ completed_responses }}</div>
-                    <div class="kpi-label">Completadas</div>
-                </div>
-                <div class="kpi-card kpi-orange">
-                    {% if completion_rate <= 1 %}
-                    <div class="kpi-value">{{ (completion_rate * 100) | round(1) }}%</div>
-                    {% else %}
-                    <div class="kpi-value">{{ completion_rate | round(1) }}%</div>
-                    {% endif %}
-                    <div class="kpi-label">Tasa de Finalización</div>
-                </div>
-                <div class="kpi-card kpi-purple">
-                    <div class="kpi-value">{{ question_statistics | length }}</div>
-                    <div class="kpi-label">Preguntas Evaluadas</div>
-                </div>
-            </div>
-        </section>
+        {% if survey_description %}
+        <div class="description">
+            <strong>Descripción:</strong> {{ survey_description }}
+        </div>
+        {% endif %}
 
-        <!-- ANÁLISIS POR PREGUNTA -->
-        {% if question_statistics and question_statistics | length > 0 and total_responses > 0 %}
+        <div class="summary">
+            <div class="summary-item"><span class="label">Total respuestas:</span> {{ total_responses }}</div>
+            <div class="summary-item"><span class="label">Respuestas completadas:</span> {{ completed_responses }}</div>
+            <div class="summary-item"><span class="label">Tasa completitud:</span> {{ (completion_rate * 100) | round(1) }}%</div>
+        </div>
 
-        <section class="questions-section">
-            <h2 class="section-title">Análisis Detallado por Pregunta</h2>
-
+        {% if question_statistics and question_statistics|length > 0 and total_responses > 0 %}
             {% for q in question_statistics %}
-            <div class="question-block">
-                <div class="question-header">
-                    <span class="question-num">{{ loop.index }}</span>
-                    <div class="question-info">
-                        <div class="question-text">{{ q.question_text }}</div>
-                        <div class="question-meta">
-                            <span>Respondieron: <strong>{{ q.total_answers }}</strong></span>
-                            <span>Sin respuesta: <strong>{{ q.missing_answers }}</strong></span>
-                            {% if q.average is not none %}
-                            <span class="highlight-stat">Promedio: <strong>{{ q.average }}</strong></span>
-                            {% endif %}
-                        </div>
+            <section class="employee">
+                <div class="employee-header">
+                    <div class="employee-title">{{ loop.index }}. {{ q.question_text }}</div>
+                    <div class="employee-meta">
+                        <span>Tipo: {{ q.question_type }}</span>
+                        <span>Respuestas: {{ q.total_answers }}</span>
+                        <span>Sin respuesta: {{ q.missing_answers }}</span>
+                        {% if q.average is not none %}
+                        <span>Promedio: {{ q.average }}</span>
+                        {% endif %}
+                        {% if q.min_value is not none and q.max_value is not none %}
+                        <span>Rango: {{ q.min_value }} - {{ q.max_value }}</span>
+                        {% endif %}
                     </div>
                 </div>
 
                 {% if q.counts %}
-                <table class="data-table">
+                <table class="answers-table">
                     <thead>
                         <tr>
                             <th>Opción / Valor</th>
-                            <th class="num-col">Respuestas</th>
-                            <th class="num-col">Porcentaje</th>
-                            <th class="bar-col">Distribución</th>
+                            <th style="width: 90px;">Conteo</th>
+                            <th style="width: 90px;">%</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for key, value in q.counts.items() %}
                         <tr>
                             <td>{{ key }}</td>
-                            <td class="num-col">{{ value }}</td>
-                            <td class="num-col">
+                            <td>{{ value }}</td>
+                            <td>
                                 {% if q.total_answers > 0 %}
                                     {{ ((value / q.total_answers) * 100) | round(1) }}%
                                 {% else %}
                                     0%
-                                {% endif %}
-                            </td>
-                            <td class="bar-col">
-                                {% if q.total_answers > 0 %}
-                                <div class="bar-container">
-                                    <div class="bar-fill" style="width: {{ ((value / q.total_answers) * 100) | round(1) }}%"></div>
-                                </div>
                                 {% endif %}
                             </td>
                         </tr>
@@ -119,89 +87,25 @@
                 </table>
                 {% endif %}
 
-                {% if q.min_value is not none and q.max_value is not none %}
-                <div class="stats-row">
-                    <span class="stat-box">Mínimo: <strong>{{ q.min_value }}</strong></span>
-                    <span class="stat-box">Máximo: <strong>{{ q.max_value }}</strong></span>
-                    {% if q.average is not none %}
-                    <span class="stat-box highlight">Promedio: <strong>{{ q.average }}</strong></span>
-                    {% endif %}
-                </div>
-                {% endif %}
-
                 {% if q.samples %}
-                <div class="samples-section">
-                    <div class="samples-title">Respuestas abiertas (muestra):</div>
-                    <ol class="samples-list">
+                <div class="description">
+                    <strong>Respuestas (muestra):</strong>
+                    <ol>
                         {% for s in q.samples %}
                         <li>{{ s }}</li>
                         {% endfor %}
                     </ol>
                 </div>
                 {% endif %}
-            </div>
+            </section>
             {% endfor %}
-        </section>
-
-        <!-- CONCLUSIONES PARA TOMA DE DECISIONES -->
-        <section class="conclusions-section">
-            <h2 class="section-title">Conclusiones y Recomendaciones</h2>
-            <div class="conclusion-box">
-                <p>
-                    Durante el año <strong>{{ year }}</strong>, la encuesta
-                    "<em>{{ survey_title }}</em>" registró <strong>{{ total_responses }}</strong>
-                    respuestas en total, con <strong>{{ completed_responses }}</strong> formularios
-                    completados
-                    {% if completion_rate <= 1 %}({{ (completion_rate * 100) | round(1) }}% de tasa de finalización)
-                    {% else %}({{ completion_rate | round(1) }}% de tasa de finalización){% endif %}.
-                </p>
-
-                {% set rating_questions = namespace(items=[]) %}
-                {% for q in question_statistics %}
-                    {% if q.question_type in ['rating', 'scale'] and q.average is not none %}
-                        {% set rating_questions.items = rating_questions.items + [q] %}
-                    {% endif %}
-                {% endfor %}
-
-                {% if rating_questions.items | length > 0 %}
-                {% set sorted_q = rating_questions.items | sort(attribute='average') %}
-                <p>
-                    <strong>Área de atención prioritaria:</strong>
-                    La pregunta con menor calificación promedio fue
-                    "<em>{{ sorted_q[0].question_text }}</em>"
-                    con un promedio de <strong>{{ sorted_q[0].average }}</strong>.
-                    Se recomienda revisar este aspecto e implementar acciones de mejora.
-                </p>
-                {% if sorted_q | length > 1 %}
-                <p>
-                    <strong>Fortaleza identificada:</strong>
-                    La pregunta con mejor calificación fue
-                    "<em>{{ sorted_q[-1].question_text }}</em>"
-                    con un promedio de <strong>{{ sorted_q[-1].average }}</strong>.
-                    Este resultado puede utilizarse como referente de buenas prácticas.
-                </p>
-                {% endif %}
-                {% endif %}
-
-                <p class="action-note">
-                    &#9654; Este reporte fue generado automáticamente por el Sistema de Gestión SST.
-                    Los resultados deben analizarse en conjunto con el equipo responsable
-                    para definir planes de acción concretos y realizar seguimiento.
-                </p>
-            </div>
-        </section>
-
         {% else %}
-        <div class="empty-state">
-            <p>No se encontraron respuestas registradas para el año {{ year }}.</p>
-        </div>
+            <div class="empty">No hay respuestas registradas para este año.</div>
         {% endif %}
 
         <footer>
-            <div class="footer-left">Sistema de Gestión SST — Documento de uso interno</div>
-            <div class="footer-right">Generado: {{ generated_at }}</div>
+            <p>Documento generado automáticamente por el Sistema de Gestión SST.</p>
         </footer>
-
     </div>
 </body>
 </html>
