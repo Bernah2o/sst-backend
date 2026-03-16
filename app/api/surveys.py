@@ -33,6 +33,109 @@ class SurveyAssignment(BaseModel):
 
 router = APIRouter()
 
+# ---------------------------------------------------------------------------
+# Plantillas de encuestas estandarizadas
+# ---------------------------------------------------------------------------
+SURVEY_TEMPLATES = {
+    "nordico": {
+        "id": "nordico",
+        "name": "Cuestionario Nórdico de Síntomas Musculoesqueléticos (Kuorinka)",
+        "description": (
+            "Instrumento estandarizado para la detección y análisis de síntomas "
+            "musculoesqueléticos aplicable a cualquier tipo de trabajo. "
+            "Desarrollado por Kuorinka et al. (1987)."
+        ),
+        "instructions": (
+            "Marque SI o NO para cada zona corporal según las molestias que ha "
+            "experimentado. Responda con honestidad sobre las zonas que le han "
+            "generado molestias en los últimos 12 meses y en los últimos 7 días."
+        ),
+        "is_anonymous": False,
+        "questions": [
+            # --- CUELLO ---
+            {"question_text": "CUELLO — ¿Ha tenido molestias en el cuello en los últimos 12 meses?", "question_type": "yes_no", "is_required": True, "order_index": 0},
+            {"question_text": "CUELLO — ¿Ha tenido impedimento para realizar su trabajo normal en los últimos 12 meses a causa de molestias en el cuello?", "question_type": "yes_no", "is_required": True, "order_index": 1},
+            {"question_text": "CUELLO — ¿Ha tenido molestias en el cuello en los últimos 7 días?", "question_type": "yes_no", "is_required": True, "order_index": 2},
+            # --- HOMBROS ---
+            {"question_text": "HOMBROS — ¿Ha tenido molestias en los hombros en los últimos 12 meses?", "question_type": "yes_no", "is_required": True, "order_index": 3},
+            {"question_text": "HOMBROS — ¿Ha tenido impedimento para realizar su trabajo normal en los últimos 12 meses a causa de molestias en los hombros?", "question_type": "yes_no", "is_required": True, "order_index": 4},
+            {"question_text": "HOMBROS — ¿Ha tenido molestias en los hombros en los últimos 7 días?", "question_type": "yes_no", "is_required": True, "order_index": 5},
+            # --- CODOS ---
+            {"question_text": "CODOS — ¿Ha tenido molestias en los codos en los últimos 12 meses?", "question_type": "yes_no", "is_required": True, "order_index": 6},
+            {"question_text": "CODOS — ¿Ha tenido impedimento para realizar su trabajo normal en los últimos 12 meses a causa de molestias en los codos?", "question_type": "yes_no", "is_required": True, "order_index": 7},
+            {"question_text": "CODOS — ¿Ha tenido molestias en los codos en los últimos 7 días?", "question_type": "yes_no", "is_required": True, "order_index": 8},
+            # --- MUÑECAS / MANOS ---
+            {"question_text": "MUÑECAS/MANOS — ¿Ha tenido molestias en las muñecas o manos en los últimos 12 meses?", "question_type": "yes_no", "is_required": True, "order_index": 9},
+            {"question_text": "MUÑECAS/MANOS — ¿Ha tenido impedimento para realizar su trabajo normal en los últimos 12 meses a causa de molestias en las muñecas o manos?", "question_type": "yes_no", "is_required": True, "order_index": 10},
+            {"question_text": "MUÑECAS/MANOS — ¿Ha tenido molestias en las muñecas o manos en los últimos 7 días?", "question_type": "yes_no", "is_required": True, "order_index": 11},
+            # --- REGIÓN DORSAL / LUMBAR ALTA ---
+            {"question_text": "REGIÓN DORSAL/LUMBAR ALTA — ¿Ha tenido molestias en la parte alta de la espalda en los últimos 12 meses?", "question_type": "yes_no", "is_required": True, "order_index": 12},
+            {"question_text": "REGIÓN DORSAL/LUMBAR ALTA — ¿Ha tenido impedimento para realizar su trabajo normal en los últimos 12 meses a causa de molestias en la parte alta de la espalda?", "question_type": "yes_no", "is_required": True, "order_index": 13},
+            {"question_text": "REGIÓN DORSAL/LUMBAR ALTA — ¿Ha tenido molestias en la parte alta de la espalda en los últimos 7 días?", "question_type": "yes_no", "is_required": True, "order_index": 14},
+            # --- ZONA LUMBAR BAJA ---
+            {"question_text": "ZONA LUMBAR BAJA — ¿Ha tenido molestias en la zona lumbar baja (parte baja de la espalda) en los últimos 12 meses?", "question_type": "yes_no", "is_required": True, "order_index": 15},
+            {"question_text": "ZONA LUMBAR BAJA — ¿Ha tenido impedimento para realizar su trabajo normal en los últimos 12 meses a causa de molestias en la zona lumbar baja?", "question_type": "yes_no", "is_required": True, "order_index": 16},
+            {"question_text": "ZONA LUMBAR BAJA — ¿Ha tenido molestias en la zona lumbar baja en los últimos 7 días?", "question_type": "yes_no", "is_required": True, "order_index": 17},
+            # --- CADERAS / MUSLOS ---
+            {"question_text": "CADERAS/MUSLOS — ¿Ha tenido molestias en las caderas o muslos en los últimos 12 meses?", "question_type": "yes_no", "is_required": True, "order_index": 18},
+            {"question_text": "CADERAS/MUSLOS — ¿Ha tenido impedimento para realizar su trabajo normal en los últimos 12 meses a causa de molestias en las caderas o muslos?", "question_type": "yes_no", "is_required": True, "order_index": 19},
+            {"question_text": "CADERAS/MUSLOS — ¿Ha tenido molestias en las caderas o muslos en los últimos 7 días?", "question_type": "yes_no", "is_required": True, "order_index": 20},
+            # --- RODILLAS ---
+            {"question_text": "RODILLAS — ¿Ha tenido molestias en las rodillas en los últimos 12 meses?", "question_type": "yes_no", "is_required": True, "order_index": 21},
+            {"question_text": "RODILLAS — ¿Ha tenido impedimento para realizar su trabajo normal en los últimos 12 meses a causa de molestias en las rodillas?", "question_type": "yes_no", "is_required": True, "order_index": 22},
+            {"question_text": "RODILLAS — ¿Ha tenido molestias en las rodillas en los últimos 7 días?", "question_type": "yes_no", "is_required": True, "order_index": 23},
+            # --- TOBILLOS / PIES ---
+            {"question_text": "TOBILLOS/PIES — ¿Ha tenido molestias en los tobillos o pies en los últimos 12 meses?", "question_type": "yes_no", "is_required": True, "order_index": 24},
+            {"question_text": "TOBILLOS/PIES — ¿Ha tenido impedimento para realizar su trabajo normal en los últimos 12 meses a causa de molestias en los tobillos o pies?", "question_type": "yes_no", "is_required": True, "order_index": 25},
+            {"question_text": "TOBILLOS/PIES — ¿Ha tenido molestias en los tobillos o pies en los últimos 7 días?", "question_type": "yes_no", "is_required": True, "order_index": 26},
+        ],
+    },
+    "burnout": {
+        "id": "burnout",
+        "name": "Encuesta de Síndrome de Burnout (MBI — Maslach Burnout Inventory)",
+        "description": (
+            "Instrumento validado internacionalmente para medir el síndrome de burnout "
+            "laboral en tres dimensiones: agotamiento emocional, despersonalización y "
+            "realización personal. Basado en el MBI de Maslach & Jackson (1981)."
+        ),
+        "instructions": (
+            "A continuación encontrará una serie de enunciados acerca de su trabajo y "
+            "sus sentimientos en él. Indique en la escala con qué frecuencia experimenta "
+            "cada situación: 0 = Nunca  |  1 = Pocas veces al año o menos  |  "
+            "2 = Una vez al mes o menos  |  3 = Unas pocas veces al mes  |  "
+            "4 = Una vez a la semana  |  5 = Pocas veces a la semana  |  6 = Todos los días."
+        ),
+        "is_anonymous": True,
+        "questions": [
+            # --- AGOTAMIENTO EMOCIONAL (9 ítems) ---
+            {"question_text": "EE1 — Me siento emocionalmente agotado/a por mi trabajo.", "question_type": "scale", "is_required": True, "order_index": 0, "min_value": 0, "max_value": 6},
+            {"question_text": "EE2 — Me siento agotado/a al final de la jornada laboral.", "question_type": "scale", "is_required": True, "order_index": 1, "min_value": 0, "max_value": 6},
+            {"question_text": "EE3 — Me siento cansado/a cuando me levanto por la mañana y tengo que enfrentarme a otro día en el trabajo.", "question_type": "scale", "is_required": True, "order_index": 2, "min_value": 0, "max_value": 6},
+            {"question_text": "EE4 — Trabajar todo el día con personas es un esfuerzo real para mí.", "question_type": "scale", "is_required": True, "order_index": 3, "min_value": 0, "max_value": 6},
+            {"question_text": "EE5 — Me siento exhausto/a por mi trabajo.", "question_type": "scale", "is_required": True, "order_index": 4, "min_value": 0, "max_value": 6},
+            {"question_text": "EE6 — Me siento frustrado/a en mi trabajo.", "question_type": "scale", "is_required": True, "order_index": 5, "min_value": 0, "max_value": 6},
+            {"question_text": "EE7 — Creo que estoy trabajando demasiado.", "question_type": "scale", "is_required": True, "order_index": 6, "min_value": 0, "max_value": 6},
+            {"question_text": "EE8 — Trabajar directamente con personas me produce estrés.", "question_type": "scale", "is_required": True, "order_index": 7, "min_value": 0, "max_value": 6},
+            {"question_text": "EE9 — Me siento al límite de mis posibilidades en el trabajo.", "question_type": "scale", "is_required": True, "order_index": 8, "min_value": 0, "max_value": 6},
+            # --- DESPERSONALIZACIÓN (5 ítems) ---
+            {"question_text": "DP1 — Creo que trato a algunos compañeros o personas del trabajo como si fueran objetos impersonales.", "question_type": "scale", "is_required": True, "order_index": 9, "min_value": 0, "max_value": 6},
+            {"question_text": "DP2 — Me he vuelto más insensible con las personas desde que ejerzo esta profesión.", "question_type": "scale", "is_required": True, "order_index": 10, "min_value": 0, "max_value": 6},
+            {"question_text": "DP3 — Me preocupa el hecho de que este trabajo me esté endureciendo emocionalmente.", "question_type": "scale", "is_required": True, "order_index": 11, "min_value": 0, "max_value": 6},
+            {"question_text": "DP4 — No me importa realmente lo que les ocurra a algunas personas con las que interactúo en el trabajo.", "question_type": "scale", "is_required": True, "order_index": 12, "min_value": 0, "max_value": 6},
+            {"question_text": "DP5 — Siento que las personas con las que trabajo me culpan de algunos de sus problemas.", "question_type": "scale", "is_required": True, "order_index": 13, "min_value": 0, "max_value": 6},
+            # --- REALIZACIÓN PERSONAL (8 ítems) ---
+            {"question_text": "RP1 — Puedo entender fácilmente cómo se sienten las personas con las que trabajo.", "question_type": "scale", "is_required": True, "order_index": 14, "min_value": 0, "max_value": 6},
+            {"question_text": "RP2 — Trato eficazmente los problemas de las personas con las que trabajo.", "question_type": "scale", "is_required": True, "order_index": 15, "min_value": 0, "max_value": 6},
+            {"question_text": "RP3 — Creo que estoy influyendo positivamente en las personas con mi trabajo.", "question_type": "scale", "is_required": True, "order_index": 16, "min_value": 0, "max_value": 6},
+            {"question_text": "RP4 — Me siento muy activo/a en mi trabajo.", "question_type": "scale", "is_required": True, "order_index": 17, "min_value": 0, "max_value": 6},
+            {"question_text": "RP5 — Puedo crear fácilmente un ambiente relajado con las personas con las que trabajo.", "question_type": "scale", "is_required": True, "order_index": 18, "min_value": 0, "max_value": 6},
+            {"question_text": "RP6 — Me siento estimulado/a después de trabajar con las personas.", "question_type": "scale", "is_required": True, "order_index": 19, "min_value": 0, "max_value": 6},
+            {"question_text": "RP7 — He conseguido muchas cosas útiles en mi trabajo.", "question_type": "scale", "is_required": True, "order_index": 20, "min_value": 0, "max_value": 6},
+            {"question_text": "RP8 — En mi trabajo, trato los problemas emocionales con mucha calma.", "question_type": "scale", "is_required": True, "order_index": 21, "min_value": 0, "max_value": 6},
+        ],
+    },
+}
+
 
 def _user_survey_year_expr():
     return func.extract(
@@ -804,6 +907,313 @@ async def get_user_survey_responses(
                 "timestamp": time.time()
             }
         )
+
+
+@router.get("/by-template/{template_id}")
+async def get_surveys_by_template(
+    template_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Lista todas las encuestas creadas a partir de una plantilla específica."""
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes")
+    surveys = (
+        db.query(Survey)
+        .filter(Survey.survey_template == template_id)
+        .order_by(Survey.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": s.id,
+            "title": s.title,
+            "description": s.description,
+            "status": s.status,
+            "created_at": s.created_at,
+            "published_at": s.published_at,
+            "closes_at": s.closes_at,
+            "survey_template": s.survey_template,
+            "total_responses": db.query(UserSurvey).filter(
+                UserSurvey.survey_id == s.id,
+                UserSurvey.status == UserSurveyStatus.COMPLETED,
+            ).count(),
+        }
+        for s in surveys
+    ]
+
+
+@router.get("/{survey_id}/report/nordic-pdf")
+async def export_nordic_pdf(
+    survey_id: int,
+    year: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Genera PDF con análisis especializado del Cuestionario Nórdico (por región corporal)."""
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes")
+
+    survey = db.query(Survey).filter(Survey.id == survey_id).first()
+    if not survey or survey.survey_template != "nordico":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encuesta nórdica no encontrada")
+
+    # Preguntas ordenadas
+    questions = sorted(survey.questions, key=lambda q: q.order_index)
+
+    # Obtener respuestas del año
+    year_expr = _user_survey_year_expr()
+    completed_ids = (
+        db.query(UserSurvey.id)
+        .filter(UserSurvey.survey_id == survey_id, UserSurvey.status == UserSurveyStatus.COMPLETED)
+        .filter(func.extract("year", func.coalesce(UserSurvey.response_date, func.date(UserSurvey.completed_at))) == year)
+        .subquery()
+    )
+    total = db.query(func.count()).select_from(completed_ids).scalar() or 0
+
+    # Nombres de regiones y estructura de preguntas (9 regiones × 3 preguntas)
+    regions = ["Cuello", "Hombros", "Codos", "Muñecas/Manos",
+               "Región Dorsal/Lumbar Alta", "Zona Lumbar Baja",
+               "Caderas/Muslos", "Rodillas", "Tobillos/Pies"]
+    region_data = []
+    for i, region in enumerate(regions):
+        base = i * 3
+        qs = questions[base:base + 3] if len(questions) > base + 2 else []
+        row = {"region": region, "q12m": 0, "qimp": 0, "q7d": 0,
+               "pct12m": 0.0, "pctimp": 0.0, "pct7d": 0.0}
+        for j, label in enumerate(["q12m", "qimp", "q7d"]):
+            if j < len(qs):
+                yes_count = (
+                    db.query(func.count(UserSurveyAnswer.id))
+                    .filter(
+                        UserSurveyAnswer.user_survey_id.in_(db.query(completed_ids)),
+                        UserSurveyAnswer.question_id == qs[j].id,
+                        func.lower(UserSurveyAnswer.answer_text) == "sí",
+                    )
+                    .scalar() or 0
+                )
+                row[label] = yes_count
+                row[f"pct{label[1:]}"] = round((yes_count / total * 100) if total > 0 else 0, 1)
+        region_data.append(row)
+
+    from app.services.html_to_pdf import HTMLToPDFConverter
+    from datetime import datetime as dt
+    template_data = {
+        "survey_title": survey.title,
+        "year": year,
+        "total_responses": total,
+        "regions": region_data,
+        "generated_at": dt.now().strftime("%d/%m/%Y %H:%M"),
+    }
+    pdf_bytes = HTMLToPDFConverter().generate_nordic_report_pdf(template_data)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="nordico_{survey_id}_{year}.pdf"'},
+    )
+
+
+@router.get("/{survey_id}/report/burnout-pdf")
+async def export_burnout_pdf(
+    survey_id: int,
+    year: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Genera PDF con análisis MBI (dimensiones: EE, DP, RP) del Síndrome de Burnout."""
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes")
+
+    survey = db.query(Survey).options(joinedload(Survey.questions)).filter(Survey.id == survey_id).first()
+    if not survey or survey.survey_template != "burnout":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encuesta de burnout no encontrada")
+
+    questions = sorted(survey.questions, key=lambda q: q.order_index)
+
+    completed_surveys = (
+        db.query(UserSurvey)
+        .join(User, UserSurvey.user_id == User.id)
+        .filter(
+            UserSurvey.survey_id == survey_id,
+            UserSurvey.status == UserSurveyStatus.COMPLETED,
+            func.extract("year", func.coalesce(UserSurvey.response_date, func.date(UserSurvey.completed_at))) == year,
+        )
+        .all()
+    )
+    total = len(completed_surveys)
+
+    # Dimensiones MBI: EE=0-8, DP=9-13, RP=14-21
+    dimensions = {"EE": (0, 9), "DP": (9, 14), "RP": (14, 22)}
+    dim_labels = {"EE": "Agotamiento Emocional", "DP": "Despersonalización", "RP": "Realización Personal"}
+    dim_max = {"EE": 54, "DP": 30, "RP": 48}
+
+    employee_rows = []
+    dim_totals = {"EE": 0.0, "DP": 0.0, "RP": 0.0}
+    burnout_counts = {"bajo": 0, "moderado": 0, "alto": 0}
+
+    for us in completed_surveys:
+        answers = {a.question_id: a.answer_value for a in us.answers if a.answer_value is not None}
+        scores = {}
+        for dim, (start, end) in dimensions.items():
+            qs = questions[start:end]
+            scores[dim] = sum(answers.get(q.id, 0) for q in qs)
+            dim_totals[dim] += scores[dim]
+
+        # Clasificación MBI
+        ee_high = scores["EE"] >= 27
+        dp_high = scores["DP"] >= 13
+        rp_low = scores["RP"] <= 33
+
+        if ee_high and dp_high and rp_low:
+            level = "alto"
+        elif scores["EE"] >= 17 or scores["DP"] >= 7 or scores["RP"] <= 39:
+            level = "moderado"
+        else:
+            level = "bajo"
+        burnout_counts[level] += 1
+
+        user_obj = db.query(User).filter(User.id == us.user_id).first()
+        employee_rows.append({
+            "name": f"{user_obj.first_name} {user_obj.last_name}" if user_obj else f"ID {us.user_id}",
+            "ee": scores["EE"], "dp": scores["DP"], "rp": scores["RP"],
+            "level": level,
+        })
+
+    dim_averages = {dim: round(dim_totals[dim] / total, 2) if total > 0 else 0 for dim in dim_totals}
+
+    from app.services.html_to_pdf import HTMLToPDFConverter
+    from datetime import datetime as dt
+    template_data = {
+        "survey_title": survey.title,
+        "year": year,
+        "total_responses": total,
+        "dim_labels": dim_labels,
+        "dim_max": dim_max,
+        "dim_averages": dim_averages,
+        "burnout_counts": burnout_counts,
+        "employee_rows": employee_rows,
+        "generated_at": dt.now().strftime("%d/%m/%Y %H:%M"),
+    }
+    pdf_bytes = HTMLToPDFConverter().generate_burnout_report_pdf(template_data)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="burnout_{survey_id}_{year}.pdf"'},
+    )
+
+
+@router.get("/templates")
+async def get_survey_templates(
+    current_user: User = Depends(get_current_active_user),
+) -> Any:
+    """Retorna las plantillas de encuestas estandarizadas disponibles."""
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permisos insuficientes",
+        )
+    return [
+        {
+            "id": t["id"],
+            "name": t["name"],
+            "description": t["description"],
+            "question_count": len(t["questions"]),
+        }
+        for t in SURVEY_TEMPLATES.values()
+    ]
+
+
+@router.post("/from-template/{template_id}", response_model=SurveyResponse)
+async def create_survey_from_template(
+    template_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Crea una encuesta en estado DRAFT a partir de una plantilla estandarizada."""
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permisos insuficientes",
+        )
+    template = SURVEY_TEMPLATES.get(template_id)
+    if not template:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Plantilla '{template_id}' no encontrada",
+        )
+
+    from app.models.survey import SurveyQuestionType as SQT
+
+    survey = Survey(
+        title=template["name"],
+        description=template["description"],
+        instructions=template["instructions"],
+        is_anonymous=template["is_anonymous"],
+        allow_multiple_responses=False,
+        status=SurveyStatus.DRAFT,
+        is_course_survey=False,
+        required_for_completion=False,
+        created_by=current_user.id,
+        survey_template=template_id,
+    )
+    db.add(survey)
+    db.commit()
+    db.refresh(survey)
+
+    for q_data in template["questions"]:
+        question = SurveyQuestion(
+            survey_id=survey.id,
+            question_text=q_data["question_text"],
+            question_type=SQT(q_data["question_type"]),
+            options=q_data.get("options"),
+            is_required=q_data.get("is_required", True),
+            order_index=q_data["order_index"],
+            min_value=q_data.get("min_value"),
+            max_value=q_data.get("max_value"),
+            placeholder_text=q_data.get("placeholder_text"),
+        )
+        db.add(question)
+
+    db.commit()
+    db.refresh(survey)
+
+    return {
+        "id": survey.id,
+        "title": survey.title,
+        "description": survey.description,
+        "instructions": survey.instructions,
+        "is_anonymous": survey.is_anonymous,
+        "allow_multiple_responses": survey.allow_multiple_responses,
+        "closes_at": survey.closes_at,
+        "expires_at": survey.expires_at,
+        "status": survey.status,
+        "course_id": survey.course_id,
+        "is_course_survey": survey.is_course_survey,
+        "required_for_completion": survey.required_for_completion,
+        "course": None,
+        "created_by": survey.created_by,
+        "created_at": survey.created_at,
+        "updated_at": survey.updated_at,
+        "published_at": survey.published_at,
+        "survey_template": survey.survey_template,
+        "questions": [
+            {
+                "id": q.id,
+                "survey_id": q.survey_id,
+                "question_text": q.question_text,
+                "question_type": q.question_type,
+                "options": q.options,
+                "is_required": q.is_required,
+                "order_index": q.order_index,
+                "min_value": q.min_value,
+                "max_value": q.max_value,
+                "placeholder_text": q.placeholder_text,
+                "created_at": q.created_at,
+                "updated_at": q.updated_at,
+            }
+            for q in sorted(survey.questions, key=lambda x: x.order_index)
+        ],
+    }
 
 
 @router.get("/{survey_id}", response_model=SurveyResponse)

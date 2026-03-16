@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="pdf-engine" content="WeasyPrint">
+    <title>Reporte Síndrome de Burnout</title>
+    <link rel="stylesheet" href="css/burnout_report.css">
+</head>
+<body>
+<div class="container">
+
+    <header>
+        <div class="logo">
+            {% if logo_base64 %}
+            <img src="data:image/png;base64,{{ logo_base64 }}" alt="Logo">
+            {% else %}
+            <div class="logo-placeholder">Logo</div>
+            {% endif %}
+        </div>
+        <div class="header-info">
+            <div class="badge">SÍNDROME DE BURNOUT — MASLACH BURNOUT INVENTORY (MBI)</div>
+            <h1>{{ survey_title }}</h1>
+            <div class="meta">
+                <span>Año: <strong>{{ year }}</strong></span>
+                <span>Respondentes: <strong>{{ total_responses }}</strong></span>
+                <span>Generado: {{ generated_at }}</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="method-note">
+        <strong>Metodología MBI:</strong> Inventario de Burnout de Maslach & Jackson (1981). Evalúa tres dimensiones:
+        <strong>EE</strong> = Agotamiento Emocional (0–54) |
+        <strong>DP</strong> = Despersonalización (0–30) |
+        <strong>RP</strong> = Realización Personal (0–48, invertido).
+        Escala de frecuencia: 0=Nunca … 6=Todos los días.
+    </div>
+
+    {% if total_responses == 0 %}
+    <div class="no-data">No hay respuestas registradas para el año {{ year }}.</div>
+    {% else %}
+
+    <!-- Resumen de dimensiones -->
+    <section class="dim-section">
+        <h2>Promedios por Dimensión</h2>
+        <div class="dim-cards">
+            {% set ee_pct = ((dim_averages.EE / dim_max.EE) * 100) | round(1) %}
+            {% set dp_pct = ((dim_averages.DP / dim_max.DP) * 100) | round(1) %}
+            {% set rp_pct = ((dim_averages.RP / dim_max.RP) * 100) | round(1) %}
+
+            <div class="dim-card {% if dim_averages.EE >= 27 %}card-high{% elif dim_averages.EE >= 17 %}card-medium{% else %}card-low{% endif %}">
+                <div class="dim-label">Agotamiento Emocional (EE)</div>
+                <div class="dim-score">{{ dim_averages.EE }} <span class="dim-max">/ {{ dim_max.EE }}</span></div>
+                <div class="dim-bar-bg"><div class="dim-bar-fill" style="width: {{ ee_pct }}%"></div></div>
+                <div class="dim-level">
+                    {% if dim_averages.EE >= 27 %}ALTO (≥ 27){% elif dim_averages.EE >= 17 %}MODERADO (17–26){% else %}BAJO (&lt; 17){% endif %}
+                </div>
+            </div>
+
+            <div class="dim-card {% if dim_averages.DP >= 13 %}card-high{% elif dim_averages.DP >= 7 %}card-medium{% else %}card-low{% endif %}">
+                <div class="dim-label">Despersonalización (DP)</div>
+                <div class="dim-score">{{ dim_averages.DP }} <span class="dim-max">/ {{ dim_max.DP }}</span></div>
+                <div class="dim-bar-bg"><div class="dim-bar-fill" style="width: {{ dp_pct }}%"></div></div>
+                <div class="dim-level">
+                    {% if dim_averages.DP >= 13 %}ALTO (≥ 13){% elif dim_averages.DP >= 7 %}MODERADO (7–12){% else %}BAJO (&lt; 7){% endif %}
+                </div>
+            </div>
+
+            <div class="dim-card {% if dim_averages.RP <= 33 %}card-high{% elif dim_averages.RP <= 39 %}card-medium{% else %}card-low{% endif %}">
+                <div class="dim-label">Realización Personal (RP) <span class="inv">(invertido)</span></div>
+                <div class="dim-score">{{ dim_averages.RP }} <span class="dim-max">/ {{ dim_max.RP }}</span></div>
+                <div class="dim-bar-bg"><div class="dim-bar-fill" style="width: {{ rp_pct }}%"></div></div>
+                <div class="dim-level">
+                    {% if dim_averages.RP <= 33 %}BAJO (≤ 33) — Burnout alto{% elif dim_averages.RP <= 39 %}MODERADO (34–39){% else %}ALTO (≥ 40) — Sin burnout{% endif %}
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Distribución de nivel de burnout -->
+    <section class="dist-section">
+        <h2>Distribución por Nivel de Burnout</h2>
+        {% set total = burnout_counts.bajo + burnout_counts.moderado + burnout_counts.alto %}
+        <table class="dist-table">
+            <thead>
+                <tr><th>Nivel</th><th>Criterio MBI</th><th>N° Trabajadores</th><th>Porcentaje</th></tr>
+            </thead>
+            <tbody>
+                <tr class="row-low">
+                    <td><span class="badge-level badge-low">BAJO</span></td>
+                    <td>EE &lt; 17 y DP &lt; 7 y RP ≥ 40</td>
+                    <td class="center">{{ burnout_counts.bajo }}</td>
+                    <td class="center">{{ ((burnout_counts.bajo / total * 100) | round(1)) if total > 0 else 0 }}%</td>
+                </tr>
+                <tr class="row-medium">
+                    <td><span class="badge-level badge-medium">MODERADO</span></td>
+                    <td>Al menos un indicador en rango moderado</td>
+                    <td class="center">{{ burnout_counts.moderado }}</td>
+                    <td class="center">{{ ((burnout_counts.moderado / total * 100) | round(1)) if total > 0 else 0 }}%</td>
+                </tr>
+                <tr class="row-high">
+                    <td><span class="badge-level badge-high">ALTO</span></td>
+                    <td>EE ≥ 27 y DP ≥ 13 y RP ≤ 33</td>
+                    <td class="center">{{ burnout_counts.alto }}</td>
+                    <td class="center">{{ ((burnout_counts.alto / total * 100) | round(1)) if total > 0 else 0 }}%</td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- Tabla individual de trabajadores -->
+    <section class="employees-section">
+        <h2>Resultados por Trabajador</h2>
+        <table class="emp-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Trabajador</th>
+                    <th>EE<br><span class="sub">/ 54</span></th>
+                    <th>DP<br><span class="sub">/ 30</span></th>
+                    <th>RP<br><span class="sub">/ 48</span></th>
+                    <th>Nivel Burnout</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for emp in employee_rows %}
+                <tr>
+                    <td class="center">{{ loop.index }}</td>
+                    <td>{{ emp.name }}</td>
+                    <td class="center {% if emp.ee >= 27 %}score-high{% elif emp.ee >= 17 %}score-medium{% else %}score-low{% endif %}">{{ emp.ee }}</td>
+                    <td class="center {% if emp.dp >= 13 %}score-high{% elif emp.dp >= 7 %}score-medium{% else %}score-low{% endif %}">{{ emp.dp }}</td>
+                    <td class="center {% if emp.rp <= 33 %}score-high{% elif emp.rp <= 39 %}score-medium{% else %}score-low{% endif %}">{{ emp.rp }}</td>
+                    <td class="center">
+                        <span class="badge-level badge-{{ emp.level }}">{{ emp.level | upper }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    {% endif %}
+
+    <footer>
+        <div>Sistema de Gestión SST — Generado el {{ generated_at }}</div>
+        <div>Maslach Burnout Inventory — Maslach & Jackson (1981) | Datos confidenciales</div>
+    </footer>
+
+</div>
+</body>
+</html>

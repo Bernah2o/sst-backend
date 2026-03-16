@@ -163,6 +163,7 @@ class SurveyResponse(SurveyBase):
     created_at: datetime
     updated_at: datetime
     published_at: Optional[datetime] = None
+    survey_template: Optional[str] = None
     questions: List[SurveyQuestionResponse] = []
 
     class Config:
@@ -182,6 +183,7 @@ class SurveyListResponse(BaseModel):
     created_at: datetime
     published_at: Optional[datetime] = None
     closes_at: Optional[datetime] = None
+    survey_template: Optional[str] = None
 
     class Config:
         from_attributes = True

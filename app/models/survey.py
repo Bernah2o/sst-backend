@@ -61,6 +61,7 @@ class Survey(Base):
     published_at = Column(DateTime)
     closes_at = Column(DateTime)
     expires_at = Column(DateTime)
+    survey_template = Column(String(50), nullable=True)  # 'nordico' | 'burnout' | null
 
     # Relationships
     creator = relationship("User", foreign_keys=[created_by], overlaps="created_surveys")

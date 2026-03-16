@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="pdf-engine" content="WeasyPrint">
+    <title>Reporte Cuestionario Nórdico</title>
+    <link rel="stylesheet" href="css/nordic_report.css">
+</head>
+<body>
+<div class="container">
+
+    <header>
+        <div class="logo">
+            {% if logo_base64 %}
+            <img src="data:image/png;base64,{{ logo_base64 }}" alt="Logo">
+            {% else %}
+            <div class="logo-placeholder">Logo</div>
+            {% endif %}
+        </div>
+        <div class="header-info">
+            <div class="badge">CUESTIONARIO NÓRDICO DE SÍNTOMAS MUSCULOESQUELÉTICOS</div>
+            <h1>{{ survey_title }}</h1>
+            <div class="meta">
+                <span>Año de análisis: <strong>{{ year }}</strong></span>
+                <span>Respondentes: <strong>{{ total_responses }}</strong></span>
+                <span>Generado: {{ generated_at }}</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="method-note">
+        <strong>Metodología:</strong> Cuestionario Nórdico Estandarizado de Síntomas Musculoesqueléticos — Kuorinka et al. (1987).
+        Evalúa 9 regiones corporales con 3 indicadores cada una: molestias en los últimos 12 meses,
+        impedimento funcional en los últimos 12 meses y molestias en los últimos 7 días.
+    </div>
+
+    {% if total_responses == 0 %}
+    <div class="no-data">No hay respuestas registradas para el año {{ year }}.</div>
+    {% else %}
+
+    <section class="results-section">
+        <h2>Análisis por Región Corporal</h2>
+        <table class="main-table">
+            <thead>
+                <tr>
+                    <th class="region-col">Región Corporal</th>
+                    <th class="data-col">Molestias<br>12 meses<br><span class="sub">n / %</span></th>
+                    <th class="data-col">Impedimento<br>funcional<br><span class="sub">n / %</span></th>
+                    <th class="data-col">Molestias<br>7 días<br><span class="sub">n / %</span></th>
+                    <th class="bar-col">Prevalencia<br>12 meses</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in regions %}
+                <tr class="{% if row.pct12m >= 50 %}high-risk{% elif row.pct12m >= 25 %}medium-risk{% else %}low-risk{% endif %}">
+                    <td class="region-name">{{ row.region }}</td>
+                    <td class="data-cell">
+                        {{ row.q12m }} / {{ row.pct12m }}%
+                    </td>
+                    <td class="data-cell">
+                        {{ row.qimp }} / {{ row.pctimp }}%
+                    </td>
+                    <td class="data-cell">
+                        {{ row.q7d }} / {{ row.pct7d }}%
+                    </td>
+                    <td class="bar-cell">
+                        <div class="bar-bg">
+                            <div class="bar-fill {% if row.pct12m >= 50 %}bar-high{% elif row.pct12m >= 25 %}bar-medium{% else %}bar-low{% endif %}"
+                                 style="width: {{ row.pct12m }}%"></div>
+                        </div>
+                        <span class="bar-label">{{ row.pct12m }}%</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section class="legend-section">
+        <h3>Nivel de Riesgo</h3>
+        <div class="legend">
+            <div class="legend-item"><span class="dot dot-high"></span> Alto riesgo: ≥ 50% de prevalencia</div>
+            <div class="legend-item"><span class="dot dot-medium"></span> Riesgo moderado: 25% – 49%</div>
+            <div class="legend-item"><span class="dot dot-low"></span> Bajo riesgo: &lt; 25%</div>
+        </div>
+    </section>
+
+    <section class="ranking-section">
+        <h2>Ranking de Regiones por Prevalencia (12 meses)</h2>
+        <table class="ranking-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Región</th>
+                    <th>% Molestias 12 meses</th>
+                    <th>% Impedimento</th>
+                    <th>% Molestias 7 días</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in regions | sort(attribute='pct12m', reverse=True) %}
+                <tr>
+                    <td class="rank-num">{{ loop.index }}</td>
+                    <td>{{ row.region }}</td>
+                    <td class="center {% if row.pct12m >= 50 %}high{% elif row.pct12m >= 25 %}medium{% endif %}">{{ row.pct12m }}%</td>
+                    <td class="center">{{ row.pctimp }}%</td>
+                    <td class="center">{{ row.pct7d }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    {% endif %}
+
+    <footer>
+        <div>Sistema de Gestión SST — Reporte generado automáticamente el {{ generated_at }}</div>
+        <div>Cuestionario Nórdico de Síntomas Musculoesqueléticos (Kuorinka et al., 1987)</div>
+    </footer>
+
+</div>
+</body>
+</html>

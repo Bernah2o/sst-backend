@@ -641,6 +641,46 @@ class HTMLToPDFConverter:
                 f"Error en reporte de encuesta: {str(e)}"
             )
 
+    def generate_nordic_report_pdf(self, template_data, output_path=None):
+        """Genera PDF con análisis del Cuestionario Nórdico por región corporal."""
+        try:
+            logo_base64 = self._load_logo_base64()
+            context = {
+                "logo_base64": logo_base64,
+                **template_data,
+            }
+            html_content = self.render_template("nordic_report.html", context)
+            css_path = os.path.join(self.template_dir, "css", "nordic_report.css")
+            if os.path.exists(css_path):
+                html_content = html_content.replace(
+                    'href="css/nordic_report.css"',
+                    f'href="{self._get_file_url(css_path)}"',
+                )
+            return self.generate_pdf(html_content, ["nordic_report.css"], output_path)
+        except Exception as e:
+            logger.error(f"Error en generate_nordic_report_pdf: {str(e)}")
+            return self._generate_emergency_pdf(f"Error en reporte nórdico: {str(e)}")
+
+    def generate_burnout_report_pdf(self, template_data, output_path=None):
+        """Genera PDF con análisis MBI (EE, DP, RP) del Síndrome de Burnout."""
+        try:
+            logo_base64 = self._load_logo_base64()
+            context = {
+                "logo_base64": logo_base64,
+                **template_data,
+            }
+            html_content = self.render_template("burnout_report.html", context)
+            css_path = os.path.join(self.template_dir, "css", "burnout_report.css")
+            if os.path.exists(css_path):
+                html_content = html_content.replace(
+                    'href="css/burnout_report.css"',
+                    f'href="{self._get_file_url(css_path)}"',
+                )
+            return self.generate_pdf(html_content, ["burnout_report.css"], output_path)
+        except Exception as e:
+            logger.error(f"Error en generate_burnout_report_pdf: {str(e)}")
+            return self._generate_emergency_pdf(f"Error en reporte burnout: {str(e)}")
+
     def generate_attendance_certificate_pdf(self, attendance_data, participant_data, output_path=None):
         """
         Genera un PDF de certificado de asistencia individual en formato horizontal.
