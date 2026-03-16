@@ -4,291 +4,233 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Recordatorio de Examen Médico Ocupacional</title>
-    {% if external_css is defined %}
-    <style>
-        {{ external_css }}
-    </style>
-    {% else %}
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f4f4f4;
-        }
-        .container {
-            background-color: #ffffff;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-        }
-        .header {
-            background: linear-gradient(135deg, #1976d2, #42a5f5);
-            color: white;
-            padding: 30px 20px;
-            text-align: center;
-        }
-        .header h1 {
-            margin: 0;
-            font-size: 24px;
-            font-weight: 600;
-        }
-        .header .subtitle {
-            margin: 10px 0 0 0;
-            font-size: 14px;
-            opacity: 0.9;
-        }
-        .content {
-            padding: 30px 20px;
-        }
-        .alert-box {
-            background-color: #fff3cd;
-            border: 1px solid #ffeaa7;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 20px 0;
-            border-left: 4px solid #f39c12;
-        }
-        .alert-box.urgent {
-    {% endif %}
-            background-color: #f8d7da;
-            border-color: #f5c6cb;
-            border-left-color: #e74c3c;
-        }
-        .worker-info {
-            background-color: #f8f9fa;
-            border-radius: 8px;
-            padding: 20px;
-            margin: 20px 0;
-            border-left: 4px solid #1976d2;
-        }
-        .exam-details {
-            background-color: #e8f5e8;
-            border-radius: 8px;
-            padding: 20px;
-            margin: 20px 0;
-            border-left: 4px solid #4caf50;
-        }
-        .info-row {
-            display: flex;
-            justify-content: space-between;
-            margin: 8px 0;
-            padding: 5px 0;
-            border-bottom: 1px solid #eee;
-        }
-        .info-row:last-child {
-            border-bottom: none;
-        }
-        .label {
-            font-weight: 600;
-            color: #555;
-        }
-        .value {
-            color: #333;
-        }
-        .cta-button {
-            display: inline-block;
-            background: linear-gradient(135deg, #4caf50, #66bb6a);
-            color: white;
-            padding: 12px 30px;
-            text-decoration: none;
-            border-radius: 25px;
-            font-weight: 600;
-            margin: 20px 0;
-            text-align: center;
-            transition: transform 0.2s;
-        }
-        .cta-button:hover {
-            transform: translateY(-2px);
-        }
-        .footer {
-            background-color: #f8f9fa;
-            padding: 20px;
-            text-align: center;
-            font-size: 12px;
-            color: #666;
-            border-top: 1px solid #eee;
-        }
-        .logo {
-            width: 60px;
-            height: 60px;
-            background-color: rgba(255, 255, 255, 0.2);
-            border-radius: 50%;
-            margin: 0 auto 15px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-            font-weight: bold;
-        }
-        .status-badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-        .status-pending {
-            background-color: #fff3cd;
-            color: #856404;
-        }
-        .status-urgent {
-            background-color: #f8d7da;
-            color: #721c24;
-        }
-        .status-overdue {
-            background-color: #f5c6cb;
-            color: #721c24;
-        }
-        @media (max-width: 600px) {
-            body {
-                padding: 10px;
-            }
-            .content {
-                padding: 20px 15px;
-            }
-            .info-row {
-                flex-direction: column;
-            }
-            .info-row .label {
-                margin-bottom: 5px;
-            }
-        }
-    </style>
 </head>
-<body>
-    <div class="container">
-        <div class="header">
-            <div class="logo">🏥</div>
-            <h1>ROWL - Sistema de Gestión SST</h1>
-            <p class="subtitle">Recordatorio de Examen Médico Ocupacional</p>
-        </div>
-        
-        <div class="content">
-            <div class="alert-box {% if days_until_exam <= 0 %}urgent{% endif %}">
-                <strong>⚠️ Atención Requerida</strong><br>
-                {% if days_until_exam > 0 %}
-                    Su examen médico ocupacional está programado para <strong>{{ exam_date }}</strong> 
-                    (en {{ days_until_exam }} día{% if days_until_exam != 1 %}s{% endif %}).
-                {% elif days_until_exam == 0 %}
-                    Su examen médico ocupacional está programado para <strong>HOY</strong>.
-                {% else %}
-                    Su examen médico ocupacional estaba programado para <strong>{{ exam_date }}</strong> 
-                    y está <strong>VENCIDO</strong> por {{ days_until_exam|abs }} día{% if days_until_exam|abs != 1 %}s{% endif %}.
-                {% endif %}
-            </div>
+<body style="margin: 0; padding: 0; background-color: #f0f4f8; font-family: Arial, sans-serif; -webkit-font-smoothing: antialiased;">
 
-            <div class="worker-info">
-                <h3 style="margin-top: 0; color: #1976d2;">👤 Información del Trabajador</h3>
-                <div class="info-row">
-                    <span class="label">Nombre:</span>
-                    <span class="value">{{ worker_name }}</span>
-                </div>
-                <div class="info-row">
-                    <span class="label">Documento:</span>
-                    <span class="value">{{ worker_document }}</span>
-                </div>
-                <div class="info-row">
-                    <span class="label">Cargo:</span>
-                    <span class="value">{{ worker_position }}</span>
-                </div>
-            </div>
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f0f4f8; padding: 30px 0;">
+  <tr>
+    <td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.10);">
 
-            <div class="exam-details">
-                <h3 style="margin-top: 0; color: #4caf50;">🩺 Detalles del Examen</h3>
-                <div class="info-row">
-                    <span class="label">Tipo de Examen:</span>
-                    <span class="value">{{ exam_type_label }}</span>
-                </div>
-                <div class="info-row">
-                    <span class="label">Fecha Programada:</span>
-                    <span class="value">{{ exam_date }}</span>
-                </div>
-                <div class="info-row">
-                    <span class="label">Centro Médico:</span>
-                    <span class="value">{{ medical_center|default('Por definir') }}</span>
-                </div>
-                <div class="info-row">
-                    <span class="label">Estado:</span>
-                    <span class="value">
-                        <span class="status-badge {% if days_until_exam <= 0 %}status-overdue{% elif days_until_exam <= 7 %}status-urgent{% else %}status-pending{% endif %}">
-                            {% if days_until_exam <= 0 %}
-                                Vencido
-                            {% elif days_until_exam <= 7 %}
-                                Urgente
-                            {% else %}
-                                Pendiente
-                            {% endif %}
-                        </span>
-                    </span>
-                </div>
-                {% if last_exam_date %}
-                <div class="info-row">
-                    <span class="label">Último Examen Realizado:</span>
-                    <span class="value">{{ last_exam_date }}</span>
-                </div>
-                {% endif %}
-            </div>
+        <!-- HEADER -->
+        {% if days_until_exam <= 0 %}
+        <tr>
+          <td style="background: linear-gradient(135deg, #b71c1c 0%, #e53935 100%); padding: 36px 40px; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 12px;">🚨</div>
+            <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: bold;">Examen Médico Vencido</h1>
+            <p style="margin: 8px 0 0; color: #ffcdd2; font-size: 14px;">Se requiere acción inmediata — Sistema de Gestión SST</p>
+          </td>
+        </tr>
+        {% elif days_until_exam <= 7 %}
+        <tr>
+          <td style="background: linear-gradient(135deg, #e65100 0%, #fb8c00 100%); padding: 36px 40px; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 12px;">⚠️</div>
+            <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: bold;">Examen Próximo a Vencer</h1>
+            <p style="margin: 8px 0 0; color: #ffe0b2; font-size: 14px;">Recordatorio urgente — Sistema de Gestión SST</p>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td style="background: linear-gradient(135deg, #1565c0 0%, #1e88e5 100%); padding: 36px 40px; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 12px;">🏥</div>
+            <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: bold;">Examen Médico Ocupacional</h1>
+            <p style="margin: 8px 0 0; color: #bbdefb; font-size: 14px;">Recordatorio de vencimiento próximo — Sistema de Gestión SST</p>
+          </td>
+        </tr>
+        {% endif %}
 
-            <div style="text-align: center; margin: 30px 0;">
-                <h3 style="color: #333;">📋 Acciones Requeridas</h3>
-                <p style="margin: 15px 0;">Por favor, tome las siguientes acciones:</p>
-                <ul style="text-align: left; max-width: 400px; margin: 0 auto;">
-                    {% if days_until_exam <= 0 %}
-                    <li><strong>Contacte inmediatamente</strong> al área de SST para reprogramar</li>
-                    <li>Coordine una nueva fecha lo antes posible</li>
-                    {% else %}
-                    <li>Confirme su asistencia al examen</li>
-                    <li>Prepare la documentación requerida</li>
-                    <li>Llegue puntualmente a la cita</li>
+        <!-- ALERT BANNER -->
+        <tr>
+          {% if days_until_exam <= 0 %}
+          <td style="background-color: #ffebee; border-left: 5px solid #e53935; padding: 14px 24px;">
+            <p style="margin: 0; font-size: 15px; color: #b71c1c;">
+              <strong>⚠️ VENCIDO:</strong> Su examen estaba programado para <strong>{{ exam_date }}</strong> y lleva
+              <strong>{{ days_until_exam | abs }} día{% if days_until_exam | abs != 1 %}s{% endif %}</strong> de atraso.
+            </p>
+          </td>
+          {% elif days_until_exam == 0 %}
+          <td style="background-color: #fff3e0; border-left: 5px solid #fb8c00; padding: 14px 24px;">
+            <p style="margin: 0; font-size: 15px; color: #e65100;">
+              <strong>📅 HOY:</strong> Su examen médico ocupacional está programado para <strong>hoy</strong>.
+            </p>
+          </td>
+          {% elif days_until_exam <= 7 %}
+          <td style="background-color: #fff8e1; border-left: 5px solid #ffa000; padding: 14px 24px;">
+            <p style="margin: 0; font-size: 15px; color: #e65100;">
+              <strong>🕐 URGENTE:</strong> Su examen vence el <strong>{{ exam_date }}</strong>.
+              Quedan solo <strong>{{ days_until_exam }} día{% if days_until_exam != 1 %}s{% endif %}</strong>.
+            </p>
+          </td>
+          {% else %}
+          <td style="background-color: #e3f2fd; border-left: 5px solid #1e88e5; padding: 14px 24px;">
+            <p style="margin: 0; font-size: 15px; color: #0d47a1;">
+              <strong>📋 AVISO:</strong> Su examen vence el <strong>{{ exam_date }}</strong>.
+              Quedan <strong>{{ days_until_exam }} días</strong>.
+            </p>
+          </td>
+          {% endif %}
+        </tr>
+
+        <!-- BODY -->
+        <tr>
+          <td style="padding: 28px 40px 8px;">
+            <p style="margin: 0 0 20px; font-size: 15px; color: #333;">Estimado/a <strong>{{ worker_name }}</strong>,</p>
+
+            <!-- Worker info card -->
+            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid #1976d2; margin-bottom: 20px;">
+              <tr>
+                <td style="padding: 16px 20px;">
+                  <p style="margin: 0 0 12px; font-size: 14px; font-weight: bold; color: #1976d2; text-transform: uppercase; letter-spacing: 0.5px;">👤 Información del Trabajador</p>
+                  <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                    <tr>
+                      <td style="padding: 5px 0; font-size: 14px; color: #555; font-weight: bold; width: 140px;">Nombre:</td>
+                      <td style="padding: 5px 0; font-size: 14px; color: #333;">{{ worker_full_name }}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 5px 0; font-size: 14px; color: #555; font-weight: bold;">Documento:</td>
+                      <td style="padding: 5px 0; font-size: 14px; color: #333;">{{ worker_document }}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 5px 0; font-size: 14px; color: #555; font-weight: bold;">Cargo:</td>
+                      <td style="padding: 5px 0; font-size: 14px; color: #333;">{{ worker_position }}</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Exam details card -->
+            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f1f8e9; border-radius: 8px; border-left: 4px solid #4caf50; margin-bottom: 20px;">
+              <tr>
+                <td style="padding: 16px 20px;">
+                  <p style="margin: 0 0 12px; font-size: 14px; font-weight: bold; color: #2e7d32; text-transform: uppercase; letter-spacing: 0.5px;">🩺 Detalles del Examen</p>
+                  <table cellpadding="0" cellspacing="0" border="0" width="100%">
+                    <tr>
+                      <td style="padding: 5px 0; font-size: 14px; color: #555; font-weight: bold; width: 180px;">Tipo de Examen:</td>
+                      <td style="padding: 5px 0; font-size: 14px; color: #333;">{{ exam_type_label }}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 5px 0; font-size: 14px; color: #555; font-weight: bold;">Fecha Programada:</td>
+                      <td style="padding: 5px 0; font-size: 14px; color: #333;">{{ exam_date }}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 5px 0; font-size: 14px; color: #555; font-weight: bold;">Periodicidad:</td>
+                      <td style="padding: 5px 0; font-size: 14px; color: #333;">{{ periodicidad }}</td>
+                    </tr>
+                    {% if last_exam_date %}
+                    <tr>
+                      <td style="padding: 5px 0; font-size: 14px; color: #555; font-weight: bold;">Último Examen:</td>
+                      <td style="padding: 5px 0; font-size: 14px; color: #333;">{{ last_exam_date }}</td>
+                    </tr>
                     {% endif %}
-                    <li>Mantenga actualizada su información de contacto</li>
-                </ul>
-                
-                {% if system_url %}
-                <a href="{{ system_url }}" class="cta-button">
-                    🔗 Acceder al Sistema ROWL
-                </a>
-                {% endif %}
-                
-                <!-- Botón de confirmación de recepción -->
-                {% if api_base_url and exam_id and worker_id %}
-                <div style="margin: 20px 0; padding: 15px; background-color: #f0f8ff; border-radius: 8px; border-left: 4px solid #2196f3;">
-                    <h4 style="margin-top: 0; color: #2196f3;">✅ Confirmar Recepción</h4>
-                    <p style="margin: 10px 0; font-size: 14px;">Si ya recibió esta notificación y desea dejar de recibir recordatorios para este examen, haga clic en el botón de abajo:</p>
-                    <a href="{{ api_base_url }}/api/occupational-exams/acknowledge-notification/{{ exam_id }}?worker_id={{ worker_id }}&notification_type={% if days_until_exam <= 0 %}overdue{% elif days_until_exam <= 7 %}reminder{% else %}first_notification{% endif %}" 
-                       class="cta-button" 
-                       style="background: linear-gradient(135deg, #2196f3, #42a5f5); font-size: 14px; padding: 10px 20px;">
-                        ✅ Marcar como Recibido
-                    </a>
-                    <p style="margin: 10px 0 0 0; font-size: 12px; color: #666;">Al hacer clic, confirmará que recibió esta notificación y no recibirá más recordatorios del mismo tipo para este examen.</p>
-                </div>
-                {% endif %}
-            </div>
+                    <tr>
+                      <td style="padding: 5px 0; font-size: 14px; color: #555; font-weight: bold;">Estado:</td>
+                      <td style="padding: 5px 0;">
+                        {% if days_until_exam <= 0 %}
+                        <span style="display: inline-block; background-color: #ffebee; color: #c62828; border: 1px solid #ef9a9a; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: bold;">VENCIDO</span>
+                        {% elif days_until_exam <= 7 %}
+                        <span style="display: inline-block; background-color: #fff3e0; color: #e65100; border: 1px solid #ffcc80; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: bold;">URGENTE</span>
+                        {% else %}
+                        <span style="display: inline-block; background-color: #e3f2fd; color: #1565c0; border: 1px solid #90caf9; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: bold;">PENDIENTE</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
 
-            <div style="background-color: #e3f2fd; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                <h4 style="margin-top: 0; color: #1976d2;">💡 Información Importante</h4>
-                <ul style="margin: 10px 0; padding-left: 20px;">
+            <!-- Actions required -->
+            <p style="margin: 0 0 10px; font-size: 15px; font-weight: bold; color: #1a237e;">📋 Acciones Requeridas</p>
+            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom: 20px;">
+              {% if days_until_exam <= 0 %}
+              <tr>
+                <td style="padding: 6px 0; vertical-align: top; width: 26px; font-size: 16px;">🔴</td>
+                <td style="padding: 6px 0; font-size: 14px; color: #444; line-height: 1.5;"><strong>Contacte inmediatamente</strong> al área de SST para reprogramar</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; vertical-align: top; font-size: 16px;">📞</td>
+                <td style="padding: 6px 0; font-size: 14px; color: #444; line-height: 1.5;">Coordine una nueva fecha lo antes posible</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td style="padding: 6px 0; vertical-align: top; width: 26px; font-size: 16px;">✅</td>
+                <td style="padding: 6px 0; font-size: 14px; color: #444; line-height: 1.5;">Confirme su asistencia al examen</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; vertical-align: top; font-size: 16px;">📄</td>
+                <td style="padding: 6px 0; font-size: 14px; color: #444; line-height: 1.5;">Prepare la documentación requerida</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; vertical-align: top; font-size: 16px;">⏰</td>
+                <td style="padding: 6px 0; font-size: 14px; color: #444; line-height: 1.5;">Llegue puntualmente a la cita</td>
+              </tr>
+              {% endif %}
+              <tr>
+                <td style="padding: 6px 0; vertical-align: top; font-size: 16px;">📱</td>
+                <td style="padding: 6px 0; font-size: 14px; color: #444; line-height: 1.5;">Mantenga actualizada su información de contacto</td>
+              </tr>
+            </table>
+
+            <!-- Info box -->
+            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #e3f2fd; border-radius: 8px; margin-bottom: 28px;">
+              <tr>
+                <td style="padding: 14px 18px;">
+                  <p style="margin: 0 0 8px; font-size: 14px; font-weight: bold; color: #1976d2;">💡 Información Importante</p>
+                  <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: #444; line-height: 1.8;">
                     <li>Los exámenes médicos ocupacionales son <strong>obligatorios</strong> según la normativa vigente</li>
                     <li>Su periodicidad depende del nivel de riesgo de su cargo</li>
                     <li>El incumplimiento puede afectar su vinculación laboral</li>
                     <li>Para dudas o reprogramación, contacte al área de SST</li>
-                </ul>
-            </div>
-        </div>
-        
-        <div class="footer">
-            <p><strong>ROWL - Sistema de Gestión de Seguridad y Salud en el Trabajo</strong></p>
-            <p>Este es un mensaje automático del sistema. Por favor, no responda a este correo.</p>
-            <p>Generado el {{ current_date }} a las {{ current_time }}</p>
+                  </ul>
+                </td>
+              </tr>
+            </table>
+
+          </td>
+        </tr>
+
+        <!-- ACKNOWLEDGE BUTTON -->
+        {% if api_base_url and exam_id and worker_id %}
+        <tr>
+          <td style="padding: 0 40px 28px;">
+            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f0f8ff; border-radius: 8px; border: 1px solid #bbdefb;">
+              <tr>
+                <td style="padding: 20px 24px;">
+                  <p style="margin: 0 0 6px; font-size: 15px; font-weight: bold; color: #1565c0;">✅ Confirmar Recepción de esta Notificación</p>
+                  <p style="margin: 0 0 16px; font-size: 13px; color: #555; line-height: 1.6;">
+                    Al confirmar, quedará registrado que usted recibió este aviso y no recibirá más recordatorios
+                    del mismo tipo para este examen.
+                  </p>
+                  <a href="{{ api_base_url }}/api/v1/occupational-exams/acknowledge-notification/{{ exam_id }}?worker_id={{ worker_id }}&notification_type={% if days_until_exam <= 0 %}overdue{% elif days_until_exam <= 7 %}reminder{% else %}first_notification{% endif %}"
+                     style="display: inline-block; background: linear-gradient(135deg, #1565c0, #1e88e5); color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: bold;">
+                    ✅ Confirmar Recepción
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        {% endif %}
+
+        <!-- FOOTER -->
+        <tr>
+          <td style="background-color: #f5f5f5; padding: 18px 40px; border-top: 1px solid #e0e0e0; text-align: center;">
+            <p style="margin: 0 0 4px; font-size: 12px; color: #9e9e9e;"><strong>ROWL — Sistema de Gestión de Seguridad y Salud en el Trabajo</strong></p>
+            <p style="margin: 0 0 4px; font-size: 12px; color: #9e9e9e;">Generado el {{ current_date }} a las {{ current_time }}</p>
+            <p style="margin: 0; font-size: 12px; color: #9e9e9e;">Este es un mensaje automático. Por favor, no responda a este correo.</p>
             {% if contact_email %}
-            <p>Para soporte técnico: <a href="mailto:{{ contact_email }}">{{ contact_email }}</a></p>
+            <p style="margin: 6px 0 0; font-size: 12px; color: #9e9e9e;">
+              Soporte: <a href="mailto:{{ contact_email }}" style="color: #1e88e5; text-decoration: none;">{{ contact_email }}</a>
+            </p>
             {% endif %}
-        </div>
-    </div>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
+
 </body>
 </html>

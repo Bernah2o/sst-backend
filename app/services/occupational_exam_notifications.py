@@ -274,8 +274,8 @@ Sistema de Gestión SST
                 "current_time": datetime.now().strftime('%H:%M:%S'),
                 "system_url": getattr(settings, 'FRONTEND_URL', None),
                 "contact_email": getattr(settings, 'SUPPORT_EMAIL', None),
-                # Variables para el botón de confirmación
-                "api_base_url": getattr(settings, 'API_BASE_URL', None),
+                # Variables para el botón de confirmación de recepción
+                "api_base_url": settings.backend_url,
                 "exam_id": latest_exam.id if latest_exam else None,
                 "worker_id": worker.id
             }

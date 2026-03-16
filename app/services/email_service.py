@@ -119,6 +119,70 @@ class EmailService:
         
         return EmailService.send_email(to_email, subject, html_content)
     @staticmethod
+    def send_course_completion_email(to_email: str, user_name: str, course_title: str, score: float, passing_score: float):
+        """Envía un correo de felicitaciones cuando el trabajador completa un curso y supera la calificación exigida."""
+        try:
+            subject = f"¡Felicitaciones por completar el curso: {course_title}!"
+
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Curso Completado</title>
+            </head>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; margin: 0; padding: 0;">
+                <div style="max-width: 600px; margin: 30px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <!-- Header -->
+                    <div style="background-color: #1a73e8; padding: 30px 40px; text-align: center;">
+                        <h1 style="color: #ffffff; margin: 0; font-size: 26px;">🎓 ¡Curso Completado!</h1>
+                    </div>
+
+                    <!-- Body -->
+                    <div style="padding: 35px 40px;">
+                        <p style="font-size: 16px;">Estimado/a <strong>{user_name}</strong>,</p>
+
+                        <p style="font-size: 15px;">
+                            Nos complace informarle que ha completado exitosamente el curso:
+                        </p>
+
+                        <div style="background-color: #e8f0fe; border-left: 4px solid #1a73e8; padding: 15px 20px; margin: 20px 0; border-radius: 4px;">
+                            <p style="margin: 0; font-size: 18px; font-weight: bold; color: #1a73e8;">{course_title}</p>
+                        </div>
+
+                        <p style="font-size: 15px;">Ha obtenido una calificación de <strong>{score:.1f}%</strong>, superando el mínimo requerido de <strong>{passing_score:.1f}%</strong>.</p>
+
+                        <p style="font-size: 15px;">
+                            Este logro refleja su compromiso con el aprendizaje continuo y el cumplimiento de las normas de Seguridad y Salud en el Trabajo (SST).
+                            Le instamos a seguir aplicando los conocimientos adquiridos en su labor diaria.
+                        </p>
+
+                        <p style="font-size: 15px;">¡Muchas felicitaciones por este importante logro!</p>
+                    </div>
+
+                    <!-- Footer -->
+                    <div style="background-color: #f0f0f0; padding: 20px 40px; text-align: center; border-top: 1px solid #e0e0e0;">
+                        <p style="font-size: 12px; color: #888; margin: 0;">
+                            Este es un mensaje automático del Sistema de Gestión SST.<br>
+                            Por favor, no responda a este correo.
+                        </p>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+
+            return EmailService.send_email(
+                to_email,
+                subject,
+                html_content,
+                cc=["bernardino.deaguas@gmail.com"]
+            )
+        except Exception as e:
+            logging.error(f"Error al enviar correo de finalización de curso: {e}")
+            return False
+
+    @staticmethod
     def send_homework_reminder(to_email: str, user_name: str, due_date: str = "Lo antes posible"):
         """Envía un recordatorio para la autoevaluación de trabajo en casa."""
         try:

@@ -31,6 +31,9 @@ class Settings:
         
         # Configuración del frontend
         self.frontend_url = os.getenv("FRONTEND_URL", os.getenv("REACT_APP_API_URL"))
+
+        # URL base del backend (para enlaces internos en emails, ej. acknowledge-notification)
+        self.backend_url = os.getenv("BACKEND_URL", os.getenv("REACT_APP_API_URL", ""))
         
         # Configuración de la API del frontend
         self.react_app_api_url = os.getenv("REACT_APP_API_URL")

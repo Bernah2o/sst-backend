@@ -67,6 +67,7 @@ def check_and_complete_course(db: Session, user_id: int, course_id: int):
 
     # Check evaluation if surveys are completed
     evaluation_completed = True
+    best_passed_evaluation = None
     if surveys_completed:
         course_evaluations = (
             db.query(Evaluation)
@@ -79,8 +80,9 @@ def check_and_complete_course(db: Session, user_id: int, course_id: int):
             .all()
         )
 
-        if course_evaluations:  # If there are evaluations, check if completed
+        if course_evaluations:  # If there are evaluations, check if completed and passed
             evaluation_completed = False
+            best_passed_evaluation = None
             for evaluation in course_evaluations:
                 completed_evaluation = (
                     db.query(UserEvaluation)
@@ -89,18 +91,44 @@ def check_and_complete_course(db: Session, user_id: int, course_id: int):
                             UserEvaluation.user_id == user_id,
                             UserEvaluation.evaluation_id == evaluation.id,
                             UserEvaluation.status == UserEvaluationStatus.COMPLETED,
+                            UserEvaluation.passed == True,
                         )
                     )
                     .first()
                 )
                 if completed_evaluation:
                     evaluation_completed = True
+                    best_passed_evaluation = completed_evaluation
                     break
 
     # Complete enrollment if all requirements are met
     if surveys_completed and evaluation_completed:
         enrollment.complete_enrollment()
         db.commit()
+
+        # Send congratulations email to the worker
+        try:
+            from app.models.course import Course as CourseModel
+            from app.services.email_service import EmailService
+
+            user = db.query(User).filter(User.id == user_id).first()
+            course = db.query(CourseModel).filter(CourseModel.id == course_id).first()
+
+            if user and user.email and course:
+                score = best_passed_evaluation.percentage if best_passed_evaluation and best_passed_evaluation.percentage is not None else 0.0
+                passing_score = course.passing_score if course.passing_score is not None else 70.0
+                full_name = f"{user.first_name} {user.last_name}".strip()
+                EmailService.send_course_completion_email(
+                    to_email=user.email,
+                    user_name=full_name,
+                    course_title=course.title,
+                    score=score,
+                    passing_score=passing_score,
+                )
+        except Exception as e:
+            import logging
+            logging.error(f"Error al enviar correo de felicitaciones por curso completado: {e}")
+
         return True
 
     return False

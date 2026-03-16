@@ -1246,7 +1246,7 @@ async def get_exam_certificate(
     )
 
 
-@router.post("/acknowledge-notification/{exam_id}", response_model=MessageResponse)
+@router.get("/acknowledge-notification/{exam_id}", response_model=MessageResponse)
 async def acknowledge_exam_notification(
     exam_id: int,
     worker_id: int = Query(..., description="ID del trabajador"),

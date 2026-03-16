@@ -251,6 +251,7 @@ yarn-error.log*
 .coverage
 .pytest_cache/
 htmlcov/
+test/
 
 # Alembic
 # Keep alembic.ini and versions/ but ignore any generated migration files if needed

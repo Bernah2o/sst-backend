@@ -4,105 +4,152 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ subject }}</title>
-    {% if external_css is defined %}
-    <style>
-        {{ external_css }}
-    </style>
-    {% else %}
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .header {
-            background-color: {% if is_overdue %}#f44336{% elif notification_type == 'anniversary' %}#4CAF50{% else %}#2196F3{% endif %};
-            color: white;
-            padding: 15px;
-            text-align: center;
-            border-radius: 5px 5px 0 0;
-        }
-        .content {
-            padding: 20px;
-            border: 1px solid #ddd;
-            border-top: none;
-            border-radius: 0 0 5px 5px;
-        }
-        .footer {
-            margin-top: 20px;
-            font-size: 12px;
-            text-align: center;
-            color: #777;
-        }
-        .button {
-            display: inline-block;
-            background-color: {% if is_overdue %}#f44336{% elif notification_type == 'anniversary' %}#4CAF50{% else %}#2196F3{% endif %};
-            color: white;
-            padding: 10px 20px;
-            text-decoration: none;
-            border-radius: 5px;
-            margin-top: 15px;
-        }
-        .anniversary-badge {
-            background-color: #4CAF50;
-            color: white;
-            padding: 5px 10px;
-            border-radius: 15px;
-            font-size: 14px;
-            display: inline-block;
-    {% endif %}
-            margin-bottom: 10px;
-        }
-    </style>
 </head>
-<body>
-    <div class="header">
-        {% if notification_type == 'anniversary' %}
-            <h2>🎉 ¡Felicidades por tu Aniversario!</h2>
-        {% elif is_overdue %}
-            <h2>⚠️ Reinducción Vencida</h2>
-        {% else %}
-            <h2>📚 Reinducción Anual Requerida</h2>
-        {% endif %}
-    </div>
-    <div class="content">
-        {% if notification_type == 'anniversary' %}
-            <div class="anniversary-badge">{{ years_in_company }} año{{ 's' if years_in_company > 1 else '' }} en la empresa</div>
-            <p>Estimado/a <strong>{{ worker_name }}</strong>,</p>
-            <p>¡Felicidades! Hoy {{ anniversary_date }} cumples <strong>{{ years_in_company }} año{{ 's' if years_in_company > 1 else '' }}</strong> trabajando con nosotros.</p>
-            <p>Como parte de nuestro compromiso con la seguridad y el desarrollo profesional, es necesario que completes tu <strong>curso de reinducción anual</strong>.</p>
-        {% else %}
-            <p>Estimado/a <strong>{{ worker_name }}</strong>,</p>
-            {% if is_overdue %}
-                <p><strong>URGENTE:</strong> Tu reinducción anual del año {{ year }} está vencida desde el {{ due_date }}. Han pasado {{ days_left | abs }} días desde la fecha límite.</p>
-            {% elif days_left <= 7 %}
-                <p><strong>RECORDATORIO:</strong> Tu reinducción anual del año {{ year }} debe completarse antes del {{ due_date }}. Quedan solo {{ days_left }} día{{ 's' if days_left != 1 else '' }}.</p>
-            {% else %}
-                <p>Te recordamos que tu reinducción anual del año {{ year }} debe completarse antes del {{ due_date }}. Quedan {{ days_left }} días.</p>
-            {% endif %}
-        {% endif %}
-        
-        <h3>¿Qué necesitas hacer?</h3>
-        <ul>
-            <li>Acceder al sistema de capacitación</li>
-            <li>Completar el curso de reinducción asignado</li>
-            <li>Aprobar la evaluación correspondiente</li>
-        </ul>
-        
-        {% if course_name %}
-            <p><strong>Curso asignado:</strong> {{ course_name }}</p>
-        {% endif %}
-        
-        <p>Si tienes alguna pregunta o necesitas ayuda, no dudes en contactar al departamento de Recursos Humanos.</p>
-        
-        <a href="{{ system_url }}" class="button">Acceder al Sistema</a>
-    </div>
-    <div class="footer">
-        <p>Este es un mensaje automático del Sistema de Gestión de Capacitación.</p>
-        <p>Por favor, no respondas a este correo.</p>
-    </div>
+<body style="margin: 0; padding: 0; background-color: #f0f4f8; font-family: Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f0f4f8; padding: 30px 0;">
+        <tr>
+            <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.10);">
+
+                    <!-- HEADER -->
+                    {% if notification_type == 'anniversary' %}
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #2e7d32 0%, #43a047 100%); padding: 36px 40px; text-align: center;">
+                            <div style="font-size: 48px; margin-bottom: 10px;">🎉</div>
+                            <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: bold; letter-spacing: 0.5px;">¡Felicidades por tu Aniversario!</h1>
+                            <p style="margin: 8px 0 0; color: #c8e6c9; font-size: 14px;">Sistema de Seguridad y Salud en el Trabajo</p>
+                        </td>
+                    </tr>
+                    {% elif is_overdue %}
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #b71c1c 0%, #e53935 100%); padding: 36px 40px; text-align: center;">
+                            <div style="font-size: 48px; margin-bottom: 10px;">⚠️</div>
+                            <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: bold; letter-spacing: 0.5px;">Reinducción Vencida</h1>
+                            <p style="margin: 8px 0 0; color: #ffcdd2; font-size: 14px;">Se requiere acción inmediata</p>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #1565c0 0%, #1e88e5 100%); padding: 36px 40px; text-align: center;">
+                            <div style="font-size: 48px; margin-bottom: 10px;">📚</div>
+                            <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: bold; letter-spacing: 0.5px;">Reinducción Anual Requerida</h1>
+                            <p style="margin: 8px 0 0; color: #bbdefb; font-size: 14px;">Sistema de Seguridad y Salud en el Trabajo</p>
+                        </td>
+                    </tr>
+                    {% endif %}
+
+                    <!-- BODY -->
+                    <tr>
+                        <td style="padding: 36px 40px;">
+
+                            {% if notification_type == 'anniversary' %}
+                                <!-- Anniversary badge -->
+                                <div style="text-align: center; margin-bottom: 24px;">
+                                    <span style="display: inline-block; background-color: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; padding: 6px 18px; border-radius: 20px; font-size: 14px; font-weight: bold;">
+                                        🏅 {{ years_in_company }} año{{ 's' if years_in_company > 1 else '' }} en la empresa
+                                    </span>
+                                </div>
+
+                                <p style="margin: 0 0 16px; font-size: 16px; color: #333;">Estimado/a <strong>{{ worker_name }}</strong>,</p>
+                                <p style="margin: 0 0 16px; font-size: 15px; color: #444; line-height: 1.7;">
+                                    ¡Felicidades! Hoy <strong>{{ anniversary_date }}</strong> cumples <strong>{{ years_in_company }} año{{ 's' if years_in_company > 1 else '' }}</strong> trabajando con nosotros. Tu compromiso y dedicación son fundamentales para nuestra organización.
+                                </p>
+                                <p style="margin: 0 0 24px; font-size: 15px; color: #444; line-height: 1.7;">
+                                    Como parte de nuestro compromiso con la seguridad y el desarrollo profesional, es necesario que completes tu <strong>curso de reinducción anual</strong>.
+                                </p>
+
+                            {% else %}
+                                <p style="margin: 0 0 16px; font-size: 16px; color: #333;">Estimado/a <strong>{{ worker_name }}</strong>,</p>
+
+                                {% if is_overdue %}
+                                <!-- Overdue alert box -->
+                                <div style="background-color: #ffebee; border-left: 5px solid #e53935; padding: 16px 20px; border-radius: 4px; margin-bottom: 24px;">
+                                    <p style="margin: 0; font-size: 15px; color: #c62828;">
+                                        <strong>⚠️ URGENTE:</strong> Tu reinducción anual del año <strong>{{ year }}</strong> está vencida desde el <strong>{{ due_date }}</strong>.
+                                        Han transcurrido <strong>{{ days_left | abs }} días</strong> desde la fecha límite.
+                                    </p>
+                                </div>
+                                {% elif days_left <= 7 %}
+                                <!-- Urgent reminder box -->
+                                <div style="background-color: #fff8e1; border-left: 5px solid #ffa000; padding: 16px 20px; border-radius: 4px; margin-bottom: 24px;">
+                                    <p style="margin: 0; font-size: 15px; color: #e65100;">
+                                        <strong>🕐 RECORDATORIO:</strong> Tu reinducción anual del año <strong>{{ year }}</strong> debe completarse antes del <strong>{{ due_date }}</strong>.
+                                        Quedan solo <strong>{{ days_left }} día{{ 's' if days_left != 1 else '' }}</strong>.
+                                    </p>
+                                </div>
+                                {% else %}
+                                <!-- Standard reminder box -->
+                                <div style="background-color: #e3f2fd; border-left: 5px solid #1e88e5; padding: 16px 20px; border-radius: 4px; margin-bottom: 24px;">
+                                    <p style="margin: 0; font-size: 15px; color: #0d47a1;">
+                                        Te recordamos que tu reinducción anual del año <strong>{{ year }}</strong> debe completarse antes del <strong>{{ due_date }}</strong>.
+                                        Quedan <strong>{{ days_left }} días</strong> para realizarla.
+                                    </p>
+                                </div>
+                                {% endif %}
+                            {% endif %}
+
+                            <!-- What to do section -->
+                            <h3 style="margin: 0 0 12px; font-size: 16px; color: #1a237e; border-bottom: 2px solid #e8eaf6; padding-bottom: 8px;">¿Qué necesitas hacer?</h3>
+                            <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom: 24px;">
+                                <tr>
+                                    <td style="padding: 8px 0; vertical-align: top; width: 28px; font-size: 18px;">✅</td>
+                                    <td style="padding: 8px 0; font-size: 15px; color: #444; line-height: 1.5;">Acceder al sistema de capacitación</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; vertical-align: top; width: 28px; font-size: 18px;">📖</td>
+                                    <td style="padding: 8px 0; font-size: 15px; color: #444; line-height: 1.5;">Completar el curso de reinducción asignado</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0; vertical-align: top; width: 28px; font-size: 18px;">🏆</td>
+                                    <td style="padding: 8px 0; font-size: 15px; color: #444; line-height: 1.5;">Aprobar la evaluación correspondiente</td>
+                                </tr>
+                            </table>
+
+                            {% if course_name %}
+                            <!-- Assigned course -->
+                            <div style="background-color: #f5f5f5; border-radius: 6px; padding: 14px 18px; margin-bottom: 24px;">
+                                <p style="margin: 0; font-size: 14px; color: #777; text-transform: uppercase; letter-spacing: 0.5px;">Curso asignado</p>
+                                <p style="margin: 4px 0 0; font-size: 16px; font-weight: bold; color: #212121;">{{ course_name }}</p>
+                            </div>
+                            {% endif %}
+
+                            <p style="margin: 0 0 28px; font-size: 14px; color: #666; line-height: 1.6;">
+                                Si tienes alguna pregunta o necesitas ayuda, no dudes en contactar al departamento de Recursos Humanos o Seguridad y Salud en el Trabajo.
+                            </p>
+
+                            <!-- CTA Button -->
+                            <div style="text-align: center;">
+                                {% if notification_type == 'anniversary' %}
+                                <a href="{{ system_url }}" style="display: inline-block; background: linear-gradient(135deg, #2e7d32, #43a047); color: #ffffff; padding: 14px 36px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold; letter-spacing: 0.3px; box-shadow: 0 3px 8px rgba(46,125,50,0.35);">
+                                    Iniciar Reinducción
+                                </a>
+                                {% elif is_overdue %}
+                                <a href="{{ system_url }}" style="display: inline-block; background: linear-gradient(135deg, #b71c1c, #e53935); color: #ffffff; padding: 14px 36px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold; letter-spacing: 0.3px; box-shadow: 0 3px 8px rgba(183,28,28,0.35);">
+                                    Regularizar Ahora
+                                </a>
+                                {% else %}
+                                <a href="{{ system_url }}" style="display: inline-block; background: linear-gradient(135deg, #1565c0, #1e88e5); color: #ffffff; padding: 14px 36px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold; letter-spacing: 0.3px; box-shadow: 0 3px 8px rgba(21,101,192,0.35);">
+                                    Acceder al Sistema
+                                </a>
+                                {% endif %}
+                            </div>
+
+                        </td>
+                    </tr>
+
+                    <!-- FOOTER -->
+                    <tr>
+                        <td style="background-color: #f5f5f5; padding: 20px 40px; border-top: 1px solid #e0e0e0; text-align: center;">
+                            <p style="margin: 0 0 4px; font-size: 12px; color: #9e9e9e;">Este es un mensaje automático del Sistema de Gestión de Capacitación SST.</p>
+                            <p style="margin: 0; font-size: 12px; color: #9e9e9e;">Por favor, no respondas a este correo.</p>
+                        </td>
+                    </tr>
+
+                </table>
+            </td>
+        </tr>
+    </table>
+
 </body>
 </html>

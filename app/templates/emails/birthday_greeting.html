@@ -4,65 +4,74 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🎉 ¡Feliz Cumpleaños!</title>
-  <style>
-    body { font-family: Arial, Helvetica, sans-serif; background: #f7f9fc; color: #2c3e50; margin: 0; padding: 0; }
-    .container { max-width: 640px; margin: 0 auto; background: #ffffff; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); overflow: hidden; }
-    .header { background: linear-gradient(135deg, #1e90ff 0%, #00c6ff 100%); color: #fff; text-align: center; padding: 28px 20px; }
-    .header h1 { margin: 0; font-size: 26px; }
-    .content { padding: 24px; }
-    .hero { text-align: center; margin: 8px 0 18px; }
-    .hero-emoji { font-size: 42px; }
-    .name { font-weight: 700; color: #1e3a8a; }
-    .card { background: #f0f7ff; border: 1px solid #dbeafe; border-radius: 8px; padding: 16px; margin: 16px 0; }
-    .cta { text-align: center; margin-top: 22px; }
-    .button { background-color: #2563eb; color: #fff; padding: 12px 22px; border-radius: 8px; text-decoration: none; display: inline-block; }
-    .footer { font-size: 12px; color: #64748b; padding: 18px 24px; text-align: center; }
-    .divider { border: none; border-top: 1px solid #e5e7eb; margin: 20px 0; }
-    .signature { margin-top: 10px; font-weight: 600; color: #334155; }
-  </style>
 </head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>🎉 ¡Feliz Cumpleaños!</h1>
-    </div>
-    <div class="content">
-      <div class="hero">
-        <div class="hero-emoji">🎂✨🎈</div>
-      </div>
-      <p>
-        Hola <span class="name">{{ worker_name }}</span>,
-      </p>
-      <p>
-        En este día especial queremos desearte un <strong>muy feliz cumpleaños</strong> 🥳.
-        Gracias por tu compromiso y por aportar tu energía y talento a nuestra organización.
-      </p>
-      <div class="card">
-        <p style="margin: 0 0 12px 0;">
-          Que este nuevo año de vida esté lleno de salud, logros y momentos memorables.
-        </p>
-        <p style="margin: 0;">Cuenta siempre con nosotros para seguir construyendo juntos un entorno seguro y saludable.</p>
-      </div>
-      <p>
-        Este mensaje es emitido desde el <strong>área de SST de Bernardino de Aguas</strong> 💧,
-        con aprecio y gratitud por tu trabajo.
-      </p>
+<body style="margin: 0; padding: 0; background-color: #f0f4f8; font-family: Arial, Helvetica, sans-serif; -webkit-font-smoothing: antialiased;">
 
-      {% if system_url %}
-      <div class="cta">
-        <a class="button" href="{{ system_url }}" target="_blank" rel="noopener noreferrer">Ir al Sistema SST</a>
-      </div>
-      {% endif %}
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f0f4f8; padding: 30px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.10);">
 
-      <hr class="divider" />
-      <div class="footer">
-        <div>Este es un mensaje automático del Sistema SST. Por favor, no respondas a este correo.</div>
-        {% if contact_email %}
-        <div style="margin-top: 6px;">Soporte: <a href="mailto:{{ contact_email }}">{{ contact_email }}</a></div>
-        {% endif %}
-        <div class="signature">Área de Seguridad y Salud en el Trabajo (SST) – Bernardino de Aguas</div>
-      </div>
-    </div>
-  </div>
+          <!-- HEADER -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 60%, #38bdf8 100%); padding: 40px 40px 32px; text-align: center;">
+              <div style="font-size: 52px; margin-bottom: 14px; letter-spacing: 4px;">🎂🎉🎈</div>
+              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: bold; letter-spacing: 0.5px;">¡Feliz Cumpleaños!</h1>
+              <p style="margin: 8px 0 0; color: #bfdbfe; font-size: 14px;">Un día especial merece un saludo especial</p>
+            </td>
+          </tr>
+
+          <!-- BODY -->
+          <tr>
+            <td style="padding: 36px 40px 28px;">
+
+              <p style="margin: 0 0 18px; font-size: 16px; color: #1e293b;">
+                Hola <strong style="color: #1e3a8a;">{{ worker_name }}</strong>,
+              </p>
+
+              <p style="margin: 0 0 18px; font-size: 15px; color: #475569; line-height: 1.75;">
+                En este día tan especial, todo el equipo de <strong>SST Bernardino de Aguas</strong> quiere hacerte llegar nuestras más sinceras felicitaciones por tu cumpleaños. 🥳
+              </p>
+
+              <!-- Greeting card -->
+              <div style="background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%); border: 1px solid #bfdbfe; border-radius: 10px; padding: 22px 24px; margin: 22px 0; text-align: center;">
+                <p style="margin: 0 0 10px; font-size: 22px;">🌟</p>
+                <p style="margin: 0 0 10px; font-size: 16px; color: #1e3a8a; font-weight: bold; line-height: 1.5;">
+                  Que este nuevo año de vida esté colmado de salud, alegría y grandes logros.
+                </p>
+                <p style="margin: 0; font-size: 14px; color: #64748b; line-height: 1.6;">
+                  Tu compromiso y dedicación son un pilar fundamental de nuestra organización.<br>
+                  ¡Gracias por todo lo que aportas cada día!
+                </p>
+              </div>
+
+              <p style="margin: 0 0 6px; font-size: 15px; color: #475569; line-height: 1.75;">
+                Con cariño y aprecio,
+              </p>
+              <p style="margin: 0; font-size: 15px; color: #1e3a8a; font-weight: bold;">
+                Área de Seguridad y Salud en el Trabajo 💧<br>
+                <span style="font-weight: normal; color: #64748b; font-size: 14px;">Bernardino de Aguas</span>
+              </p>
+
+            </td>
+          </tr>
+
+          <!-- FOOTER -->
+          <tr>
+            <td style="background-color: #f8fafc; padding: 18px 40px; border-top: 1px solid #e2e8f0; text-align: center;">
+              <p style="margin: 0 0 4px; font-size: 12px; color: #94a3b8;">Este es un mensaje automático del Sistema SST. Por favor, no respondas a este correo.</p>
+              {% if contact_email %}
+              <p style="margin: 4px 0 0; font-size: 12px; color: #94a3b8;">
+                Soporte: <a href="mailto:{{ contact_email }}" style="color: #2563eb; text-decoration: none;">{{ contact_email }}</a>
+              </p>
+              {% endif %}
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
 </body>
 </html>
