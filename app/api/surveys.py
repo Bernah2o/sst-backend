@@ -704,46 +704,35 @@ async def get_my_surveys(
         user_enrollments = db.query(Enrollment).filter(
             Enrollment.user_id == current_user.id
         ).all()
-        
-        if not user_enrollments:
-            return JSONResponse(
-                content={
-                    "items": [],
-                    "total": 0,
-                    "page": 1,
-                    "size": 100,
-                    "pages": 1,
-                    "has_next": False,
-                    "has_prev": False
-                }
-            )
-        
+
         # Get course IDs from enrollments
         course_ids = [enrollment.course_id for enrollment in user_enrollments]
-        
-        # Get published surveys for these courses with course information
-        course_surveys = db.query(Survey).options(joinedload(Survey.course)).filter(
-            Survey.course_id.in_(course_ids),
-            Survey.status == SurveyStatus.PUBLISHED
-        ).all()
-        
+
+        # Get published and closed surveys for these courses
+        course_surveys = []
+        if course_ids:
+            course_surveys = db.query(Survey).options(joinedload(Survey.course)).filter(
+                Survey.course_id.in_(course_ids),
+                Survey.status.in_([SurveyStatus.PUBLISHED, SurveyStatus.CLOSED])
+            ).all()
+
         # Get user's survey submissions to find assigned general surveys
         user_surveys = db.query(UserSurvey).filter(
             UserSurvey.user_id == current_user.id
         ).all()
-        
-        # Get general surveys that are assigned to this user
+
+        # Get general surveys that are directly assigned to this user
+        course_survey_ids = {cs.id for cs in course_surveys}
         assigned_general_survey_ids = [
-            us.survey_id for us in user_surveys 
-            if us.survey_id not in [cs.id for cs in course_surveys]
+            us.survey_id for us in user_surveys
+            if us.survey_id not in course_survey_ids
         ]
-        
+
         general_surveys = []
         if assigned_general_survey_ids:
             general_surveys = db.query(Survey).options(joinedload(Survey.course)).filter(
                 Survey.id.in_(assigned_general_survey_ids),
-                Survey.course_id.is_(None),  # Only general surveys
-                Survey.status == SurveyStatus.PUBLISHED
+                Survey.status.in_([SurveyStatus.PUBLISHED, SurveyStatus.CLOSED])
             ).all()
         
         # Combine course surveys and general surveys

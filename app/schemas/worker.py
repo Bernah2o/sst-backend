@@ -218,6 +218,7 @@ class WorkerList(BaseModel):
     is_active: bool
     assigned_role: UserRole
     is_registered: bool
+    user_id: Optional[int] = None
     photo: Optional[str] = None
     area_id: Optional[int] = None
     area_name: Optional[str] = None
