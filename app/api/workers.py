@@ -581,9 +581,12 @@ async def update_worker(
     update_data = worker_data.dict(exclude_unset=True)
 
     if "cargo_id" in update_data or "position" in update_data:
+        cargo_id_to_resolve = update_data.get("cargo_id", worker.cargo_id)
+        if "position" in update_data and "cargo_id" not in update_data:
+            cargo_id_to_resolve = None
         resolved_cargo_id, resolved_position = _resolve_cargo_id_and_position(
             db,
-            update_data.get("cargo_id", worker.cargo_id),
+            cargo_id_to_resolve,
             update_data.get("position", worker.position),
         )
         update_data["cargo_id"] = resolved_cargo_id
