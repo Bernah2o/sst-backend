@@ -4,6 +4,7 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session, joinedload
 
@@ -219,12 +220,21 @@ async def create_user(
             detail="Este trabajador ya tiene una cuenta de usuario registrada"
         )
     
-    # Check if user already exists by email (additional safety check)
+    # Check if user already exists by email/document (additional safety check)
     existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Ya existe un usuario con este correo electrónico"
+        )
+
+    existing_user_by_document = db.query(User).filter(
+        User.document_number == user_data.document_number
+    ).first()
+    if existing_user_by_document:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ya existe un usuario con este número de documento"
         )
     
     # Create new user
@@ -259,7 +269,14 @@ async def create_user(
     )
     
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ya existe un usuario con el mismo correo o número de documento"
+        )
     db.refresh(user)
     
     # Mark worker as registered and link to user

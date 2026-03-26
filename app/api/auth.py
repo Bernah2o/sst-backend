@@ -3,6 +3,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -141,6 +142,9 @@ async def register(
     
     # Check if user already exists
     existing_user = db.query(User).filter(User.email == user_data.email).first()
+    existing_user_by_document = db.query(User).filter(
+        User.document_number == user_data.document_number
+    ).first()
     
     if existing_user:
         # If user exists but is not verified (created by admin without password)
@@ -162,6 +166,11 @@ async def register(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Ya existe un usuario con este correo electrónico"
             )
+    elif existing_user_by_document:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ya existe un usuario con este número de documento"
+        )
     else:
         # Create new user
         hashed_password = auth_service.get_password_hash(user_data.password)
@@ -180,7 +189,14 @@ async def register(
         )
         db.add(user)
     
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ya existe un usuario con el mismo correo o número de documento"
+        )
     db.refresh(user)
     
     # Update worker record to mark as registered and link to this user
