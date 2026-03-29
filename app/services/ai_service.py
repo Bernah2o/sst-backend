@@ -1,10 +1,11 @@
 """
 Servicio de Inteligencia Artificial para la plataforma SST.
 
-Integración con Perplexity AI para generar sugerencias contextuales
-en la Matriz Legal y otros módulos.
+Integración con Claude AI (Anthropic) para generar sugerencias contextuales
+en la Matriz Legal y Cursos Interactivos.
 """
 
+import json
 import logging
 from typing import Optional
 import httpx
@@ -13,19 +14,42 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions"
+CLAUDE_API_URL = "https://api.anthropic.com/v1/messages"
+CLAUDE_API_VERSION = "2023-06-01"
 
 
 class AIService:
     """Servicio para interactuar con APIs de IA."""
 
     def __init__(self):
-        self.api_key = settings.perplexity_api_key
-        self.model = settings.perplexity_model
+        self.api_key = settings.claude_api_key
+        self.model = settings.claude_model
 
     def is_configured(self) -> bool:
         """Verifica si el servicio de IA está configurado."""
         return bool(self.api_key)
+
+    def _get_headers(self) -> dict:
+        return {
+            "x-api-key": self.api_key,
+            "anthropic-version": CLAUDE_API_VERSION,
+            "Content-Type": "application/json",
+        }
+
+    def _extract_text(self, data: dict) -> str:
+        """Extrae el texto de la respuesta de Claude API."""
+        return data["content"][0]["text"]
+
+    def _clean_json_content(self, content: str) -> str:
+        """Limpia el contenido JSON que puede venir con markdown."""
+        content = content.strip()
+        if content.startswith("```json"):
+            content = content[7:]
+        if content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        return content.strip()
 
     async def generate_compliance_suggestions(
         self,
@@ -45,7 +69,7 @@ class AIService:
             dict con keys: evidencia, observaciones, plan_accion
         """
         if not self.is_configured():
-            raise ValueError("Perplexity API key no configurada")
+            raise ValueError("Claude API key no configurada")
 
         # Construir el contexto de la norma
         norma_info = f"{tipo_norma} {numero_norma}"
@@ -61,7 +85,6 @@ class AIService:
         if articulo:
             context_parts.append(f"Artículo específico: {articulo}")
 
-        # La descripción y exigencias son los campos MÁS IMPORTANTES para generar sugerencias
         if descripcion_norma:
             context_parts.append(f"\n📋 DESCRIPCIÓN DE LA NORMA:\n{descripcion_norma}")
         if exigencias:
@@ -69,9 +92,7 @@ class AIService:
 
         context = "\n".join(context_parts)
 
-        prompt = f"""Eres un experto en Seguridad y Salud en el Trabajo (SST) en Colombia.
-
-CONTEXTO DE LA NORMA:
+        prompt = f"""CONTEXTO DE LA NORMA:
 {context}
 
 INSTRUCCIONES:
@@ -94,25 +115,15 @@ IMPORTANTE:
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
-                    PERPLEXITY_API_URL,
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
-                    },
+                    CLAUDE_API_URL,
+                    headers=self._get_headers(),
                     json={
                         "model": self.model,
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": "Eres un experto en Seguridad y Salud en el Trabajo (SST) en Colombia. Respondes siempre en formato JSON válido."
-                            },
-                            {
-                                "role": "user",
-                                "content": prompt
-                            }
-                        ],
-                        "temperature": 0.3,
                         "max_tokens": 1000,
+                        "system": "Eres un experto en Seguridad y Salud en el Trabajo (SST) en Colombia. Respondes siempre en formato JSON válido.",
+                        "messages": [
+                            {"role": "user", "content": prompt}
+                        ],
                     }
                 )
 
@@ -121,27 +132,14 @@ IMPORTANTE:
                     try:
                         error_json = response.json()
                         error_detail = error_json.get("error", {}).get("message", response.text)
-                    except:
+                    except Exception:
                         pass
-                    logger.error(f"Error de Perplexity API: {response.status_code} - {error_detail}")
+                    logger.error(f"Error de Claude API: {response.status_code} - {error_detail}")
                     logger.error(f"Modelo usado: {self.model}")
                     raise Exception(f"Error de API ({response.status_code}): {error_detail}")
 
                 data = response.json()
-                content = data["choices"][0]["message"]["content"]
-
-                # Intentar parsear el JSON de la respuesta
-                import json
-
-                # Limpiar el contenido (puede venir con markdown)
-                content = content.strip()
-                if content.startswith("```json"):
-                    content = content[7:]
-                if content.startswith("```"):
-                    content = content[3:]
-                if content.endswith("```"):
-                    content = content[:-3]
-                content = content.strip()
+                content = self._clean_json_content(self._extract_text(data))
 
                 try:
                     result = json.loads(content)
@@ -151,8 +149,7 @@ IMPORTANTE:
                         "plan_accion": result.get("plan_accion", ""),
                     }
                 except json.JSONDecodeError:
-                    logger.warning(f"No se pudo parsear JSON de Perplexity: {content}")
-                    # Intentar extraer información del texto
+                    logger.warning(f"No se pudo parsear JSON de Claude: {content}")
                     return {
                         "evidencia": content[:300] if len(content) > 300 else content,
                         "observaciones": "",
@@ -160,7 +157,7 @@ IMPORTANTE:
                     }
 
         except httpx.TimeoutException:
-            logger.error("Timeout al conectar con Perplexity API")
+            logger.error("Timeout al conectar con Claude API")
             raise Exception("Tiempo de espera agotado al conectar con el servicio de IA")
         except Exception as e:
             logger.error(f"Error al generar sugerencias: {str(e)}")
@@ -191,9 +188,9 @@ IMPORTANTE:
             dict con slides, quizzes y actividades generadas
         """
         if not self.is_configured():
-            raise ValueError("Perplexity API key no configurada")
+            raise ValueError("Claude API key no configurada")
 
-        num_slides = max(3, min(10, num_slides))  # Limitar entre 3 y 10
+        num_slides = max(3, min(10, num_slides))
 
         context = f"""TÍTULO DE LA LECCIÓN: {titulo}
 TEMA PRINCIPAL: {tema}"""
@@ -213,9 +210,7 @@ TEMA PRINCIPAL: {tema}"""
 - Para "matching": pares de conceptos relacionados (izquierda-derecha)
 - Para "ordering": pasos de un procedimiento en orden correcto"""
 
-        prompt = f"""Eres un experto en Seguridad y Salud en el Trabajo (SST) y diseño instruccional.
-
-{context}
+        prompt = f"""{context}
 
 INSTRUCCIONES:
 Genera contenido educativo para una lección interactiva con {num_slides} slides sobre este tema de SST.
@@ -290,25 +285,15 @@ IMPORTANTE:
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
-                    PERPLEXITY_API_URL,
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
-                    },
+                    CLAUDE_API_URL,
+                    headers=self._get_headers(),
                     json={
                         "model": self.model,
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": "Eres un experto en Seguridad y Salud en el Trabajo (SST) y diseño instruccional. Generas contenido educativo de alta calidad en formato JSON válido."
-                            },
-                            {
-                                "role": "user",
-                                "content": prompt
-                            }
-                        ],
-                        "temperature": 0.7,
                         "max_tokens": 4000,
+                        "system": "Eres un experto en Seguridad y Salud en el Trabajo (SST) y diseño instruccional. Generas contenido educativo de alta calidad en formato JSON válido.",
+                        "messages": [
+                            {"role": "user", "content": prompt}
+                        ],
                     }
                 )
 
@@ -317,24 +302,13 @@ IMPORTANTE:
                     try:
                         error_json = response.json()
                         error_detail = error_json.get("error", {}).get("message", response.text)
-                    except:
+                    except Exception:
                         pass
-                    logger.error(f"Error de Perplexity API: {response.status_code} - {error_detail}")
+                    logger.error(f"Error de Claude API: {response.status_code} - {error_detail}")
                     raise Exception(f"Error de API ({response.status_code}): {error_detail}")
 
                 data = response.json()
-                content = data["choices"][0]["message"]["content"]
-
-                # Limpiar el contenido
-                import json
-                content = content.strip()
-                if content.startswith("```json"):
-                    content = content[7:]
-                if content.startswith("```"):
-                    content = content[3:]
-                if content.endswith("```"):
-                    content = content[:-3]
-                content = content.strip()
+                content = self._clean_json_content(self._extract_text(data))
 
                 try:
                     result = json.loads(content)
@@ -344,11 +318,11 @@ IMPORTANTE:
                         "success": True
                     }
                 except json.JSONDecodeError as e:
-                    logger.warning(f"No se pudo parsear JSON de Perplexity: {content[:500]}")
+                    logger.warning(f"No se pudo parsear JSON de Claude: {content[:500]}")
                     raise Exception(f"Error al procesar respuesta de IA: {str(e)}")
 
         except httpx.TimeoutException:
-            logger.error("Timeout al conectar con Perplexity API")
+            logger.error("Timeout al conectar con Claude API")
             raise Exception("Tiempo de espera agotado al conectar con el servicio de IA")
         except Exception as e:
             logger.error(f"Error al generar contenido de lección: {str(e)}")

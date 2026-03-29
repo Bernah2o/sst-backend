@@ -87,4 +87,9 @@ class Settings:
         self.perplexity_api_key = os.getenv("PERPLEXITY_API_KEY")
         self.perplexity_model = os.getenv("PERPLEXITY_MODEL", "sonar")
 
+        # Configuración de Claude AI (Anthropic)
+        # Usado para Matriz Legal y Cursos Interactivos
+        self.claude_api_key = os.getenv("CLAUDE_API_KEY")
+        self.claude_model = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
+
 settings = Settings()
