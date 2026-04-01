@@ -1499,7 +1499,7 @@ async def generate_lesson_content(
     if not ai_service.is_configured():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Servicio de IA no configurado. Configure PERPLEXITY_API_KEY."
+            detail="Servicio de IA no configurado. Configure CLAUDE_API_KEY en las variables de entorno."
         )
 
     try:
