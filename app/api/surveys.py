@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any, List, Optional, Tuple
 from datetime import datetime, date
 import time
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -10,7 +10,15 @@ from sqlalchemy import and_, or_, func
 from app.dependencies import get_current_active_user, get_current_user, has_role_or_custom
 from app.database import get_db
 from app.models.user import User, UserRole
-from app.models.survey import Survey, SurveyQuestion, UserSurvey, UserSurveyAnswer, SurveyStatus, UserSurveyStatus
+from app.models.survey import (
+    Survey,
+    SurveyCourse,
+    SurveyQuestion,
+    UserSurvey,
+    UserSurveyAnswer,
+    SurveyStatus,
+    UserSurveyStatus,
+)
 from app.models.course import Course
 from app.models.worker import Worker
 from app.schemas.survey import (
@@ -23,7 +31,6 @@ from app.schemas.survey import (
 )
 from pydantic import BaseModel
 from app.schemas.common import MessageResponse, PaginatedResponse
-from typing import List
 from app.services.html_to_pdf import HTMLToPDFConverter
 
 # Schema for assigning general surveys
@@ -142,6 +149,65 @@ def _user_survey_year_expr():
         "year",
         func.coalesce(UserSurvey.response_date, func.date(UserSurvey.completed_at)),
     )
+
+
+def _normalize_course_ids(
+    explicit_course_ids: Optional[List[int]],
+    legacy_course_id: Optional[int],
+) -> List[int]:
+    normalized: List[int] = []
+    for course_id in (explicit_course_ids or []):
+        if course_id and course_id not in normalized:
+            normalized.append(course_id)
+    if legacy_course_id and legacy_course_id not in normalized:
+        normalized.insert(0, legacy_course_id)
+    return normalized
+
+
+def _validate_course_ids(db: Session, course_ids: List[int]) -> None:
+    if not course_ids:
+        return
+    existing_courses = db.query(Course.id).filter(Course.id.in_(course_ids)).all()
+    existing_ids = {course.id for course in existing_courses}
+    missing_ids = [course_id for course_id in course_ids if course_id not in existing_ids]
+    if missing_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Cursos no encontrados: {missing_ids}",
+        )
+
+
+def _extract_course_info(survey: Survey) -> Tuple[List[int], List[dict]]:
+    ordered_links = sorted(
+        survey.survey_courses or [],
+        key=lambda link: link.course_id,
+    )
+    course_ids = [link.course_id for link in ordered_links]
+    courses = [
+        {"id": link.course.id, "title": link.course.title}
+        for link in ordered_links
+        if link.course
+    ]
+    if not course_ids and survey.course_id:
+        course_ids = [survey.course_id]
+        if survey.course:
+            courses = [{"id": survey.course.id, "title": survey.course.title}]
+    return course_ids, courses
+
+
+def _sync_survey_courses(db: Session, survey: Survey, target_course_ids: List[int]) -> None:
+    current_links = {link.course_id: link for link in (survey.survey_courses or [])}
+    target_ids = set(target_course_ids)
+
+    for course_id, link in list(current_links.items()):
+        if course_id not in target_ids:
+            db.delete(link)
+
+    for course_id in target_course_ids:
+        if course_id not in current_links:
+            db.add(SurveyCourse(survey_id=survey.id, course_id=course_id))
+
+    survey.course_id = target_course_ids[0] if target_course_ids else None
 
 
 def _build_question_analysis(
@@ -298,7 +364,10 @@ async def get_surveys(
     """
     Get surveys with optional filtering
     """
-    query = db.query(Survey).options(joinedload(Survey.course))
+    query = db.query(Survey).options(
+        joinedload(Survey.course),
+        joinedload(Survey.survey_courses).joinedload(SurveyCourse.course),
+    )
     
     # Apply filters
     if search:
@@ -310,7 +379,12 @@ async def get_surveys(
         )
     
     if course_id:
-        query = query.filter(Survey.course_id == course_id)
+        query = query.filter(
+            or_(
+                Survey.course_id == course_id,
+                Survey.survey_courses.any(SurveyCourse.course_id == course_id),
+            )
+        )
     
     if status:
         query = query.filter(Survey.status == status)
@@ -328,6 +402,7 @@ async def get_surveys(
     # Transform surveys to include course information
     survey_items = []
     for survey in surveys:
+        course_ids, courses = _extract_course_info(survey)
         survey_dict = {
             "id": survey.id,
             "title": survey.title,
@@ -335,9 +410,11 @@ async def get_surveys(
             "status": survey.status,
             "is_anonymous": survey.is_anonymous,
             "course_id": survey.course_id,
+            "course_ids": course_ids,
             "is_course_survey": survey.is_course_survey,
             "required_for_completion": survey.required_for_completion,
             "course": {"id": survey.course.id, "title": survey.course.title} if survey.course else None,
+            "courses": courses,
             "created_at": survey.created_at,
             "published_at": survey.published_at,
             "closes_at": survey.closes_at
@@ -377,30 +454,22 @@ async def create_survey(
             detail="Permisos insuficientes"
         )
     
-    # Check if course exists (if course_id is provided)
-    if survey_data.course_id:
-        course = db.query(Course).filter(Course.id == survey_data.course_id).first()
-        if not course:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Curso no encontrado"
-            )
+    course_ids = _normalize_course_ids(survey_data.course_ids, survey_data.course_id)
+    _validate_course_ids(db, course_ids)
     
     # Create new survey
-    survey_dict = survey_data.dict(exclude={'questions'})
+    survey_dict = survey_data.dict(exclude={"questions", "course_ids"})
+    survey_dict["course_id"] = course_ids[0] if course_ids else None
     survey = Survey(
         **survey_dict,
         created_by=current_user.id
     )
     
     db.add(survey)
-    db.commit()
-    db.refresh(survey)
+    db.flush()
+    _sync_survey_courses(db, survey, course_ids)
     
     # Load course relationship if exists
-    if survey.course_id:
-        survey = db.query(Survey).options(joinedload(Survey.course)).filter(Survey.id == survey.id).first()
-    
     # Create questions if provided
     if survey_data.questions:
         for i, question_data in enumerate(survey_data.questions):
@@ -417,10 +486,20 @@ async def create_survey(
             )
             db.add(question)
         
-        db.commit()
-        db.refresh(survey)
+    db.commit()
+    survey = (
+        db.query(Survey)
+        .options(
+            joinedload(Survey.course),
+            joinedload(Survey.questions),
+            joinedload(Survey.survey_courses).joinedload(SurveyCourse.course),
+        )
+        .filter(Survey.id == survey.id)
+        .first()
+    )
     
     # Transform to proper response format
+    response_course_ids, response_courses = _extract_course_info(survey)
     survey_dict = {
         "id": survey.id,
         "title": survey.title,
@@ -432,9 +511,11 @@ async def create_survey(
         "expires_at": survey.expires_at,
         "status": survey.status,
         "course_id": survey.course_id,
+        "course_ids": response_course_ids,
         "is_course_survey": survey.is_course_survey,
         "required_for_completion": survey.required_for_completion,
         "course": {"id": survey.course.id, "title": survey.course.title} if survey.course else None,
+        "courses": response_courses,
         "created_by": survey.created_by,
         "created_at": survey.created_at,
         "updated_at": survey.updated_at,
@@ -479,7 +560,10 @@ async def get_available_surveys(
     enrolled_course_ids = [enrollment.course_id for enrollment in enrollments]
     
     # Build optimized query using LEFT JOIN to filter completed surveys
-    query = db.query(Survey).options(joinedload(Survey.course)).outerjoin(
+    query = db.query(Survey).options(
+        joinedload(Survey.course),
+        joinedload(Survey.survey_courses).joinedload(SurveyCourse.course),
+    ).outerjoin(
         UserSurvey,
         and_(
             UserSurvey.survey_id == Survey.id,
@@ -491,9 +575,10 @@ async def get_available_surveys(
             Survey.status == SurveyStatus.PUBLISHED,
             or_(
                 # General surveys (not course-specific)
-                Survey.course_id.is_(None),
+                and_(Survey.course_id.is_(None), ~Survey.survey_courses.any()),
                 # Course-specific surveys for enrolled courses
-                Survey.course_id.in_(enrolled_course_ids)
+                Survey.survey_courses.any(SurveyCourse.course_id.in_(enrolled_course_ids)),
+                Survey.course_id.in_(enrolled_course_ids),
             ),
             # Exclude completed surveys
             UserSurvey.id.is_(None)
@@ -509,6 +594,7 @@ async def get_available_surveys(
     # Transform surveys to include course information
     survey_items = []
     for survey in surveys:
+        course_ids, courses = _extract_course_info(survey)
         survey_dict = {
             "id": survey.id,
             "title": survey.title,
@@ -520,9 +606,11 @@ async def get_available_surveys(
             "expires_at": survey.expires_at,
             "status": survey.status,
             "course_id": survey.course_id,
+            "course_ids": course_ids,
             "is_course_survey": survey.is_course_survey,
             "required_for_completion": survey.required_for_completion,
             "course": {"id": survey.course.id, "title": survey.course.title} if survey.course else None,
+            "courses": courses,
             "created_by": survey.created_by,
             "created_at": survey.created_at,
             "updated_at": survey.updated_at,
@@ -567,7 +655,12 @@ async def get_general_surveys(
         )
     
     # Query for surveys without course association
-    query = db.query(Survey).filter(Survey.course_id.is_(None))
+    query = db.query(Survey).options(
+        joinedload(Survey.survey_courses)
+    ).filter(
+        Survey.course_id.is_(None),
+        ~Survey.survey_courses.any(),
+    )
     
     # Apply filters
     if search:
@@ -590,6 +683,7 @@ async def get_general_surveys(
     # Transform surveys to list response format
     survey_items = []
     for survey in surveys:
+        course_ids, courses = _extract_course_info(survey)
         survey_dict = {
             "id": survey.id,
             "title": survey.title,
@@ -597,9 +691,11 @@ async def get_general_surveys(
             "status": survey.status,
             "is_anonymous": survey.is_anonymous,
             "course_id": None,  # Always None for general surveys
+            "course_ids": course_ids,
             "is_course_survey": False,  # Always False for general surveys
             "required_for_completion": False,  # Always False for general surveys
             "course": None,  # Always None for general surveys
+            "courses": courses,
             "created_at": survey.created_at,
             "published_at": survey.published_at,
             "closes_at": survey.closes_at
@@ -643,7 +739,8 @@ async def assign_general_survey(
     # Verificar que la encuesta existe y es una encuesta general
     survey = db.query(Survey).filter(
         Survey.id == assignment.survey_id,
-        Survey.course_id.is_(None)  # Solo encuestas generales
+        Survey.course_id.is_(None),
+        ~Survey.survey_courses.any(),
     ).first()
     
     if not survey:
@@ -711,10 +808,18 @@ async def get_my_surveys(
         # Get published and closed surveys for these courses
         course_surveys = []
         if course_ids:
-            course_surveys = db.query(Survey).options(joinedload(Survey.course)).filter(
-                Survey.course_id.in_(course_ids),
-                Survey.status.in_([SurveyStatus.PUBLISHED, SurveyStatus.CLOSED])
-            ).all()
+            course_surveys = (
+                db.query(Survey)
+                .options(joinedload(Survey.course))
+                .filter(
+                    Survey.status.in_([SurveyStatus.PUBLISHED, SurveyStatus.CLOSED]),
+                    or_(
+                        Survey.course_id.in_(course_ids),
+                        Survey.survey_courses.any(SurveyCourse.course_id.in_(course_ids)),
+                    ),
+                )
+                .all()
+            )
 
         # Get user's survey submissions to find assigned general surveys
         user_surveys = db.query(UserSurvey).filter(
@@ -838,8 +943,11 @@ async def get_user_survey_responses(
         
         # Obtener las encuestas del curso
         surveys = db.query(Survey).filter(
-            Survey.course_id == course_id,
-            Survey.status == SurveyStatus.PUBLISHED
+            Survey.status == SurveyStatus.PUBLISHED,
+            or_(
+                Survey.course_id == course_id,
+                Survey.survey_courses.any(SurveyCourse.course_id == course_id),
+            ),
         ).all()
         
         if not surveys:
@@ -1177,9 +1285,11 @@ async def create_survey_from_template(
         "expires_at": survey.expires_at,
         "status": survey.status,
         "course_id": survey.course_id,
+        "course_ids": [],
         "is_course_survey": survey.is_course_survey,
         "required_for_completion": survey.required_for_completion,
         "course": None,
+        "courses": [],
         "created_by": survey.created_by,
         "created_at": survey.created_at,
         "updated_at": survey.updated_at,
@@ -1216,7 +1326,8 @@ async def get_survey(
     """
     survey = db.query(Survey).options(
         joinedload(Survey.questions),
-        joinedload(Survey.course)
+        joinedload(Survey.course),
+        joinedload(Survey.survey_courses).joinedload(SurveyCourse.course),
     ).filter(Survey.id == survey_id).first()
     
     if not survey:
@@ -1233,6 +1344,7 @@ async def get_survey(
         )
     
     # Transform to include course information
+    course_ids, courses = _extract_course_info(survey)
     survey_dict = {
         "id": survey.id,
         "title": survey.title,
@@ -1242,9 +1354,11 @@ async def get_survey(
         "allow_multiple_responses": survey.allow_multiple_responses,
         "status": survey.status,
         "course_id": survey.course_id,
+        "course_ids": course_ids,
         "is_course_survey": survey.is_course_survey,
         "required_for_completion": survey.required_for_completion,
         "course": {"id": survey.course.id, "title": survey.course.title} if survey.course else None,
+        "courses": courses,
         "created_by": survey.created_by,
         "created_at": survey.created_at,
         "updated_at": survey.updated_at,
@@ -1287,7 +1401,11 @@ async def update_survey(
             detail="Permisos insuficientes"
         )
     
-    survey = db.query(Survey).options(joinedload(Survey.course)).filter(Survey.id == survey_id).first()
+    survey = db.query(Survey).options(
+        joinedload(Survey.course),
+        joinedload(Survey.questions),
+        joinedload(Survey.survey_courses).joinedload(SurveyCourse.course),
+    ).filter(Survey.id == survey_id).first()
     
     if not survey:
         raise HTTPException(
@@ -1299,10 +1417,15 @@ async def update_survey(
     user_surveys_count = db.query(UserSurvey).filter(UserSurvey.survey_id == survey_id).count()
     has_responses = user_surveys_count > 0
     
-    # Update survey fields (excluding questions)
-    update_data = survey_data.dict(exclude_unset=True, exclude={'questions'})
+    # Update survey fields (excluding questions and relation list)
+    update_data = survey_data.dict(exclude_unset=True, exclude={"questions", "course_ids"})
     for field, value in update_data.items():
         setattr(survey, field, value)
+
+    if "course_id" in update_data or survey_data.course_ids is not None:
+        target_course_ids = _normalize_course_ids(survey_data.course_ids, survey_data.course_id)
+        _validate_course_ids(db, target_course_ids)
+        _sync_survey_courses(db, survey, target_course_ids)
     
     # Handle questions update if provided
     if survey_data.questions is not None:
@@ -1379,7 +1502,16 @@ async def update_survey(
     
     try:
         db.commit()
-        db.refresh(survey)
+        survey = (
+            db.query(Survey)
+            .options(
+                joinedload(Survey.course),
+                joinedload(Survey.questions),
+                joinedload(Survey.survey_courses).joinedload(SurveyCourse.course),
+            )
+            .filter(Survey.id == survey.id)
+            .first()
+        )
     except Exception as e:
         db.rollback()
         raise HTTPException(
@@ -1388,6 +1520,7 @@ async def update_survey(
         )
     
     # Transform to include course information
+    course_ids, courses = _extract_course_info(survey)
     survey_dict = {
         "id": survey.id,
         "title": survey.title,
@@ -1397,9 +1530,11 @@ async def update_survey(
         "allow_multiple_responses": survey.allow_multiple_responses,
         "status": survey.status,
         "course_id": survey.course_id,
+        "course_ids": course_ids,
         "is_course_survey": survey.is_course_survey,
         "required_for_completion": survey.required_for_completion,
         "course": {"id": survey.course.id, "title": survey.course.title} if survey.course else None,
+        "courses": courses,
         "created_by": survey.created_by,
         "created_at": survey.created_at,
         "updated_at": survey.updated_at,
@@ -1805,14 +1940,14 @@ async def submit_survey(
     
     # Get enrollment if this is a course survey
     enrollment_id = None
-    if survey.course_id:
+    related_course_ids, _ = _extract_course_info(survey)
+    if related_course_ids:
         from app.models.enrollment import Enrollment
-        enrollment = db.query(Enrollment).filter(
-            and_(
-                Enrollment.user_id == current_user.id,
-                Enrollment.course_id == survey.course_id
-            )
-        ).first()
+        enrollments = db.query(Enrollment).filter(
+            Enrollment.user_id == current_user.id,
+            Enrollment.course_id.in_(related_course_ids),
+        ).all()
+        enrollment = enrollments[0] if enrollments else None
         
         if not enrollment:
             raise HTTPException(
@@ -1879,9 +2014,10 @@ async def submit_survey(
     db.refresh(user_survey)
     
     # Check if course can be completed now that survey is submitted
-    if survey.course_id and survey.required_for_completion:
+    if related_course_ids and survey.required_for_completion:
         from app.api.courses import check_and_complete_course
-        check_and_complete_course(db, current_user.id, survey.course_id)
+        for related_course_id in related_course_ids:
+            check_and_complete_course(db, current_user.id, related_course_id)
     
     return user_survey
 
@@ -2068,12 +2204,16 @@ async def get_required_course_surveys(
         )
     
     # Get required surveys for this course that are active
-    surveys = db.query(Survey).filter(
-        and_(
+    surveys = db.query(Survey).options(
+        joinedload(Survey.course),
+        joinedload(Survey.survey_courses).joinedload(SurveyCourse.course),
+    ).filter(
+        Survey.required_for_completion == True,
+        Survey.status == SurveyStatus.PUBLISHED,
+        or_(
             Survey.course_id == course_id,
-            Survey.required_for_completion == True,
-            Survey.status == SurveyStatus.PUBLISHED
-        )
+            Survey.survey_courses.any(SurveyCourse.course_id == course_id),
+        ),
     ).all()
     
     # Filter out surveys already completed by the user
@@ -2093,6 +2233,7 @@ async def get_required_course_surveys(
             if survey.course:
                 course_dict = {"id": survey.course.id, "title": survey.course.title}
             
+            related_course_ids, related_courses = _extract_course_info(survey)
             survey_response = SurveyResponse(
                 id=survey.id,
                 title=survey.title,
@@ -2100,9 +2241,11 @@ async def get_required_course_surveys(
                 status=survey.status,
                 is_anonymous=survey.is_anonymous,
                 course_id=survey.course_id,
+                course_ids=related_course_ids,
                 is_course_survey=survey.is_course_survey,
                 required_for_completion=survey.required_for_completion,
                 course=course_dict,
+                courses=related_courses,
                 created_by=survey.created_by,
                 created_at=survey.created_at,
                 updated_at=survey.updated_at,

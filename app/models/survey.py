@@ -66,6 +66,17 @@ class Survey(Base):
     # Relationships
     creator = relationship("User", foreign_keys=[created_by], overlaps="created_surveys")
     course = relationship("Course", back_populates="surveys")
+    survey_courses = relationship(
+        "SurveyCourse",
+        back_populates="survey",
+        cascade="all, delete-orphan",
+    )
+    courses = relationship(
+        "Course",
+        secondary="survey_courses",
+        back_populates="multi_surveys",
+        overlaps="survey_courses,survey_links",
+    )
     questions = relationship("SurveyQuestion", back_populates="survey", cascade="all, delete-orphan")
     user_surveys = relationship("UserSurvey", back_populates="survey")
 
@@ -95,6 +106,25 @@ class SurveyQuestion(Base):
 
     def __repr__(self):
         return f"<SurveyQuestion(id={self.id}, type='{self.question_type}', survey_id={self.survey_id})>"
+
+
+class SurveyCourse(Base):
+    __tablename__ = "survey_courses"
+
+    survey_id = Column(Integer, ForeignKey("surveys.id"), primary_key=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    survey = relationship(
+        "Survey",
+        back_populates="survey_courses",
+        overlaps="courses,multi_surveys,survey_links",
+    )
+    course = relationship(
+        "Course",
+        back_populates="survey_links",
+        overlaps="courses,multi_surveys,surveys",
+    )
 
 
 class UserSurvey(Base):

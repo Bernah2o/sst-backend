@@ -132,6 +132,7 @@ class SurveyBase(BaseModel):
 class SurveyCreate(SurveyBase):
     status: Optional[SurveyStatus] = SurveyStatus.DRAFT
     course_id: Optional[int] = None
+    course_ids: Optional[List[int]] = []
     is_course_survey: bool = False
     required_for_completion: bool = False
     questions: Optional[List[SurveyQuestionBase]] = []
@@ -145,6 +146,7 @@ class SurveyUpdate(BaseModel):
     allow_multiple_responses: Optional[bool] = None
     status: Optional[SurveyStatus] = None
     course_id: Optional[int] = None
+    course_ids: Optional[List[int]] = None
     is_course_survey: Optional[bool] = None
     required_for_completion: Optional[bool] = None
     closes_at: Optional[datetime] = None
@@ -156,9 +158,11 @@ class SurveyResponse(SurveyBase):
     id: int
     status: SurveyStatus
     course_id: Optional[int] = None
+    course_ids: List[int] = []
     is_course_survey: bool = False
     required_for_completion: bool = False
     course: Optional[dict] = None  # Will contain {"id": int, "title": str}
+    courses: List[dict] = []
     created_by: int
     created_at: datetime
     updated_at: datetime
@@ -177,9 +181,11 @@ class SurveyListResponse(BaseModel):
     status: SurveyStatus
     is_anonymous: bool
     course_id: Optional[int] = None
+    course_ids: List[int] = []
     is_course_survey: bool = False
     required_for_completion: bool = False
     course: Optional[dict] = None  # Will contain {"id": int, "title": str}
+    courses: List[dict] = []
     created_at: datetime
     published_at: Optional[datetime] = None
     closes_at: Optional[datetime] = None

@@ -73,6 +73,18 @@ class Course(Base):
         "Evaluation", back_populates="course", cascade="all, delete-orphan"
     )
     surveys = relationship("Survey", back_populates="course")
+    survey_links = relationship(
+        "SurveyCourse",
+        back_populates="course",
+        cascade="all, delete-orphan",
+        overlaps="courses,multi_surveys,surveys",
+    )
+    multi_surveys = relationship(
+        "Survey",
+        secondary="survey_courses",
+        back_populates="courses",
+        overlaps="survey_links,survey_courses,course",
+    )
     certificates = relationship(
         "Certificate", back_populates="course", cascade="all, delete-orphan"
     )

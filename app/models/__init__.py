@@ -48,7 +48,7 @@ from .seguimiento_actividad import SeguimientoActividad
 from .reinduction import ReinductionRecord, ReinductionStatus
 from .course import Course, CourseModule, CourseMaterial
 from .evaluation import Evaluation, Question, Answer, UserEvaluation, UserAnswer
-from .survey import Survey, SurveyQuestion, UserSurvey, UserSurveyAnswer
+from .survey import Survey, SurveyQuestion, SurveyCourse, UserSurvey, UserSurveyAnswer
 from .notification import Notification, NotificationTemplate, NotificationType, NotificationStatus, NotificationPriority
 from .certificate import Certificate
 from .attendance import Attendance
@@ -169,6 +169,7 @@ __all__ = [
     "UserAnswer",
     "Survey",
     "SurveyQuestion",
+    "SurveyCourse",
     "UserSurvey",
     "UserSurveyAnswer",
     "Notification",
