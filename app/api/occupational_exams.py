@@ -56,6 +56,79 @@ EXAM_TYPE_LABELS = {
 }
 
 
+def _coerce_exam_date(value: Any) -> Optional[date]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.strptime(value, "%Y-%m-%d").date()
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Formato de fecha inválido para exam_date. Use YYYY-MM-DD",
+            ) from exc
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Tipo de dato inválido para exam_date",
+    )
+
+
+def _sanitize_duration_months(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Duración del cargo actual (meses) debe ser un número entero",
+        ) from exc
+    if parsed < 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Duración del cargo actual (meses) no puede ser negativa",
+        )
+    return parsed
+
+
+def _calculate_duration_months(
+    hire_date: Optional[date], exam_date_value: Optional[date]
+) -> Optional[int]:
+    if not hire_date or not exam_date_value:
+        return None
+    months_diff = (exam_date_value.year - hire_date.year) * 12 + (
+        exam_date_value.month - hire_date.month
+    )
+    if exam_date_value.day < hire_date.day:
+        months_diff -= 1
+    return max(0, months_diff)
+
+
+def _resolve_duration_months(
+    worker: Optional[Worker],
+    exam_date_value: Optional[date],
+    provided_duration: Any,
+    require_value: bool = True,
+) -> Optional[int]:
+    hire_date = worker.fecha_de_ingreso if worker else None
+    calculated = _calculate_duration_months(hire_date, exam_date_value)
+    if calculated is not None:
+        return calculated
+    sanitized = _sanitize_duration_months(provided_duration)
+    if sanitized is not None:
+        return sanitized
+    if require_value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Duración del cargo actual (meses) es obligatoria cuando no se puede calcular automáticamente",
+        )
+    return None
+
+
 @router.get("/", response_model=PaginatedResponse[OccupationalExamResponse])
 @router.get("", response_model=PaginatedResponse[OccupationalExamResponse])
 async def get_occupational_exams(
@@ -450,26 +523,12 @@ async def create_occupational_exam(
     if not data.get("cargo_id_momento_examen") and getattr(worker, "cargo_id", None):
         data["cargo_id_momento_examen"] = worker.cargo_id
 
-    # Calcular duración del cargo actual automáticamente (Art. 15)
-    # Se usa la fecha de ingreso del trabajador y la fecha del examen
-    if getattr(worker, "fecha_de_ingreso", None) and data.get("exam_date"):
-        try:
-            # exam_date puede ser date o str dependiendo del origen
-            exam_dt = data["exam_date"]
-            if isinstance(exam_dt, str):
-                exam_dt = datetime.strptime(exam_dt, "%Y-%m-%d").date()
-            
-            # Calcular diferencia en meses: (year_diff * 12) + month_diff
-            months_diff = (exam_dt.year - worker.fecha_de_ingreso.year) * 12 + (exam_dt.month - worker.fecha_de_ingreso.month)
-            # Si el día del examen es menor al día de ingreso, restar un mes (no ha cumplido el mes completo)
-            if exam_dt.day < worker.fecha_de_ingreso.day:
-                months_diff -= 1
-            
-            # Asegurar que no sea negativo
-            data["duracion_cargo_actual_meses"] = max(0, months_diff)
-        except Exception as e:
-            print(f"Error calculando duración del cargo: {e}")
-            # Si falla el cálculo, se respeta el valor enviado o None
+    exam_date_value = _coerce_exam_date(data.get("exam_date"))
+    data["duracion_cargo_actual_meses"] = _resolve_duration_months(
+        worker=worker,
+        exam_date_value=exam_date_value,
+        provided_duration=data.get("duracion_cargo_actual_meses"),
+    )
 
     # Auto-poblar factores de riesgo desde el profesiograma (Art. 15)
     worker_cargo_id = getattr(worker, "cargo_id", None)
@@ -843,6 +902,57 @@ async def generate_occupational_exam_report_pdf(
         )
 
 
+@router.post("/backfill-duration-months")
+async def backfill_occupational_exam_duration_months(
+    limit: int = Query(1000, ge=1, le=10000),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin),
+) -> Any:
+    exams_to_backfill = (
+        db.query(OccupationalExam)
+        .join(Worker, OccupationalExam.worker_id == Worker.id)
+        .options(joinedload(OccupationalExam.worker))
+        .filter(
+            OccupationalExam.duracion_cargo_actual_meses.is_(None),
+            Worker.fecha_de_ingreso.isnot(None),
+        )
+        .order_by(OccupationalExam.id.asc())
+        .limit(limit)
+        .all()
+    )
+
+    updated = 0
+    for exam in exams_to_backfill:
+        duration = _calculate_duration_months(
+            exam.worker.fecha_de_ingreso if exam.worker else None,
+            exam.exam_date,
+        )
+        if duration is None:
+            continue
+        exam.duracion_cargo_actual_meses = duration
+        updated += 1
+
+    if updated:
+        db.commit()
+
+    remaining = (
+        db.query(OccupationalExam)
+        .join(Worker, OccupationalExam.worker_id == Worker.id)
+        .filter(
+            OccupationalExam.duracion_cargo_actual_meses.is_(None),
+            Worker.fecha_de_ingreso.isnot(None),
+        )
+        .count()
+    )
+
+    return {
+        "message": "Proceso de backfill ejecutado",
+        "processed": len(exams_to_backfill),
+        "updated": updated,
+        "remaining": remaining,
+    }
+
+
 @router.get("/{exam_id}", response_model=OccupationalExamResponse)
 async def get_occupational_exam(
     exam_id: int,
@@ -1007,19 +1117,18 @@ async def update_occupational_exam(
 
     update_data = exam_data.dict(exclude_unset=True)
 
-    # Recalcular duración si cambia la fecha del examen
-    if "exam_date" in update_data:
-        worker = exam.worker
-        if worker and worker.fecha_de_ingreso:
-            try:
-                exam_dt = update_data["exam_date"]
-                # Calcular diferencia en meses
-                months_diff = (exam_dt.year - worker.fecha_de_ingreso.year) * 12 + (exam_dt.month - worker.fecha_de_ingreso.month)
-                if exam_dt.day < worker.fecha_de_ingreso.day:
-                    months_diff -= 1
-                update_data["duracion_cargo_actual_meses"] = max(0, months_diff)
-            except Exception as e:
-                print(f"Error recalculando duración del cargo en update: {e}")
+    worker = exam.worker
+    effective_exam_date = _coerce_exam_date(update_data.get("exam_date", exam.exam_date))
+    provided_duration = (
+        update_data["duracion_cargo_actual_meses"]
+        if "duracion_cargo_actual_meses" in update_data
+        else exam.duracion_cargo_actual_meses
+    )
+    update_data["duracion_cargo_actual_meses"] = _resolve_duration_months(
+        worker=worker,
+        exam_date_value=effective_exam_date,
+        provided_duration=provided_duration,
+    )
 
     # Guardar el valor anterior de requires_follow_up antes de actualizar
     previous_requires_follow_up = exam.requires_follow_up
