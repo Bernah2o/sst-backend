@@ -623,7 +623,7 @@ async def submit_evaluation(
         points_earned = 0
         is_correct = False
         
-        if question.question_type == QuestionType.MULTIPLE_CHOICE:
+        if question.question_type in (QuestionType.MULTIPLE_CHOICE, QuestionType.SINGLE_CHOICE):
             # For multiple choice, check if the selected option is correct
             if answer_submission.selected_option_id:
                 answer_option = db.query(Answer).filter(
@@ -655,7 +655,7 @@ async def submit_evaluation(
                         points_earned = question.points
                         is_correct = True
         
-        elif question.question_type == QuestionType.SHORT_ANSWER:
+        elif question.question_type == QuestionType.OPEN_TEXT:
             # For short answer, you might want to implement fuzzy matching or manual grading
             # For now, we'll mark it as requiring manual review
             points_earned = 0  # Will need manual grading

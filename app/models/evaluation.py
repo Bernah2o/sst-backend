@@ -20,6 +20,7 @@ from app.database import Base
 
 class QuestionType(str, Enum):
     MULTIPLE_CHOICE = "multiple_choice"
+    SINGLE_CHOICE = "single_choice"
     TRUE_FALSE = "true_false"
     OPEN_TEXT = "open_text"
     MATCHING = "matching"
