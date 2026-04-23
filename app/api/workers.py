@@ -327,7 +327,7 @@ async def create_worker(
             )
     
     # Crear el trabajador
-    payload = worker_data.dict()
+    payload = worker_data.model_dump()
     cargo_id, position = _resolve_cargo_id_and_position(db, payload.get("cargo_id"), payload.get("position"))
     payload["cargo_id"] = cargo_id
     payload["position"] = position
@@ -578,7 +578,7 @@ async def update_worker(
         )
     
     # Verificar duplicados si se actualiza documento o email
-    update_data = worker_data.dict(exclude_unset=True)
+    update_data = worker_data.model_dump(exclude_unset=True)
 
     if "cargo_id" in update_data or "position" in update_data:
         cargo_id_to_resolve = update_data.get("cargo_id", worker.cargo_id)
