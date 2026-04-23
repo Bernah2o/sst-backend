@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from enum import Enum
 
 
@@ -191,7 +191,8 @@ class EvaluationBase(BaseModel):
 
 
 class EvaluationCreate(EvaluationBase):
-    course_id: int
+    course_id: Optional[int] = None
+    status: EvaluationStatus = EvaluationStatus.DRAFT
     questions: List[QuestionCreateForEvaluation] = []
 
 
@@ -213,7 +214,7 @@ class EvaluationUpdate(BaseModel):
 
 class EvaluationResponse(EvaluationBase):
     id: int
-    course_id: int
+    course_id: Optional[int] = None
     status: EvaluationStatus
     created_by: int
     created_at: datetime
@@ -239,7 +240,7 @@ class EvaluationListResponse(BaseModel):
     id: int
     title: str
     description: Optional[str] = None
-    course_id: int
+    course_id: Optional[int] = None
     course: Optional[CourseInfo] = None
     status: EvaluationStatus
     time_limit_minutes: Optional[int] = None
@@ -262,5 +263,33 @@ class EvaluationSubmission(BaseModel):
 class AnswerSubmission(BaseModel):
     question_id: int
     selected_option_id: Optional[int] = None
+
+
+# ── Evaluation Assignment Schemas ──────────────────────────────────────────────
+
+class EvaluationAssignRequest(BaseModel):
+    user_ids: List[int] = []
+    assign_to_all: bool = False
+    deadline: Optional[datetime] = None
+
+
+class AssignedUserInfo(BaseModel):
+    id: int
+    first_name: str
+    last_name: str
+    email: str
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EvaluationAssignmentResponse(BaseModel):
+    id: int
+    evaluation_id: int
+    user_id: Optional[int] = None
+    user: Optional[AssignedUserInfo] = None
+    assigned_by: int
+    assigned_at: datetime
+    deadline: Optional[datetime] = None
+    is_active: bool
+    model_config = ConfigDict(from_attributes=True)
     text_answer: Optional[str] = None
     boolean_answer: Optional[bool] = None

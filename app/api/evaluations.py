@@ -16,14 +16,55 @@ from app.models.evaluation import (
 from app.schemas.evaluation import (
     EvaluationCreate, EvaluationUpdate, EvaluationResponse,
     EvaluationListResponse, EvaluationSubmission,
-    UserEvaluationResponse, AnswerSubmission
+    UserEvaluationResponse, AnswerSubmission,
+    EvaluationAssignRequest, EvaluationAssignmentResponse,
 )
+from app.models.evaluation import EvaluationAssignment
 from app.schemas.common import MessageResponse, PaginatedResponse
 from app.models.certificate import Certificate, CertificateStatus
 from app.services.certificate_generator import CertificateGenerator
 import uuid
 
 router = APIRouter()
+
+
+def _is_admin_or_trainer(user: User) -> bool:
+    return bool(getattr(user, "role", None)) and user.role.value in ["admin", "trainer"]
+
+
+def _can_user_access_evaluation(db: Session, current_user: User, evaluation: Evaluation) -> bool:
+    """Reglas de visibilidad para empleados:
+    - Solo evaluaciones publicadas
+    - Con curso: solo si está matriculado
+    - Sin curso: solo si está asignada (directa o global)
+    """
+    if _is_admin_or_trainer(current_user):
+        return True
+
+    if evaluation.status != EvaluationStatus.PUBLISHED:
+        return False
+
+    if evaluation.course_id is not None:
+        from app.models.enrollment import Enrollment
+        enrollment = db.query(Enrollment.id).filter(
+            and_(
+                Enrollment.user_id == current_user.id,
+                Enrollment.course_id == evaluation.course_id,
+            )
+        ).first()
+        return enrollment is not None
+
+    assignment = db.query(EvaluationAssignment.id).filter(
+        and_(
+            EvaluationAssignment.evaluation_id == evaluation.id,
+            EvaluationAssignment.is_active == True,
+            or_(
+                EvaluationAssignment.user_id == current_user.id,
+                EvaluationAssignment.user_id.is_(None),
+            ),
+        )
+    ).first()
+    return assignment is not None
 
 
 @router.get("/", response_model=PaginatedResponse[EvaluationListResponse])
@@ -41,27 +82,45 @@ async def get_evaluations(
     """
     from app.models.course import Course
     
-    query = db.query(Evaluation).join(Course, Evaluation.course_id == Course.id)
+    query = db.query(Evaluation).outerjoin(Course, Evaluation.course_id == Course.id)
     
     # Apply filters
     if course_id:
         query = query.filter(Evaluation.course_id == course_id)
     
-    if status:
-        query = query.filter(Evaluation.status == status)
+    if _is_admin_or_trainer(current_user):
+        if status:
+            query = query.filter(Evaluation.status == status)
     else:
-        # Only show active evaluations for non-admin/capacitador users
-        if not has_role_or_custom(current_user, ["admin", "trainer"]):
-            query = query.filter(Evaluation.status == EvaluationStatus.PUBLISHED)
+        # Para trabajadores, SIEMPRE forzar publicadas (ignorar filtro de estado recibido)
+        query = query.filter(Evaluation.status == EvaluationStatus.PUBLISHED)
     
-    # For employees, only show evaluations from courses they are enrolled in
-    if current_user.role.value == "employee" and not current_user.custom_role_id:
+    # Para usuarios que no son admin ni trainer, aplicar restricciones de visibilidad:
+    # - Evaluaciones CON curso: solo las de cursos en los que está matriculado
+    # - Evaluaciones SIN curso: solo las asignadas explícitamente por un admin
+    if not _is_admin_or_trainer(current_user):
         from app.models.enrollment import Enrollment
-        # Use an explicit select() in IN clause to avoid SAWarning
         enrolled_course_ids = select(Enrollment.course_id).where(
             Enrollment.user_id == current_user.id
         )
-        query = query.filter(Evaluation.course_id.in_(enrolled_course_ids))
+        assigned_eval_ids = select(EvaluationAssignment.evaluation_id).where(
+            and_(
+                EvaluationAssignment.is_active == True,
+                or_(
+                    EvaluationAssignment.user_id == current_user.id,
+                    EvaluationAssignment.user_id.is_(None),
+                )
+            )
+        )
+        query = query.filter(
+            or_(
+                and_(
+                    Evaluation.course_id.isnot(None),
+                    Evaluation.course_id.in_(enrolled_course_ids),
+                ),
+                Evaluation.id.in_(assigned_eval_ids),
+            )
+        )
     
     # Get total count
     total = query.count()
@@ -96,30 +155,41 @@ async def get_available_evaluations(
     Only shows evaluations from courses the user is enrolled in.
     """
     from app.models.enrollment import Enrollment
-    
-    # Get courses the user is enrolled in (explicit select() to satisfy IN())
+
     enrolled_course_ids = select(Enrollment.course_id).where(
         Enrollment.user_id == current_user.id
     )
-    
-    # Get active evaluations only from enrolled courses
+    assigned_eval_ids = select(EvaluationAssignment.evaluation_id).where(
+        and_(
+            EvaluationAssignment.is_active == True,
+            or_(
+                EvaluationAssignment.user_id == current_user.id,
+                EvaluationAssignment.user_id.is_(None),
+            )
+        )
+    )
+
     evaluations_query = db.query(Evaluation).filter(
         and_(
             Evaluation.status == EvaluationStatus.PUBLISHED,
-            Evaluation.course_id.in_(enrolled_course_ids)
+            or_(
+                and_(
+                    Evaluation.course_id.isnot(None),
+                    Evaluation.course_id.in_(enrolled_course_ids),
+                ),
+                Evaluation.id.in_(assigned_eval_ids),
+            )
         )
     )
-    
-    # Get evaluations already completed by the user (explicit select())
+
     completed_evaluation_ids = select(UserEvaluation.evaluation_id).where(
         UserEvaluation.user_id == current_user.id
     )
-    
-    # Filter out completed evaluations
+
     available_evaluations = evaluations_query.filter(
         ~Evaluation.id.in_(completed_evaluation_ids)
     ).all()
-    
+
     return available_evaluations
 
 
@@ -321,6 +391,12 @@ async def get_evaluation_user_status(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Evaluación no encontrada"
         )
+
+    if not _can_user_access_evaluation(db, current_user, evaluation):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Evaluación no asignada o no disponible"
+        )
     
     # Check existing attempts count
     existing_attempts = db.query(UserEvaluation).filter(
@@ -408,6 +484,12 @@ async def submit_evaluation(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Evaluación no encontrada"
+        )
+
+    if not _can_user_access_evaluation(db, current_user, evaluation):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Evaluación no asignada o no disponible"
         )
     
     # Validate learning flow: course completion and required surveys
@@ -1040,10 +1122,10 @@ async def get_evaluation(
         )
     
     # Check if user can access this evaluation
-    if not has_role_or_custom(current_user, ["admin", "trainer"]) and evaluation.status != EvaluationStatus.PUBLISHED:
+    if not _can_user_access_evaluation(db, current_user, evaluation):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Evaluación no disponible"
+            detail="Evaluación no asignada o no disponible"
         )
     
     return evaluation
@@ -1229,6 +1311,12 @@ async def start_evaluation(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Evaluación no encontrada"
+        )
+
+    if not _can_user_access_evaluation(db, current_user, evaluation):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Evaluación no asignada o no disponible"
         )
     
     if evaluation.status != EvaluationStatus.PUBLISHED:
@@ -1628,7 +1716,7 @@ async def get_evaluation_results(
             Course.title.label('course_title')
         ).join(
             Evaluation, UserEvaluation.evaluation_id == Evaluation.id
-        ).join(
+        ).outerjoin(
             Course, Evaluation.course_id == Course.id
         ).filter(
             and_(
@@ -1682,3 +1770,172 @@ async def get_evaluation_results(
                 "data": []
             }
         )
+
+
+# ── Evaluation Assignment Endpoints ───────────────────────────────────────────
+
+@router.get("/{evaluation_id}/assignments", response_model=List[EvaluationAssignmentResponse])
+async def get_evaluation_assignments(
+    evaluation_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Lista todas las asignaciones activas de una evaluación."""
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes")
+
+    evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
+    if not evaluation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evaluación no encontrada")
+
+    from app.models.worker import Worker
+    assignments = (
+        db.query(EvaluationAssignment)
+        .options(joinedload(EvaluationAssignment.user))
+        .outerjoin(Worker, Worker.user_id == EvaluationAssignment.user_id)
+        .filter(
+            EvaluationAssignment.evaluation_id == evaluation_id,
+            EvaluationAssignment.is_active == True,
+            or_(
+                EvaluationAssignment.user_id.is_(None),
+                Worker.id.is_(None),
+                Worker.is_active == True,
+            ),
+        )
+        .all()
+    )
+    return assignments
+
+
+@router.post("/{evaluation_id}/assign")
+async def assign_evaluation(
+    evaluation_id: int,
+    data: EvaluationAssignRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Asigna una evaluación a usuarios seleccionados o a todos los empleados."""
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes")
+
+    evaluation = db.query(Evaluation).filter(Evaluation.id == evaluation_id).first()
+    if not evaluation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evaluación no encontrada")
+
+    assigned = 0
+    already_existed = 0
+    skipped_inactive_workers = 0
+
+    if data.assign_to_all:
+        # Upsert del registro "todos" (user_id=NULL)
+        existing = (
+            db.query(EvaluationAssignment)
+            .filter(
+                EvaluationAssignment.evaluation_id == evaluation_id,
+                EvaluationAssignment.user_id.is_(None),
+            )
+            .first()
+        )
+        if existing:
+            existing.is_active = True
+            existing.deadline = data.deadline
+            existing.assigned_at = datetime.utcnow()
+            existing.assigned_by = current_user.id
+            already_existed += 1
+        else:
+            db.add(EvaluationAssignment(
+                evaluation_id=evaluation_id,
+                user_id=None,
+                assigned_by=current_user.id,
+                assigned_at=datetime.utcnow(),
+                deadline=data.deadline,
+                is_active=True,
+            ))
+            assigned += 1
+    else:
+        from app.models.worker import Worker
+        for user_id in data.user_ids:
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                continue
+            # No permitir asignar evaluaciones a usuarios vinculados a trabajadores inactivos
+            linked_worker = db.query(Worker).filter(Worker.user_id == user_id).first()
+            if linked_worker and linked_worker.is_active is False:
+                skipped_inactive_workers += 1
+                continue
+            existing = (
+                db.query(EvaluationAssignment)
+                .filter(
+                    EvaluationAssignment.evaluation_id == evaluation_id,
+                    EvaluationAssignment.user_id == user_id,
+                )
+                .first()
+            )
+            if existing:
+                existing.is_active = True
+                existing.deadline = data.deadline
+                existing.assigned_at = datetime.utcnow()
+                existing.assigned_by = current_user.id
+                already_existed += 1
+            else:
+                db.add(EvaluationAssignment(
+                    evaluation_id=evaluation_id,
+                    user_id=user_id,
+                    assigned_by=current_user.id,
+                    assigned_at=datetime.utcnow(),
+                    deadline=data.deadline,
+                    is_active=True,
+                ))
+                assigned += 1
+
+    db.commit()
+    return {
+        "assigned": assigned,
+        "already_existed": already_existed,
+        "skipped_inactive_workers": skipped_inactive_workers,
+    }
+
+
+@router.delete("/{evaluation_id}/assign/{target}")
+async def remove_evaluation_assignment(
+    evaluation_id: int,
+    target: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """
+    Elimina una asignación. `target` puede ser un user_id numérico
+    o la cadena literal "all" para eliminar la asignación global.
+    """
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes")
+
+    if target == "all":
+        assignment = (
+            db.query(EvaluationAssignment)
+            .filter(
+                EvaluationAssignment.evaluation_id == evaluation_id,
+                EvaluationAssignment.user_id.is_(None),
+            )
+            .first()
+        )
+    else:
+        try:
+            user_id = int(target)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target inválido")
+        assignment = (
+            db.query(EvaluationAssignment)
+            .filter(
+                EvaluationAssignment.evaluation_id == evaluation_id,
+                EvaluationAssignment.user_id == user_id,
+            )
+            .first()
+        )
+
+    if not assignment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asignación no encontrada")
+
+    db.delete(assignment)
+    db.commit()
+    return {"message": "Asignación eliminada"}

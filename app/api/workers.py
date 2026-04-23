@@ -70,6 +70,15 @@ from app.models.reinduction import ReinductionRecord
 router = APIRouter()
 
 
+def _apply_worker_active_filter_for_search(query, search: str | None, is_active: bool | None):
+    """En búsquedas, excluir inactivos por defecto salvo que se indique explícitamente is_active."""
+    if is_active is not None:
+        return query.filter(Worker.is_active == is_active)
+    if search:
+        return query.filter(Worker.is_active == True)
+    return query
+
+
 def _resolve_cargo_id_and_position(db: Session, cargo_id: int | None, position: str | None):
     if cargo_id is not None:
         cargo = db.query(Cargo).filter(Cargo.id == cargo_id).first()
@@ -185,9 +194,8 @@ async def get_workers(
         )
         query = query.filter(search_filter)
     
-    # Filtro por estado activo
-    if is_active is not None:
-        query = query.filter(Worker.is_active == is_active)
+    # En búsquedas, excluir inactivos por defecto
+    query = _apply_worker_active_filter_for_search(query, search, is_active)
     
     workers = query.offset(skip).limit(limit).all()
     return workers
@@ -215,9 +223,8 @@ async def export_workers_excel(
         )
         query = query.filter(search_filter)
     
-    # Filtro por estado activo
-    if is_active is not None:
-        query = query.filter(Worker.is_active == is_active)
+    # En búsquedas, excluir inactivos por defecto
+    query = _apply_worker_active_filter_for_search(query, search, is_active)
     
     workers = query.order_by(Worker.last_name, Worker.first_name).all()
     
@@ -364,9 +371,8 @@ async def get_workers_basic(
         )
         query = query.filter(search_filter)
     
-    # Filtro por estado activo
-    if is_active is not None:
-        query = query.filter(Worker.is_active == is_active)
+    # En búsquedas, excluir inactivos por defecto
+    query = _apply_worker_active_filter_for_search(query, search, is_active)
     
     workers = query.offset(skip).limit(limit).all()
     return workers
@@ -1212,9 +1218,8 @@ async def export_workers_to_excel(
         )
         query = query.filter(search_filter)
     
-    # Filtro por estado activo
-    if is_active is not None:
-        query = query.filter(Worker.is_active == is_active)
+    # En búsquedas, excluir inactivos por defecto
+    query = _apply_worker_active_filter_for_search(query, search, is_active)
     
     workers = query.all()
     

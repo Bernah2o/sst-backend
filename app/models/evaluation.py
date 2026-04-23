@@ -44,7 +44,7 @@ class Evaluation(Base):
     __tablename__ = "evaluations"
 
     id = Column(Integer, primary_key=True, index=True)
-    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=True)
     title = Column(String(255), nullable=False)
     description = Column(Text)
     instructions = Column(Text)
@@ -66,6 +66,7 @@ class Evaluation(Base):
     creator = relationship("User", foreign_keys=[created_by], overlaps="created_evaluations")
     questions = relationship("Question", back_populates="evaluation", cascade="all, delete-orphan")
     user_evaluations = relationship("UserEvaluation", back_populates="evaluation")
+    assignments = relationship("EvaluationAssignment", back_populates="evaluation", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Evaluation(id={self.id}, title='{self.title}', course_id={self.course_id})>"
@@ -164,3 +165,22 @@ class UserAnswer(Base):
 
     def __repr__(self):
         return f"<UserAnswer(id={self.id}, question_id={self.question_id}, is_correct={self.is_correct})>"
+
+
+class EvaluationAssignment(Base):
+    __tablename__ = "evaluation_assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    evaluation_id = Column(Integer, ForeignKey("evaluations.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)  # NULL = todos los empleados
+    assigned_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    assigned_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    deadline = Column(DateTime, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+
+    evaluation = relationship("Evaluation", back_populates="assignments")
+    user = relationship("User", foreign_keys=[user_id])
+    assigner = relationship("User", foreign_keys=[assigned_by])
+
+    def __repr__(self):
+        return f"<EvaluationAssignment(eval={self.evaluation_id}, user={self.user_id})>"
