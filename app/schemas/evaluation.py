@@ -263,6 +263,8 @@ class EvaluationSubmission(BaseModel):
 class AnswerSubmission(BaseModel):
     question_id: int
     selected_option_id: Optional[int] = None
+    boolean_answer: Optional[bool] = None
+    text_answer: Optional[str] = None
 
 
 # ── Evaluation Assignment Schemas ──────────────────────────────────────────────

@@ -67,6 +67,59 @@ def _can_user_access_evaluation(db: Session, current_user: User, evaluation: Eva
     return assignment is not None
 
 
+def _validate_learning_flow_for_course_evaluation(
+    db: Session, current_user: User, evaluation: Evaluation
+) -> None:
+    """Valida prerrequisitos solo para evaluaciones asociadas a curso."""
+    if evaluation.course_id is None:
+        return
+
+    from app.models.enrollment import Enrollment
+    from app.models.survey import Survey, UserSurvey, SurveyStatus, UserSurveyStatus
+
+    enrollment = db.query(Enrollment).filter(
+        and_(
+            Enrollment.user_id == current_user.id,
+            Enrollment.course_id == evaluation.course_id,
+        )
+    ).first()
+
+    if not enrollment:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Debe estar inscrito en el curso para realizar la evaluación",
+        )
+
+    if enrollment.progress < 95:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Debe completar todo el material del curso antes de realizar la evaluación",
+        )
+
+    required_surveys = db.query(Survey).filter(
+        and_(
+            Survey.course_id == evaluation.course_id,
+            Survey.required_for_completion == True,
+            Survey.status == SurveyStatus.PUBLISHED,
+        )
+    ).all()
+
+    for survey in required_surveys:
+        user_submission = db.query(UserSurvey).filter(
+            and_(
+                UserSurvey.user_id == current_user.id,
+                UserSurvey.survey_id == survey.id,
+                UserSurvey.status == UserSurveyStatus.COMPLETED,
+            )
+        ).first()
+
+        if not user_submission:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Debe completar la encuesta '{survey.title}' antes de realizar la evaluación",
+            )
+
+
 @router.get("/", response_model=PaginatedResponse[EvaluationListResponse])
 @router.get("", response_model=PaginatedResponse[EvaluationListResponse])
 async def get_evaluations(
@@ -98,6 +151,7 @@ async def get_evaluations(
     # Para usuarios que no son admin ni trainer, aplicar restricciones de visibilidad:
     # - Evaluaciones CON curso: solo las de cursos en los que está matriculado
     # - Evaluaciones SIN curso: solo las asignadas explícitamente por un admin
+    # - Evaluaciones ya aprobadas: no deben volver a mostrarse
     if not _is_admin_or_trainer(current_user):
         from app.models.enrollment import Enrollment
         enrolled_course_ids = select(Enrollment.course_id).where(
@@ -112,6 +166,12 @@ async def get_evaluations(
                 )
             )
         )
+        passed_eval_ids = select(UserEvaluation.evaluation_id).where(
+            and_(
+                UserEvaluation.user_id == current_user.id,
+                UserEvaluation.passed == True,
+            )
+        )
         query = query.filter(
             or_(
                 and_(
@@ -121,6 +181,7 @@ async def get_evaluations(
                 Evaluation.id.in_(assigned_eval_ids),
             )
         )
+        query = query.filter(~Evaluation.id.in_(passed_eval_ids))
     
     # Get total count
     total = query.count()
@@ -492,55 +553,8 @@ async def submit_evaluation(
             detail="Evaluación no asignada o no disponible"
         )
     
-    # Validate learning flow: course completion and required surveys
-    if evaluation.course_id:
-        from app.models.enrollment import Enrollment
-        from app.models.survey import Survey, UserSurvey, SurveyStatus, UserSurveyStatus
-        
-        # Check if user is enrolled and has completed the course
-        enrollment = db.query(Enrollment).filter(
-            and_(
-                Enrollment.user_id == current_user.id,
-                Enrollment.course_id == evaluation.course_id
-            )
-        ).first()
-        
-        if not enrollment:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Debe estar inscrito en el curso para realizar la evaluación"
-            )
-        
-        # Check if course is completed (95% means all materials are done)
-        if enrollment.progress < 95:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Debe completar todo el material del curso antes de realizar la evaluación"
-            )
-        
-        # Check if all required surveys are completed
-        required_surveys = db.query(Survey).filter(
-            and_(
-                Survey.course_id == evaluation.course_id,
-                Survey.required_for_completion == True,
-                Survey.status == SurveyStatus.PUBLISHED
-            )
-        ).all()
-        
-        for survey in required_surveys:
-            user_submission = db.query(UserSurvey).filter(
-                and_(
-                    UserSurvey.user_id == current_user.id,
-                    UserSurvey.survey_id == survey.id,
-                    UserSurvey.status == UserSurveyStatus.COMPLETED
-                )
-            ).first()
-            
-            if not user_submission:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Debe completar la encuesta '{survey.title}' antes de realizar la evaluación"
-                )
+    # Valida prerrequisitos de curso solo cuando aplica
+    _validate_learning_flow_for_course_evaluation(db, current_user, evaluation)
     
     # Get the user's current evaluation attempt
     user_evaluation = db.query(UserEvaluation).filter(
@@ -553,55 +567,7 @@ async def submit_evaluation(
     
     if not user_evaluation:
         # Auto-start evaluation if no active attempt exists
-        # Validate learning flow: course completion and required surveys
-        if evaluation.course_id:
-            from app.models.enrollment import Enrollment
-            from app.models.survey import Survey, UserSurvey, SurveyStatus, UserSurveyStatus
-            
-            # Check if user is enrolled and has completed the course
-            enrollment = db.query(Enrollment).filter(
-                and_(
-                    Enrollment.user_id == current_user.id,
-                    Enrollment.course_id == evaluation.course_id
-                )
-            ).first()
-            
-            if not enrollment:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Debe estar inscrito en el curso para realizar la evaluación"
-                )
-            
-            # Check if course is completed (95% means all materials are done)
-            if enrollment.progress < 95:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Debe completar todo el material del curso antes de realizar la evaluación"
-                )
-            
-            # Check if all required surveys are completed
-            required_surveys = db.query(Survey).filter(
-                and_(
-                    Survey.course_id == evaluation.course_id,
-                    Survey.required_for_completion == True,
-                    Survey.status == SurveyStatus.PUBLISHED
-                )
-            ).all()
-            
-            for survey in required_surveys:
-                user_submission = db.query(UserSurvey).filter(
-                    and_(
-                        UserSurvey.user_id == current_user.id,
-                        UserSurvey.survey_id == survey.id,
-                        UserSurvey.status == UserSurveyStatus.COMPLETED
-                    )
-                ).first()
-                
-                if not user_submission:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Debe completar la encuesta '{survey.title}' antes de realizar la evaluación"
-                    )
+        _validate_learning_flow_for_course_evaluation(db, current_user, evaluation)
         
         # Check existing attempts count
         existing_attempts = db.query(UserEvaluation).filter(
@@ -792,9 +758,9 @@ async def submit_evaluation(
         from app.api.courses import check_and_complete_course
         check_and_complete_course(db, current_user.id, evaluation.course_id)
     
-    # Generate certificate if passed
+    # Generate certificate only for evaluations associated with a course
     certificate_url = None
-    if passed:
+    if passed and evaluation.course_id:
         try:
             # Check if certificate already exists
             existing_certificate = db.query(Certificate).filter(
@@ -1018,6 +984,29 @@ async def get_all_evaluation_results(
         )
     
     try:
+        # Keep only the latest attempt per (usuario, evaluación) for admin grid
+        latest_attempts_subquery = db.query(
+            UserEvaluation.user_id.label("user_id"),
+            UserEvaluation.evaluation_id.label("evaluation_id"),
+            func.max(UserEvaluation.attempt_number).label("max_attempt_number"),
+        ).filter(
+            UserEvaluation.started_at.isnot(None)
+        ).group_by(
+            UserEvaluation.user_id,
+            UserEvaluation.evaluation_id,
+        ).subquery()
+
+        attempts_count_subquery = db.query(
+            UserEvaluation.user_id.label("user_id"),
+            UserEvaluation.evaluation_id.label("evaluation_id"),
+            func.count(UserEvaluation.id).label("attempts_count"),
+        ).filter(
+            UserEvaluation.started_at.isnot(None)
+        ).group_by(
+            UserEvaluation.user_id,
+            UserEvaluation.evaluation_id,
+        ).subquery()
+
         # Build query with joins to get user, evaluation and course information
         query = db.query(
             UserEvaluation,
@@ -1026,12 +1015,26 @@ async def get_all_evaluation_results(
             User.last_name,
             User.email.label('user_email'),
             Evaluation.title.label('evaluation_title'),
-            Course.title.label('course_title')
+            func.coalesce(Course.title, "Sin curso").label('course_title'),
+            attempts_count_subquery.c.attempts_count.label("attempts_count"),
+        ).join(
+            latest_attempts_subquery,
+            and_(
+                UserEvaluation.user_id == latest_attempts_subquery.c.user_id,
+                UserEvaluation.evaluation_id == latest_attempts_subquery.c.evaluation_id,
+                UserEvaluation.attempt_number == latest_attempts_subquery.c.max_attempt_number,
+            )
+        ).join(
+            attempts_count_subquery,
+            and_(
+                UserEvaluation.user_id == attempts_count_subquery.c.user_id,
+                UserEvaluation.evaluation_id == attempts_count_subquery.c.evaluation_id,
+            )
         ).join(
             User, UserEvaluation.user_id == User.id
         ).join(
             Evaluation, UserEvaluation.evaluation_id == Evaluation.id
-        ).join(
+        ).outerjoin(
             Course, Evaluation.course_id == Course.id
         )
         
@@ -1042,9 +1045,6 @@ async def get_all_evaluation_results(
         if user_id:
             query = query.filter(UserEvaluation.user_id == user_id)
         
-        # Show all evaluations that have been started (including in progress)
-        query = query.filter(UserEvaluation.started_at.isnot(None))
-        
         # Get total count
         total = query.count()
         
@@ -1054,7 +1054,7 @@ async def get_all_evaluation_results(
         # Build response data
         evaluation_results = []
         for result in results:
-            user_eval, email, first_name, last_name, user_email, evaluation_title, course_title = result
+            user_eval, email, first_name, last_name, user_email, evaluation_title, course_title, attempts_count = result
             
             evaluation_results.append({
                 "id": int(user_eval.id),
@@ -1094,6 +1094,92 @@ async def get_all_evaluation_results(
             content={
                 "success": False,
                 "message": f"Error al obtener resultados de evaluación: {str(e)}",
+                "data": []
+            }
+        )
+
+
+@router.get("/admin/attempt-history")
+async def get_admin_attempt_history(
+    evaluation_id: int,
+    user_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get full attempt history for a specific (user, evaluation) pair.
+    """
+    if not has_role_or_custom(current_user, ["admin", "trainer"]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permisos insuficientes"
+        )
+
+    try:
+        attempts = db.query(
+            UserEvaluation,
+            User.email,
+            User.first_name,
+            User.last_name,
+            Evaluation.title.label("evaluation_title"),
+            func.coalesce(Course.title, "Sin curso").label("course_title"),
+        ).join(
+            User, UserEvaluation.user_id == User.id
+        ).join(
+            Evaluation, UserEvaluation.evaluation_id == Evaluation.id
+        ).outerjoin(
+            Course, Evaluation.course_id == Course.id
+        ).filter(
+            and_(
+                UserEvaluation.user_id == user_id,
+                UserEvaluation.evaluation_id == evaluation_id,
+                UserEvaluation.started_at.isnot(None),
+            )
+        ).order_by(
+            UserEvaluation.attempt_number.desc(),
+            UserEvaluation.started_at.desc(),
+        ).all()
+
+        history = []
+        for idx, attempt in enumerate(attempts):
+            user_eval, email, first_name, last_name, evaluation_title, course_title = attempt
+            history.append({
+                "id": int(user_eval.id),
+                "user_id": int(user_eval.user_id),
+                "email": email,
+                "full_name": f"{first_name} {last_name}",
+                "evaluation_id": int(user_eval.evaluation_id),
+                "evaluation_title": evaluation_title,
+                "course_title": course_title,
+                "attempts_count": int(attempts_count or 0),
+                "attempt_number": int(user_eval.attempt_number),
+                "status": user_eval.status.value if user_eval.status else None,
+                "score": float(user_eval.score) if user_eval.score is not None else None,
+                "total_points": float(user_eval.total_points) if user_eval.total_points is not None else None,
+                "max_points": float(user_eval.max_points) if user_eval.max_points is not None else None,
+                "percentage": float(user_eval.percentage) if user_eval.percentage is not None else None,
+                "time_spent_minutes": int(user_eval.time_spent_minutes) if user_eval.time_spent_minutes is not None else None,
+                "passed": bool(user_eval.passed),
+                "started_at": user_eval.started_at.isoformat() if user_eval.started_at else None,
+                "completed_at": user_eval.completed_at.isoformat() if user_eval.completed_at else None,
+                "created_at": user_eval.created_at.isoformat() if user_eval.created_at else None,
+                "is_latest_attempt": idx == 0,
+            })
+
+        return JSONResponse(
+            content={
+                "success": True,
+                "data": history,
+                "total": len(history),
+            }
+        )
+    except Exception as e:
+        print(f"Error getting attempt history: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"Error al obtener historial de intentos: {str(e)}",
                 "data": []
             }
         )
@@ -1325,55 +1411,8 @@ async def start_evaluation(
             detail="La evaluación no está activa"
         )
     
-    # Validate learning flow: course completion and required surveys
-    if evaluation.course_id:
-        from app.models.enrollment import Enrollment
-        from app.models.survey import Survey, UserSurvey, SurveyStatus, UserSurveyStatus
-        
-        # Check if user is enrolled and has completed the course
-        enrollment = db.query(Enrollment).filter(
-            and_(
-                Enrollment.user_id == current_user.id,
-                Enrollment.course_id == evaluation.course_id
-            )
-        ).first()
-        
-        if not enrollment:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Debe estar inscrito en el curso para realizar la evaluación"
-            )
-        
-        # Check if course is completed (95% means all materials are done)
-        if enrollment.progress < 95:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Debe completar todo el material del curso antes de realizar la evaluación"
-            )
-        
-        # Check if all required surveys are completed
-        required_surveys = db.query(Survey).filter(
-            and_(
-                Survey.course_id == evaluation.course_id,
-                Survey.required_for_completion == True,
-                Survey.status == SurveyStatus.PUBLISHED
-            )
-        ).all()
-        
-        for survey in required_surveys:
-            user_submission = db.query(UserSurvey).filter(
-                and_(
-                    UserSurvey.user_id == current_user.id,
-                    UserSurvey.survey_id == survey.id,
-                    UserSurvey.status == UserSurveyStatus.COMPLETED
-                )
-            ).first()
-            
-            if not user_submission:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Debe completar la encuesta '{survey.title}' antes de realizar la evaluación"
-                )
+    # Valida prerrequisitos de curso solo cuando aplica
+    _validate_learning_flow_for_course_evaluation(db, current_user, evaluation)
     
     # Check for existing in-progress attempt
     existing_in_progress = db.query(UserEvaluation).filter(
