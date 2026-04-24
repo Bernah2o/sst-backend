@@ -69,6 +69,7 @@ class WorkerBasicInfo(BaseModel):
     last_name: str
     document_number: str
     email: str
+    position: Optional[str] = None
 
     class Config:
         from_attributes = True
