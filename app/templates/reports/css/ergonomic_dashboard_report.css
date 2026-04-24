@@ -1,0 +1,345 @@
+/* ============================================================
+   Informe Gerencial – Autoinspección Puesto Ergonómico
+   ============================================================ */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+@page {
+  size: Letter;
+  margin: 1.3cm 1.2cm 1.8cm 1.2cm;
+  @bottom-center {
+    content: "Página " counter(page) " de " counter(pages);
+    font-size: 8pt;
+    color: #7f8c8d;
+  }
+  @bottom-right {
+    content: "Confidencial – SST";
+    font-size: 8pt;
+    color: #7f8c8d;
+  }
+}
+
+body {
+  font-family: "Arial", "Helvetica", sans-serif;
+  font-size: 10pt;
+  line-height: 1.45;
+  color: #2c3e50;
+  background: white;
+}
+
+.document-header {
+  display: table;
+  width: 100%;
+  border-bottom: 3px solid #1565c0;
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+}
+.logo-cell {
+  display: table-cell;
+  width: 18%;
+  vertical-align: middle;
+}
+.logo-cell img {
+  max-width: 90px;
+  max-height: 70px;
+}
+
+.title-cell {
+  display: table-cell;
+  width: 64%;
+  vertical-align: middle;
+  text-align: center;
+  padding: 0 10px;
+}
+.main-title {
+  font-size: 15pt;
+  font-weight: bold;
+  color: #1565c0;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 4px;
+}
+.subtitle {
+  font-size: 10.5pt;
+  color: #37474f;
+  font-weight: 600;
+}
+.company-name {
+  font-size: 10pt;
+  color: #546e7a;
+  margin-top: 3px;
+}
+
+.meta-cell {
+  display: table-cell;
+  width: 18%;
+  vertical-align: middle;
+  text-align: right;
+  font-size: 8.5pt;
+  color: #607d8b;
+  line-height: 1.6;
+}
+.meta-cell strong {
+  color: #37474f;
+}
+
+.info-band {
+  background: #e3f2fd;
+  border-left: 5px solid #1565c0;
+  padding: 6px 12px;
+  margin-bottom: 14px;
+  font-size: 9pt;
+  color: #1a237e;
+}
+
+.section-heading {
+  font-size: 12pt;
+  font-weight: bold;
+  color: #1565c0;
+  border-bottom: 2px solid #bbdefb;
+  padding-bottom: 5px;
+  margin: 14px 0 8px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.kpi-row {
+  display: table;
+  width: 100%;
+  margin-bottom: 14px;
+  border-collapse: separate;
+  border-spacing: 6px 0;
+}
+.kpi-card {
+  display: table-cell;
+  width: 25%;
+  border: 1.5px solid #bbdefb;
+  border-radius: 6px;
+  padding: 10px 12px;
+  text-align: center;
+  vertical-align: middle;
+  background: #f8fbff;
+}
+.kpi-card.alert {
+  background: #fff8e1;
+  border-color: #ffe082;
+}
+.kpi-card.danger {
+  background: #fff3e0;
+  border-color: #ffcc80;
+}
+.kpi-card.success {
+  background: #e8f5e9;
+  border-color: #a5d6a7;
+}
+
+.kpi-value {
+  font-size: 26pt;
+  font-weight: bold;
+  color: #1565c0;
+  line-height: 1;
+}
+.kpi-card.success .kpi-value {
+  color: #2e7d32;
+}
+.kpi-card.alert .kpi-value {
+  color: #ef6c00;
+}
+.kpi-card.danger .kpi-value {
+  color: #c62828;
+}
+.kpi-label {
+  margin-top: 6px;
+  font-size: 9pt;
+  color: #546e7a;
+  font-weight: 600;
+}
+
+.findings-row {
+  display: table;
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 6px 0;
+  margin-bottom: 14px;
+}
+.findings-cell {
+  display: table-cell;
+  width: 33.33%;
+  border-radius: 6px;
+  padding: 10px 12px;
+  text-align: center;
+  vertical-align: middle;
+  border: 1.5px solid #eceff1;
+  background: #fafafa;
+}
+.findings-cell.open {
+  background: #ffebee;
+  border-color: #ffcdd2;
+}
+.findings-cell.inprog {
+  background: #fff8e1;
+  border-color: #ffe082;
+}
+.findings-cell.closed {
+  background: #e8f5e9;
+  border-color: #a5d6a7;
+}
+.findings-num {
+  font-size: 20pt;
+  font-weight: bold;
+}
+.findings-cell.open .findings-num {
+  color: #c62828;
+}
+.findings-cell.inprog .findings-num {
+  color: #ef6c00;
+}
+.findings-cell.closed .findings-num {
+  color: #2e7d32;
+}
+.findings-label {
+  margin-top: 4px;
+  font-size: 9pt;
+  font-weight: 600;
+  color: #546e7a;
+}
+
+.compliance-table,
+.action-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 14px;
+  font-size: 9.5pt;
+}
+.compliance-table thead,
+.action-table thead {
+  display: table-header-group;
+}
+.compliance-table tbody,
+.action-table tbody {
+  display: table-row-group;
+}
+.compliance-table tr,
+.action-table tr {
+  page-break-inside: auto;
+}
+
+.compliance-table th,
+.compliance-table td,
+.action-table th,
+.action-table td {
+  border: 1px solid #e0e0e0;
+  padding: 8px 8px;
+}
+.compliance-table th,
+.action-table th {
+  background: #1565c0;
+  color: white;
+  font-weight: bold;
+  font-size: 9pt;
+  text-transform: uppercase;
+  letter-spacing: 0.2px;
+}
+.non-compliant-col {
+  color: #c62828;
+  font-weight: bold;
+}
+
+.pct-bar-cell {
+  padding: 8px 10px;
+}
+.pct-bar-bg {
+  display: inline-block;
+  width: 100%;
+  height: 10px;
+  background: #eceff1;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.pct-bar-fill {
+  display: inline-block;
+  height: 10px;
+  border-radius: 10px;
+}
+
+.status-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 8.5pt;
+  font-weight: 700;
+  color: white;
+}
+.status-pill.approved {
+  background: #2e7d32;
+}
+.status-pill.warning {
+  background: #ef6c00;
+}
+.status-pill.danger {
+  background: #c62828;
+}
+.status-pill.pending {
+  background: #fb8c00;
+}
+
+.criticality {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 8.5pt;
+  font-weight: 700;
+  color: white;
+}
+.criticality.low {
+  background: #2e7d32;
+}
+.criticality.med {
+  background: #ef6c00;
+}
+.criticality.high {
+  background: #c62828;
+}
+
+.conclusions-box {
+  border: 1px solid #bbdefb;
+  background: #f8fbff;
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.conclusions-box ul {
+  margin-left: 18px;
+}
+.conclusions-box li {
+  margin: 6px 0;
+}
+
+.signature-section {
+  display: table;
+  width: 100%;
+  margin-top: 18px;
+  page-break-inside: avoid;
+}
+.sig-col {
+  display: table-cell;
+  width: 33.33%;
+  padding: 0 6px;
+  text-align: center;
+}
+.sig-line {
+  border-top: 1.5px solid #37474f;
+  margin-top: 22px;
+  padding-top: 6px;
+  font-size: 9pt;
+  color: #37474f;
+}
+.sig-role {
+  font-size: 8.5pt;
+  color: #607d8b;
+  margin-top: 2px;
+}

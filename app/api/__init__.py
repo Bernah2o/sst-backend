@@ -50,7 +50,7 @@ from .programa_capacitaciones import router as programa_capacitaciones_router
 from .estandares_minimos import router as estandares_minimos_router
 from .master_documents import router as master_documents_router
 from .programa_inspecciones import router as programa_inspecciones_router
-
+from .ergonomic_plans import router as ergonomic_plans_router
 
 
 api_router = APIRouter()
@@ -107,3 +107,4 @@ api_router.include_router(programa_capacitaciones_router, prefix="/programa-capa
 api_router.include_router(estandares_minimos_router, prefix="/estandares-minimos", tags=["estandares-minimos"])
 api_router.include_router(master_documents_router, prefix="/master-documents", tags=["master-documents"])
 api_router.include_router(programa_inspecciones_router, prefix="/programa-inspecciones", tags=["programa-inspecciones"])
+api_router.include_router(ergonomic_plans_router, prefix="/ergonomic-plans", tags=["ergonomic-plans"])

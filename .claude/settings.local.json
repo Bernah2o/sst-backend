@@ -7,7 +7,8 @@
       "Bash(alembic heads *)",
       "Bash(alembic upgrade *)",
       "Bash(find e:\\\\\\\\DH2OCOL\\\\\\\\python\\\\\\\\sst-app\\\\\\\\sst-backend -name \"config.py\" -o -name \".env.example\")",
-      "Bash(find e:\\\\\\\\DH2OCOL\\\\\\\\python\\\\\\\\sst-app\\\\\\\\sst-frontend -name \".env.example\" -o -name \"api.ts\")"
+      "Bash(find e:\\\\\\\\DH2OCOL\\\\\\\\python\\\\\\\\sst-app\\\\\\\\sst-frontend -name \".env.example\" -o -name \"api.ts\")",
+      "Bash(npm run *)"
     ]
   }
 }

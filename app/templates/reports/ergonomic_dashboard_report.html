@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Informe Gerencial – Autoinspección Puesto Ergonómico</title>
+    <link rel="stylesheet" href="css/ergonomic_dashboard_report.css" />
+  </head>
+  <body>
+    <div class="document-header">
+      <div class="logo-cell">
+        {% if logo_base64 %}
+        <img src="data:image/png;base64,{{ logo_base64 }}" alt="Logo Empresa" />
+        {% endif %}
+      </div>
+      <div class="title-cell">
+        <div class="main-title">Informe Gerencial</div>
+        <div class="subtitle">
+          Análisis de Autoinspección – Puesto Ergonómico
+        </div>
+        <div class="company-name">
+          Sistema de Gestión de Seguridad y Salud en el Trabajo (SG-SST)
+        </div>
+      </div>
+      <div class="meta-cell">
+        <strong>Código:</strong> SST-RPT-031<br />
+        <strong>Versión:</strong> 1.0<br />
+        <strong>Fecha:</strong> {{ generated_date }}<br />
+        <strong>Período:</strong> {{ period_label }}
+      </div>
+    </div>
+
+    <div class="info-band">
+      Este informe ha sido generado automáticamente por la plataforma SST.
+      Contiene el análisis consolidado de las autoinspecciones del puesto
+      ergonómico, identifica oportunidades de mejora y propone acciones para
+      fortalecer el autocuidado y el cumplimiento del SG-SST.
+    </div>
+
+    <div class="section-heading">1. Resumen Ejecutivo</div>
+
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-value">{{ stats.total }}</div>
+        <div class="kpi-label">Autoinspecciones Asignadas</div>
+      </div>
+      <div class="kpi-card success">
+        <div class="kpi-value">{{ stats.completed }}</div>
+        <div class="kpi-label">Autoinspecciones Completadas</div>
+      </div>
+      <div class="kpi-card alert">
+        <div class="kpi-value">{{ stats.pending }}</div>
+        <div class="kpi-label">Autoinspecciones Pendientes</div>
+      </div>
+      <div
+        class="kpi-card {% if response_rate >= 80 %}success{% elif response_rate >= 60 %}alert{% else %}danger{% endif %}"
+      >
+        <div class="kpi-value">{{ response_rate }}%</div>
+        <div class="kpi-label">Tasa de Respuesta</div>
+      </div>
+    </div>
+
+    <div class="section-heading">2. Estado de Hallazgos SST</div>
+    <div class="findings-row">
+      <div class="findings-cell open">
+        <div class="findings-num">{{ stats.action_stats.OPEN or 0 }}</div>
+        <div class="findings-label">Abiertos / Pendientes</div>
+      </div>
+      <div class="findings-cell inprog">
+        <div class="findings-num">
+          {{ stats.action_stats.IN_PROGRESS or 0 }}
+        </div>
+        <div class="findings-label">En Gestión</div>
+      </div>
+      <div class="findings-cell closed">
+        <div class="findings-num">{{ stats.action_stats.CLOSED or 0 }}</div>
+        <div class="findings-label">Cerrados / Verificados</div>
+      </div>
+    </div>
+
+    {% set total_findings = (stats.action_stats.OPEN or 0) +
+    (stats.action_stats.IN_PROGRESS or 0) + (stats.action_stats.CLOSED or 0) %}
+    {% if total_findings > 0 %}
+    <p style="font-size: 9pt; color: #546e7a; margin-bottom: 14px">
+      De los <strong>{{ total_findings }}</strong> hallazgos documentados, el
+      <strong
+        >{{ ((stats.action_stats.CLOSED or 0) / total_findings * 100) | round(1)
+        }}%</strong
+      >
+      se encuentran cerrados. {% if (stats.action_stats.OPEN or 0) > 0 %} Quedan
+      <strong>{{ stats.action_stats.OPEN or 0 }}</strong> hallazgos abiertos que
+      requieren atención prioritaria. {% endif %}
+    </p>
+    {% endif %}
+
+    <div class="section-heading">3. Cumplimiento por Categoría</div>
+
+    {% if stats.compliance_by_category %}
+    <table class="compliance-table">
+      <thead>
+        <tr>
+          <th style="width: 28%">Categoría</th>
+          <th style="width: 10%; text-align: center">Conformes</th>
+          <th style="width: 12%; text-align: center">No Conformes</th>
+          <th style="width: 30%">Cumplimiento</th>
+          <th style="width: 10%; text-align: center">%</th>
+          <th style="width: 10%; text-align: center">Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in stats.compliance_by_category %}
+        <tr>
+          <td><strong>{{ item.category }}</strong></td>
+          <td style="text-align: center; color: #2e7d32; font-weight: bold">
+            {{ item.compliant_count }}
+          </td>
+          <td style="text-align: center" class="non-compliant-col">
+            {{ item.non_compliant_count }}
+          </td>
+          <td class="pct-bar-cell">
+            <span class="pct-bar-bg">
+              <span
+                class="pct-bar-fill"
+                style="width:{{ item.percentage }}%; background:{% if item.percentage > 85 %}#4caf50{% elif item.percentage > 60 %}#ff9800{% else %}#f44336{% endif %};"
+              ></span>
+            </span>
+          </td>
+          <td
+            style="text-align:center; font-weight:bold; color:{% if item.percentage > 85 %}#2e7d32{% elif item.percentage > 60 %}#e65100{% else %}#c62828{% endif %}"
+          >
+            {{ item.percentage }}%
+          </td>
+          <td style="text-align: center">
+            {% if item.percentage > 85 %}
+            <span class="status-pill approved">Aprobado</span>
+            {% elif item.percentage > 60 %}
+            <span class="status-pill warning">Atención</span>
+            {% else %}
+            <span class="status-pill danger">Crítico</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="font-size: 9pt; color: #546e7a">
+      No hay datos de cumplimiento disponibles.
+    </p>
+    {% endif %}
+
+    <div class="section-heading">4. Oportunidades de Mejora Prioritarias</div>
+
+    {% if stats.top_issues %}
+    <table class="action-table">
+      <thead>
+        <tr>
+          <th style="width: 22%">Categoría</th>
+          <th style="width: 12%; text-align: center">Cumplimiento</th>
+          <th style="width: 12%; text-align: center">Criticidad</th>
+          <th>Acciones de Mejora Recomendadas</th>
+          <th style="width: 12%; text-align: center">Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for issue in stats.top_issues %}
+        <tr>
+          <td><strong>{{ issue.category }}</strong></td>
+          <td
+            style="text-align:center; font-weight:bold; color:{% if issue.percentage > 85 %}#2e7d32{% elif issue.percentage > 60 %}#e65100{% else %}#c62828{% endif %}"
+          >
+            {{ issue.percentage }}%
+          </td>
+          <td style="text-align: center">
+            {% if issue.percentage > 85 %}
+            <span class="criticality low">Baja</span>
+            {% elif issue.percentage > 60 %}
+            <span class="criticality med">Media</span>
+            {% else %}
+            <span class="criticality high">Alta</span>
+            {% endif %}
+          </td>
+          <td style="font-size: 9pt">
+            {{ recommendations.get(issue.category, "Realizar inspección
+            detallada y capacitación.") }}
+          </td>
+          <td style="text-align: center">
+            <span class="status-pill pending">Pendiente</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="font-size: 9pt; color: #546e7a">
+      No hay oportunidades de mejora registradas.
+    </p>
+    {% endif %}
+
+    <div class="section-heading">5. Conclusiones y Recomendaciones</div>
+    <div class="conclusions-box">
+      <ul>
+        <li>
+          El cumplimiento general estimado es de
+          <strong>{{ response_rate }}%</strong> según las autoinspecciones
+          completadas.
+        </li>
+        <li>
+          Priorizar el cierre de hallazgos abiertos y documentar evidencias de
+          mejora cuando aplique.
+        </li>
+        <li>
+          Fortalecer hábitos de pausas activas y ajustes del puesto de trabajo
+          para prevenir molestias músculo-esqueléticas.
+        </li>
+        <li>
+          Realizar seguimiento periódico por SST y reforzar capacitaciones en
+          autocuidado.
+        </li>
+      </ul>
+    </div>
+
+    <div class="signature-section">
+      <div class="sig-col">
+        <div class="sig-line">Elaboró</div>
+        <div class="sig-role">Responsable SG-SST</div>
+      </div>
+      <div class="sig-col">
+        <div class="sig-line">Revisó</div>
+        <div class="sig-role">Jefe de Área</div>
+      </div>
+      <div class="sig-col">
+        <div class="sig-line">Aprobó</div>
+        <div class="sig-role">Gerencia</div>
+      </div>
+    </div>
+  </body>
+</html>

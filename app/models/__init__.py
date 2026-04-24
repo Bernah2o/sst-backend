@@ -125,6 +125,7 @@ from .estandares_minimos import (
     CicloPHVA,
     ValorCumplimiento,
 )
+from .ergonomic_plan import ErgonomicActionPlan, ErgonomicMeasure
 from .programa_inspecciones import (
     ProgramaInspecciones,
     InspeccionProgramada,
@@ -320,4 +321,7 @@ __all__ = [
     "CicloInspeccion",
     "TipoInspeccion",
     "FrecuenciaInspeccion",
+    # Plan de Acción Ergonómico
+    "ErgonomicActionPlan",
+    "ErgonomicMeasure",
 ]

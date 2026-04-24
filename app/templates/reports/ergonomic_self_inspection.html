@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Autoinspección del Trabajador – Puesto Ergonómico</title>
+    <link rel="stylesheet" href="css/ergonomic_self_inspection.css">
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <div class="company-name">ROWL UNITED COLOMBIA S.A.S.</div>
+            <div class="company-meta">NIT: 901.879.626-6</div>
+            <div class="company-strip">SISTEMA DE GESTIÓN DE SEGURIDAD Y SALUD EN EL TRABAJO</div>
+            <div class="header-fields">
+                <div><span class="lbl">Trabajador:</span> {{ worker.full_name }}</div>
+                <div><span class="lbl">Cargo:</span> {{ worker.position }}</div>
+                <div><span class="lbl">Evaluador:</span> {{ inspection.evaluator_name or '' }}</div>
+                <div><span class="lbl">Fecha:</span> {{ evaluation_date }}</div>
+            </div>
+        </div>
+        <div class="header-center">
+            <div class="header-title">AUTOINSPECCIÓN DEL TRABAJADOR – PUESTO ERGONÓMICO</div>
+            <div class="header-subtitle">SISTEMA DE GESTIÓN DE SEGURIDAD Y SALUD EN EL TRABAJO</div>
+        </div>
+        <div class="header-right">
+            <div class="code-box">
+                <div class="code-label">CÓDIGO</div>
+                <div class="code-value">FOR-BIO-006</div>
+                <div class="code-meta"><span class="lbl">Versión:</span> 10</div>
+                <div class="code-meta"><span class="lbl">1 Marzo 2026</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section-title">1. DATOS</div>
+    <table class="data-table">
+        <tr>
+            <td class="data-label">Trabajador:</td>
+            <td class="data-value">{{ worker.full_name }}</td>
+            <td class="data-label">Mes / Año:</td>
+            <td class="data-value">{{ inspection.month_year or month_year }}</td>
+        </tr>
+        <tr>
+            <td class="data-label">Cargo:</td>
+            <td class="data-value">{{ worker.position }}</td>
+            <td class="data-label">Modalidad:</td>
+            <td class="data-value">
+                <span class="check-inline"><span class="box">{% if (inspection.modality or '') == 'PRESENCIAL' %}X{% endif %}</span> Presencial</span>
+                <span class="check-inline" style="margin-left:12px;"><span class="box">{% if (inspection.modality or '') == 'TRABAJO_EN_CASA' %}X{% endif %}</span> Trabajo en casa</span>
+            </td>
+        </tr>
+    </table>
+
+    <div class="section-title">2. INSTRUCCIONES</div>
+    <div class="instructions">
+        Revisa tu puesto de trabajo una vez al mes y marca con √ si el criterio se cumple, o con X si NO se cumple.
+        Si marcas X en algún ítem, repórtalo al Responsable SG-SST a través del correo corporativo o Teams.
+        Esta autoinspección te protege a ti.
+    </div>
+
+    <table class="main-table">
+        <thead>
+            <tr>
+                <th class="col-num">#</th>
+                <th class="col-crit">CRITERIO DE VERIFICACIÓN</th>
+                <th class="col-check">√ / X</th>
+                <th class="col-obs">OBSERVACIÓN / ACCIÓN</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr class="category-row"><td colspan="4">Mi silla</td></tr>
+            <tr>
+                <td class="num">1</td>
+                <td>Puedo ajustar la altura de mi silla y mis pies apoyan completamente en el suelo.</td>
+                <td class="check-cell">
+                    <div class="check-option"><span class="box">{% if inspection.chair_height_check %}✓{% endif %}</span><span class="check-label">√</span></div>
+                    <div class="check-option"><span class="box">{% if not inspection.chair_height_check %}X{% endif %}</span><span class="check-label">X</span></div>
+                </td>
+                <td>{{ inspection.chair_height_obs or '' }}</td>
+            </tr>
+            <tr>
+                <td class="num">2</td>
+                <td>El respaldo tiene soporte en la zona lumbar (o uso soporte adicional).</td>
+                <td class="check-cell">
+                    <div class="check-option"><span class="box">{% if inspection.chair_lumbar_check %}✓{% endif %}</span><span class="check-label">√</span></div>
+                    <div class="check-option"><span class="box">{% if not inspection.chair_lumbar_check %}X{% endif %}</span><span class="check-label">X</span></div>
+                </td>
+                <td>{{ inspection.chair_lumbar_obs or '' }}</td>
+            </tr>
+            <tr>
+                <td class="num">3</td>
+                <td>Los reposabrazos (si los tiene) permiten que mis hombros estén relajados.</td>
+                <td class="check-cell">
+                    <div class="check-option"><span class="box">{% if inspection.chair_armrests_check %}✓{% endif %}</span><span class="check-label">√</span></div>
+                    <div class="check-option"><span class="box">{% if not inspection.chair_armrests_check %}X{% endif %}</span><span class="check-label">X</span></div>
+                </td>
+                <td>{{ inspection.chair_armrests_obs or '' }}</td>
+            </tr>
+            <tr>
+                <td class="num">4</td>
+                <td>La silla está en buen estado (sin piezas sueltas, ruedas o desgaste excesivo).</td>
+                <td class="check-cell">
+                    <div class="check-option"><span class="box">{% if inspection.chair_condition_check %}✓{% endif %}</span><span class="check-label">√</span></div>
+                    <div class="check-option"><span class="box">{% if not inspection.chair_condition_check %}X{% endif %}</span><span class="check-label">X</span></div>
+                </td>
+                <td>{{ inspection.chair_condition_obs or '' }}</td>
+            </tr>
+
+            <tr class="category-row"><td colspan="4">Mi escritorio / mesa</td></tr>
+            <tr>
+                <td class="num">5</td>
+                <td>Puedo apoyar los codos a 90° con los antebrazos horizontales al digitar.</td>
+                <td class="check-cell">
+                    <div class="check-option"><span class="box">{% if inspection.desk_elbows_90_check %}✓{% endif %}</span><span class="check-label">√</span></div>
+                    <div class="check-option"><span class="box">{% if not inspection.desk_elbows_90_check %}X{% endif %}</span><span class="check-label">X</span></div>
+                </td>
+                <td>{{ inspection.desk_elbows_90_obs or '' }}</td>
+            </tr>
+            <tr>
+                <td class="num">6</td>
+                <td>Tengo espacio suficiente para mover las piernas libremente bajo el escritorio.</td>
+                <td class="check-cell">
+                    <div class="check-option"><span class="box">{% if inspection.desk_leg_space_check %}✓{% endif %}</span><span class="check-label">√</span></div>
+                    <div class="check-option"><span class="box">{% if not inspection.desk_leg_space_check %}X{% endif %}</span><span class="check-label">X</span></div>
+                </td>
+                <td>{{ inspection.desk_leg_space_obs or '' }}</td>
+            </tr>
+            <tr>
+                <td class="num">7</td>
+                <td>La superficie no tiene bordes pronunciados que me presionen los antebrazos.</td>
+                <td class="check-cell">
+                    <div class="check-option"><span class="box">{% if inspection.desk_edges_check %}✓{% endif %}</span><span class="check-label">√</span></div>
+                    <div class="check-option"><span class="box">{% if not inspection.desk_edges_check %}X{% endif %}</span><span class="check-label">X</span></div>
+                </td>
+                <td>{{ inspection.desk_edges_obs or '' }}</td>
+            </tr>
+
+            <tr class="category-row"><td colspan="4">Mi monitor / pantalla</td></tr>
+            <tr>
+                <td class="num">8</td>
+                <td>La parte superior de mi pantalla está al nivel de mis ojos.</td>
+                <td class="check-cell">
+                    <div class="check-option"><span class="box">{% if inspection.monitor_eye_level_check %}✓{% endif %}</span><span class="check-label">√</span></div>
+                    <div class="check-option"><span class="box">{% if not inspection.monitor_eye_level_check %}X{% endif %}</span><span class="check-label">X</span></div>
+                </td>
+                <td>{{ inspection.monitor_eye_level_obs or '' }}</td>
+            </tr>
+            <tr>
+                <td class="num">9</td>
+                <td>La distancia de mis ojos a la pantalla es de aprox. un brazo extendido (50–70 cm).</td>
+                <td class="check-cell">
+                    <div class="check-option"><span class="box">{% if inspection.monitor_distance_check %}✓{% endif %}</span><span class="check-label">√</span></div>
+                    <div class="check-option"><span class="box">{% if not inspection.monitor_distance_check %}X{% endif %}</span><span class="check-label">X</span></div>
+                </td>
+                <td>{{ inspection.monitor_distance_obs or '' }}</td>
+            </tr>
+            <tr>
+                <td class="num">10</td>
+                <td>La pantalla no genera reflejos de ventanas ni luminarias detrás de mí.</td>
+                <td class="check-cell">
+                    <div class="check-option"><span class="box">{% if inspection.monitor_glare_check %}✓{% endif %}</span><span class="check-label">√</span></div>
+                    <div class="check-option"><span class="box">{% if not inspection.monitor_glare_check %}X{% endif %}</span><span class="check-label">X</span></div>
+                </td>
+                <td>{{ inspection.monitor_glare_obs or '' }}</td>
+            </tr>
+            <tr>
+                <td class="num">11</td>
+                <td>Si uso laptop: tengo soporte elevador + teclado y mouse externos para jornadas largas.</td>
+                <td class="check-cell">
+                    <div class="check-option"><span class="box">{% if inspection.laptop_setup_check %}✓{% endif %}</span><span class="check-label">√</span></div>
+                    <div class="check-option"><span class="box">{% if not inspection.laptop_setup_check %}X{% endif %}</span><span class="check-label">X</span></div>
+                </td>
+                <td>{{ inspection.laptop_setup_obs or '' }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="page-break"></div>
+
+    <table class="main-table">
+        <thead>
+            <tr>
+                <th class="col-num">#</th>
+                <th class="col-crit">CRITERIO DE VERIFICACIÓN</th>
+                <th class="col-check">√ / X</th>
+                <th class="col-obs">OBSERVACIÓN / ACCIÓN</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr class="category-row"><td colspan="4">Mi teclado y mouse</td></tr>
+            <tr>
+                <td class="num">12</td>
+                <td>El teclado y el mouse están al mismo nivel y cerca de mi cuerpo.</td>
+                <td class="check-cell">
+                    <div class="check-option"><span class="box">{% if inspection.keyboard_mouse_level_check %}✓{% endif %}</span><span class="check-label">√</span></div>
+                    <div class="check-option"><span class="box">{% if not inspection.keyboard_mouse_level_check %}X{% endif %}</span><span class="check-label">X</span></div>
+                </td>
+                <td>{{ inspection.keyboard_mouse_level_obs or '' }}</td>
+            </tr>
+            <tr>
+                <td class="num">13</td>
+                <td>Uso reposamuñecas al digitar (gel o espuma, no borde rígido del escritorio).</td>
+                <td class="check-cell">
+                    <div class="check-option"><span class="box">{% if inspection.wrist_rest_check %}✓{% endif %}</span><span class="check-label">√</span></div>
+                    <div class="check-option"><span class="box">{% if not inspection.wrist_rest_check %}X{% endif %}</span><span class="check-label">X</span></div>
+                </td>
+                <td>{{ inspection.wrist_rest_obs or '' }}</td>
+            </tr>
+            <tr>
+                <td class="num">14</td>
+                <td>Mis muñecas están neutras (ni dobladas hacia arriba ni hacia los lados) al digitar.</td>
+                <td class="check-cell">
+                    <div class="check-option"><span class="box">{% if inspection.wrists_neutral_check %}✓{% endif %}</span><span class="check-label">√</span></div>
+                    <div class="check-option"><span class="box">{% if not inspection.wrists_neutral_check %}X{% endif %}</span><span class="check-label">X</span></div>
+                </td>
+                <td>{{ inspection.wrists_neutral_obs or '' }}</td>
+            </tr>
+
+            <tr class="category-row"><td colspan="4">Mi postura e iluminación</td></tr>
+            <tr>
+                <td class="num">15</td>
+                <td>La iluminación es suficiente y no genera reflejos en mi pantalla.</td>
+                <td class="check-cell">
+                    <div class="check-option"><span class="box">{% if inspection.lighting_reflection_check %}✓{% endif %}</span><span class="check-label">√</span></div>
+                    <div class="check-option"><span class="box">{% if not inspection.lighting_reflection_check %}X{% endif %}</span><span class="check-label">X</span></div>
+                </td>
+                <td>{{ inspection.lighting_reflection_obs or '' }}</td>
+            </tr>
+            <tr>
+                <td class="num">16</td>
+                <td>Evito cruzar las piernas y apoyo los pies en el suelo durante la jornada.</td>
+                <td class="check-cell">
+                    <div class="check-option"><span class="box">{% if inspection.feet_on_floor_check %}✓{% endif %}</span><span class="check-label">√</span></div>
+                    <div class="check-option"><span class="box">{% if not inspection.feet_on_floor_check %}X{% endif %}</span><span class="check-label">X</span></div>
+                </td>
+                <td>{{ inspection.feet_on_floor_obs or '' }}</td>
+            </tr>
+            <tr>
+                <td class="num">17</td>
+                <td>Realizo las 3 pausas activas programadas durante el día.</td>
+                <td class="check-cell">
+                    <div class="check-option"><span class="box">{% if inspection.active_breaks_check %}✓{% endif %}</span><span class="check-label">√</span></div>
+                    <div class="check-option"><span class="box">{% if not inspection.active_breaks_check %}X{% endif %}</span><span class="check-label">X</span></div>
+                </td>
+                <td>{{ inspection.active_breaks_obs or '' }}</td>
+            </tr>
+            <tr>
+                <td class="num">18</td>
+                <td>No siento dolor o molestia persistente en cuello, espalda, brazos o muñecas.</td>
+                <td class="check-cell">
+                    <div class="check-option"><span class="box">{% if inspection.no_pain_check %}✓{% endif %}</span><span class="check-label">√</span></div>
+                    <div class="check-option"><span class="box">{% if not inspection.no_pain_check %}X{% endif %}</span><span class="check-label">X</span></div>
+                </td>
+                <td>{{ inspection.no_pain_obs or '' }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="section-title">3. RESUMEN Y REPORTE</div>
+    <table class="summary-table">
+        <tr>
+            <td class="summary-label">Total ítems que cumplen (√):</td>
+            <td class="summary-value">{{ total_compliant }} / 18</td>
+        </tr>
+        <tr>
+            <td class="summary-label">Ítems que no cumplen (X) – deben reportarse:</td>
+            <td class="summary-value">{{ non_compliant_items_text }}</td>
+        </tr>
+    </table>
+
+    <table class="pain-table">
+        <tr>
+            <td class="pain-q">¿Sientes dolor o molestia músculo-esquelética?</td>
+            <td class="pain-a">
+                <span class="check-inline"><span class="box">{% if inspection.pain_discomfort is sameas true %}X{% endif %}</span> Sí</span>
+                <span class="check-inline" style="margin-left:12px;"><span class="box">{% if inspection.pain_discomfort is sameas false %}X{% endif %}</span> No</span>
+                <span class="pain-extra">Región: {{ inspection.pain_region or '' }} &nbsp;&nbsp; Intensidad (1–10): {{ inspection.pain_intensity or '' }}</span>
+            </td>
+        </tr>
+    </table>
+
+    <div class="report-box">
+        <div class="report-label">Describe aquí los ítems que no cumplen y/o las molestias que presentas (incluye ubicación del dolor, cuándo empezó, qué lo mejora o empeora):</div>
+        <div class="report-content">{{ inspection.report_description or '' }}</div>
+    </div>
+
+    <div class="medical-line">
+        ¿Requieres atención médica?
+        <span class="check-inline" style="margin-left:10px;"><span class="box">{% if inspection.needs_medical_attention is sameas true %}X{% endif %}</span> Sí</span>
+        <span class="check-inline" style="margin-left:12px;"><span class="box">{% if inspection.needs_medical_attention is sameas false %}X{% endif %}</span> No</span>
+        <span class="medical-note">(Si: contacta al Responsable SST)</span>
+    </div>
+
+    <table class="sign-table">
+        <tr>
+            <th>TRABAJADOR</th>
+            <th>RESPONSABLE SG-SST (Recibido)</th>
+        </tr>
+        <tr>
+            <td class="sign-cell">
+                <div class="sign-row"><span class="lbl">Firma:</span> {% if worker_signature_b64 %}<img src="{{ worker_signature_b64 }}" class="sign-img">{% endif %}</div>
+                <div class="sign-row"><span class="lbl">Nombre:</span> {{ worker.full_name }}</div>
+                <div class="sign-row"><span class="lbl">Fecha:</span> {{ evaluation_date }}</div>
+            </td>
+            <td class="sign-cell">
+                <div class="sign-row"><span class="lbl">Firma:</span> {% if sst_signature_b64 %}<img src="{{ sst_signature_b64 }}" class="sign-img">{% endif %}</div>
+                <div class="sign-row"><span class="lbl">Nombre:</span> </div>
+                <div class="sign-row"><span class="lbl">Fecha:</span> </div>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+

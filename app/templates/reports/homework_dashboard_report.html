@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Informe Gerencial – Autoevaluaciones Trabajo en Casa</title>
+    <link rel="stylesheet" href="css/homework_dashboard_report.css">
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════
+     ENCABEZADO
+══════════════════════════════════════════════════════════ -->
+<div class="document-header">
+    <div class="logo-cell">
+        {% if logo_base64 %}
+        <img src="data:image/png;base64,{{ logo_base64 }}" alt="Logo Empresa">
+        {% endif %}
+    </div>
+    <div class="title-cell">
+        <div class="main-title">Informe Gerencial</div>
+        <div class="subtitle">Análisis de Autoevaluaciones – Trabajo en Casa / Teletrabajo</div>
+        <div class="company-name">Sistema de Gestión de Seguridad y Salud en el Trabajo (SG-SST)</div>
+    </div>
+    <div class="meta-cell">
+        <strong>Código:</strong> SST-RPT-030<br>
+        <strong>Versión:</strong> 1.0<br>
+        <strong>Fecha:</strong> {{ generated_date }}<br>
+        <strong>Período:</strong> {{ period_label }}
+    </div>
+</div>
+
+<!-- Banda informativa -->
+<div class="info-band">
+    Este informe ha sido generado automáticamente por la plataforma SST. Contiene el análisis
+    consolidado de las autoevaluaciones de trabajo en casa, identifica los riesgos ergonómicos
+    y de seguridad más frecuentes, y propone acciones de mejora para cumplimiento del SG-SST.
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     1. RESUMEN EJECUTIVO
+══════════════════════════════════════════════════════════ -->
+<div class="section-heading">1. Resumen Ejecutivo</div>
+
+<div class="kpi-row avoid-break">
+    <div class="kpi-card">
+        <div class="kpi-value">{{ stats.total }}</div>
+        <div class="kpi-label">Evaluaciones Asignadas</div>
+    </div>
+    <div class="kpi-card success">
+        <div class="kpi-value">{{ stats.completed }}</div>
+        <div class="kpi-label">Evaluaciones Completadas</div>
+    </div>
+    <div class="kpi-card alert">
+        <div class="kpi-value">{{ stats.pending }}</div>
+        <div class="kpi-label">Evaluaciones Pendientes</div>
+    </div>
+    <div class="kpi-card {% if response_rate >= 80 %}success{% elif response_rate >= 60 %}alert{% else %}danger{% endif %}">
+        <div class="kpi-value">{{ response_rate }}%</div>
+        <div class="kpi-label">Tasa de Respuesta</div>
+    </div>
+</div>
+
+<!-- Estado de hallazgos -->
+<div class="section-heading">2. Estado de Hallazgos SST</div>
+<div class="findings-row avoid-break">
+    <div class="findings-cell open">
+        <div class="findings-num">{{ stats.action_stats.OPEN or 0 }}</div>
+        <div class="findings-label">Abiertos / Pendientes</div>
+    </div>
+    <div class="findings-cell inprog">
+        <div class="findings-num">{{ stats.action_stats.IN_PROGRESS or 0 }}</div>
+        <div class="findings-label">En Gestión</div>
+    </div>
+    <div class="findings-cell closed">
+        <div class="findings-num">{{ stats.action_stats.CLOSED or 0 }}</div>
+        <div class="findings-label">Cerrados / Verificados</div>
+    </div>
+</div>
+
+{% set total_findings = (stats.action_stats.OPEN or 0) + (stats.action_stats.IN_PROGRESS or 0) + (stats.action_stats.CLOSED or 0) %}
+{% if total_findings > 0 %}
+<p style="font-size:9pt; color:#546e7a; margin-bottom:14px;">
+    De los <strong>{{ total_findings }}</strong> hallazgos documentados, el
+    <strong>{{ ((stats.action_stats.CLOSED or 0) / total_findings * 100) | round(1) }}%</strong>
+    se encuentran cerrados.
+    {% if (stats.action_stats.OPEN or 0) > 0 %}
+    Quedan <strong>{{ stats.action_stats.OPEN or 0 }}</strong> hallazgos abiertos que requieren atención prioritaria.
+    {% endif %}
+</p>
+{% endif %}
+
+<!-- ══════════════════════════════════════════════════════
+     3. ANÁLISIS DE CUMPLIMIENTO POR CATEGORÍA
+══════════════════════════════════════════════════════════ -->
+<div class="section-heading">3. Cumplimiento por Categoría</div>
+
+{% if stats.compliance_by_category %}
+<table class="compliance-table">
+    <thead>
+        <tr>
+            <th style="width:28%">Categoría</th>
+            <th style="width:10%; text-align:center">Conformes</th>
+            <th style="width:12%; text-align:center">No Conformes</th>
+            <th style="width:30%">Cumplimiento</th>
+            <th style="width:10%; text-align:center">%</th>
+            <th style="width:10%; text-align:center">Estado</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in stats.compliance_by_category %}
+        <tr>
+            <td><strong>{{ item.category }}</strong></td>
+            <td style="text-align:center; color:#2e7d32; font-weight:bold">{{ item.compliant_count }}</td>
+            <td style="text-align:center;" class="non-compliant-col">{{ item.non_compliant_count }}</td>
+            <td class="pct-bar-cell">
+                <span class="pct-bar-bg">
+                    <span class="pct-bar-fill" style="width:{{ item.percentage }}%; background:{% if item.percentage > 85 %}#4caf50{% elif item.percentage > 60 %}#ff9800{% else %}#f44336{% endif %};"></span>
+                </span>
+            </td>
+            <td style="text-align:center; font-weight:bold; color:{% if item.percentage > 85 %}#2e7d32{% elif item.percentage > 60 %}#e65100{% else %}#c62828{% endif %}">
+                {{ item.percentage }}%
+            </td>
+            <td style="text-align:center">
+                {% if item.percentage > 85 %}
+                <span class="status-badge status-ok">Aceptable</span>
+                {% elif item.percentage > 60 %}
+                <span class="status-badge status-warning">Revisar</span>
+                {% else %}
+                <span class="status-badge status-danger">Crítico</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<p style="font-size:8.5pt; color:#90a4ae; margin-bottom:14px;">
+    * Verde: cumplimiento &gt; 85% | Naranja: 60–85% | Rojo: &lt; 60%. Base: {{ stats.completed }} evaluaciones completadas.
+</p>
+
+{% else %}
+<p class="text-muted">No hay datos de cumplimiento disponibles. Se requieren evaluaciones completadas.</p>
+{% endif %}
+
+<!-- ══════════════════════════════════════════════════════
+     4. OPORTUNIDADES DE MEJORA PRIORITARIAS
+══════════════════════════════════════════════════════════ -->
+<div class="section-heading page-break">4. Oportunidades de Mejora Prioritarias</div>
+
+{% if stats.top_issues %}
+<table class="action-table">
+    <thead>
+        <tr>
+            <th style="width:4%">#</th>
+            <th style="width:22%">Categoría Crítica</th>
+            <th style="width:10%; text-align:center">Cumplimiento</th>
+            <th style="width:12%; text-align:center">No Conformes</th>
+            <th style="width:40%">Acción de Mejora Recomendada</th>
+            <th style="width:12%">Estado</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for issue in stats.top_issues %}
+        <tr class="{% if issue.percentage < 60 %}priority-high{% elif issue.percentage < 85 %}priority-medium{% else %}priority-low{% endif %}">
+            <td style="text-align:center; font-weight:bold">{{ loop.index }}</td>
+            <td><strong>{{ issue.category }}</strong></td>
+            <td style="text-align:center; font-weight:bold; color:{% if issue.percentage < 60 %}#c62828{% else %}#e65100{% endif %}">
+                {{ issue.percentage }}%
+            </td>
+            <td style="text-align:center; color:#c62828; font-weight:bold">
+                {{ issue.non_compliant_count }} trabajador{{ 'es' if issue.non_compliant_count != 1 else '' }}
+            </td>
+            <td>{{ recommendations.get(issue.category, 'Realizar inspección detallada y capacitación.') }}</td>
+            <td><span class="chip-pending">Pendiente</span></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="text-muted">No se identificaron categorías críticas. Cumplimiento general aceptable.</p>
+{% endif %}
+
+<!-- ══════════════════════════════════════════════════════
+     5. ANÁLISIS ERGONÓMICO ESPECÍFICO
+══════════════════════════════════════════════════════════ -->
+{% set ergonomic_issues = stats.compliance_by_category | selectattr('category', 'in', ['Silla Ergonómica', 'Posición Pantalla', 'Mesa de Trabajo', 'Teclado y Ratón']) | list %}
+{% if ergonomic_issues %}
+<div class="section-heading">5. Análisis Ergonómico</div>
+<div class="conclusions-box avoid-break">
+    <p><strong>Riesgos ergonómicos identificados en puestos de trabajo en casa:</strong></p>
+    {% for item in ergonomic_issues %}
+    {% if item.non_compliant_count > 0 %}
+    <p>
+        &bull; <strong>{{ item.category }}:</strong>
+        {{ item.non_compliant_count }} trabajador{{ 'es no cumplen' if item.non_compliant_count != 1 else ' no cumple' }}
+        ({{ item.percentage }}% de cumplimiento).
+        {% if item.percentage < 60 %}
+        <strong style="color:#c62828;">Requiere intervención inmediata.</strong>
+        {% elif item.percentage < 85 %}
+        <span style="color:#e65100;">Requiere seguimiento.</span>
+        {% endif %}
+    </p>
+    {% endif %}
+    {% endfor %}
+    {% set total_ergonomic_nc = ergonomic_issues | map(attribute='non_compliant_count') | sum %}
+    {% if total_ergonomic_nc > 0 %}
+    <p style="margin-top:8px;">
+        Se recomienda iniciar un <strong>Plan de Acción Ergonómico Individual</strong> para cada trabajador
+        con hallazgos en estas categorías, conforme al ciclo PHVA del SG-SST y la Resolución 2400 de 1979.
+    </p>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- ══════════════════════════════════════════════════════
+     6. CONCLUSIONES Y RECOMENDACIONES
+══════════════════════════════════════════════════════════ -->
+<div class="section-heading">6. Conclusiones y Recomendaciones</div>
+<div class="conclusions-box avoid-break">
+    {% set critical_count = stats.top_issues | selectattr('percentage', 'lt', 60) | list | length %}
+    {% set warning_count  = stats.top_issues | selectattr('percentage', 'ge', 60) | selectattr('percentage', 'lt', 85) | list | length %}
+    {% set avg_compliance = (stats.compliance_by_category | map(attribute='percentage') | sum / stats.compliance_by_category | length) | round(1) if stats.compliance_by_category else 0 %}
+
+    <p>Con base en el análisis de <strong>{{ stats.completed }}</strong> autoevaluaciones completadas
+    (tasa de respuesta: <strong>{{ response_rate }}%</strong>), el cumplimiento promedio de las condiciones
+    de trabajo en casa es de <strong>{{ avg_compliance }}%</strong>.</p>
+
+    {% if critical_count > 0 %}
+    <p>&bull; Se identificaron <strong>{{ critical_count }}</strong> categoría{{ 's' if critical_count != 1 else '' }}
+    con cumplimiento crítico (&lt;60%) que requieren intervención <strong>inmediata</strong>.</p>
+    {% endif %}
+
+    {% if warning_count > 0 %}
+    <p>&bull; Existen <strong>{{ warning_count }}</strong> categoría{{ 's' if warning_count != 1 else '' }}
+    con cumplimiento entre 60–85% que deben incluirse en el plan de mejoramiento continuo.</p>
+    {% endif %}
+
+    {% if stats.pending > 0 %}
+    <p>&bull; Hay <strong>{{ stats.pending }}</strong> autoevaluación{{ 'es' if stats.pending != 1 else '' }}
+    pendiente{{ 's' if stats.pending != 1 else '' }} de completar. Se recomienda enviar recordatorio a los
+    trabajadores que no han respondido.</p>
+    {% endif %}
+
+    <p>&bull; El área SST debe dar seguimiento a los <strong>{{ stats.action_stats.OPEN or 0 }}</strong>
+    hallazgos abiertos documentados en la sección de gestión SST de cada evaluación.</p>
+
+    <p style="margin-top:8px;">
+        <strong>Acciones generales recomendadas:</strong><br>
+        1. Iniciar planes de acción ergonómicos individuales para trabajadores con hallazgos en silla/pantalla/mesa.<br>
+        2. Programar capacitación virtual sobre ergonomía en casa (≥1h) para toda la población en teletrabajo.<br>
+        3. Revisar política de dotación de elementos ergonómicos según frecuencia de trabajo en casa.<br>
+        4. Establecer ciclo de re-evaluación semestral de condiciones del puesto.
+    </p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     FIRMAS
+══════════════════════════════════════════════════════════ -->
+<div class="signature-section avoid-break">
+    <div class="signature-row">
+        <div class="sig-cell">
+            <div class="sig-line">
+                Elaboró<br>
+                <span class="sig-role">Responsable SST / Coordinador SG-SST</span>
+            </div>
+        </div>
+        <div class="sig-cell">
+            <div class="sig-line">
+                Revisó<br>
+                <span class="sig-role">Jefe de Recursos Humanos</span>
+            </div>
+        </div>
+        <div class="sig-cell">
+            <div class="sig-line">
+                Aprobó<br>
+                <span class="sig-role">Gerencia General</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Footer -->
+<div class="doc-footer">
+    <div class="footer-left">
+        ROWL UNITED COLOMBIA S.A.S. · Sistema de Gestión SST · Código: SST-RPT-030
+    </div>
+    <div class="footer-right">
+        Generado el {{ generated_date }} · Confidencial
+    </div>
+</div>
+
+</body>
+</html>

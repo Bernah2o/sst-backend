@@ -203,3 +203,33 @@ class EmailService:
         except Exception as e:
             logging.error(f"Error al enviar recordatorio de autoevaluación: {e}")
             return False
+
+    @staticmethod
+    def send_ergonomic_self_inspection_reminder(
+        to_email: str, user_name: str, due_date: str = "Lo antes posible"
+    ):
+        try:
+            subject = "Recordatorio: Autoinspección Puesto Ergonómico Pendiente - SST"
+
+            template_path = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)),
+                "templates",
+                "emails",
+                "ergonomic_self_inspection_reminder.html",
+            )
+
+            with open(template_path, "r", encoding="utf-8") as f:
+                template_content = f.read()
+
+            action_url = f"{settings.frontend_url}/employee/ergonomic-self-inspections"
+
+            html_content = (
+                template_content.replace("{{ user_name }}", user_name)
+                .replace("{{ due_date }}", due_date)
+                .replace("{{ action_url }}", action_url)
+            )
+
+            return EmailService.send_email(to_email, subject, html_content)
+        except Exception as e:
+            logging.error(f"Error al enviar recordatorio de autoinspección ergonómica: {e}")
+            return False

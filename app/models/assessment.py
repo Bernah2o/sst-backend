@@ -92,3 +92,74 @@ class HomeworkAssessment(Base):
     # Relaciones
     worker = relationship("Worker", backref="homework_assessments")
     creator = relationship("User", foreign_keys=[created_by])
+
+
+class ErgonomicSelfInspection(Base):
+    __tablename__ = "ergonomic_self_inspections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    worker_id = Column(Integer, ForeignKey("workers.id"), nullable=False)
+    evaluation_date = Column(Date, nullable=False)
+
+    month_year = Column(String(7), nullable=True)
+    modality = Column(String(20), nullable=True)
+    evaluator_name = Column(String(200), nullable=True)
+
+    chair_height_check = Column(Boolean, nullable=True)
+    chair_height_obs = Column(Text, nullable=True)
+    chair_lumbar_check = Column(Boolean, nullable=True)
+    chair_lumbar_obs = Column(Text, nullable=True)
+    chair_armrests_check = Column(Boolean, nullable=True)
+    chair_armrests_obs = Column(Text, nullable=True)
+    chair_condition_check = Column(Boolean, nullable=True)
+    chair_condition_obs = Column(Text, nullable=True)
+
+    desk_elbows_90_check = Column(Boolean, nullable=True)
+    desk_elbows_90_obs = Column(Text, nullable=True)
+    desk_leg_space_check = Column(Boolean, nullable=True)
+    desk_leg_space_obs = Column(Text, nullable=True)
+    desk_edges_check = Column(Boolean, nullable=True)
+    desk_edges_obs = Column(Text, nullable=True)
+
+    monitor_eye_level_check = Column(Boolean, nullable=True)
+    monitor_eye_level_obs = Column(Text, nullable=True)
+    monitor_distance_check = Column(Boolean, nullable=True)
+    monitor_distance_obs = Column(Text, nullable=True)
+    monitor_glare_check = Column(Boolean, nullable=True)
+    monitor_glare_obs = Column(Text, nullable=True)
+    laptop_setup_check = Column(Boolean, nullable=True)
+    laptop_setup_obs = Column(Text, nullable=True)
+
+    keyboard_mouse_level_check = Column(Boolean, nullable=True)
+    keyboard_mouse_level_obs = Column(Text, nullable=True)
+    wrist_rest_check = Column(Boolean, nullable=True)
+    wrist_rest_obs = Column(Text, nullable=True)
+    wrists_neutral_check = Column(Boolean, nullable=True)
+    wrists_neutral_obs = Column(Text, nullable=True)
+
+    lighting_reflection_check = Column(Boolean, nullable=True)
+    lighting_reflection_obs = Column(Text, nullable=True)
+    feet_on_floor_check = Column(Boolean, nullable=True)
+    feet_on_floor_obs = Column(Text, nullable=True)
+    active_breaks_check = Column(Boolean, nullable=True)
+    active_breaks_obs = Column(Text, nullable=True)
+    no_pain_check = Column(Boolean, nullable=True)
+    no_pain_obs = Column(Text, nullable=True)
+
+    pain_discomfort = Column(Boolean, nullable=True)
+    pain_region = Column(String(120), nullable=True)
+    pain_intensity = Column(Integer, nullable=True)
+    report_description = Column(Text, nullable=True)
+    needs_medical_attention = Column(Boolean, nullable=True)
+
+    worker_signature = Column(String(255), nullable=True)
+    sst_signature = Column(String(255), nullable=True)
+    status = Column(String(20), default="PENDING")
+    sst_management_data = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    worker = relationship("Worker", backref="ergonomic_self_inspections")
+    creator = relationship("User", foreign_keys=[created_by])

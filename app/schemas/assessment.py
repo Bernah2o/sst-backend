@@ -91,3 +91,80 @@ class HomeworkAssessment(HomeworkAssessmentBase):
 class BulkAssessmentCreate(BaseModel):
     worker_ids: List[int]
     evaluation_date: date
+
+
+class ErgonomicSelfInspectionBase(BaseModel):
+    evaluation_date: date
+    month_year: Optional[str] = None
+    modality: Optional[str] = None
+    evaluator_name: Optional[str] = None
+
+    chair_height_check: Optional[bool] = None
+    chair_height_obs: Optional[str] = None
+    chair_lumbar_check: Optional[bool] = None
+    chair_lumbar_obs: Optional[str] = None
+    chair_armrests_check: Optional[bool] = None
+    chair_armrests_obs: Optional[str] = None
+    chair_condition_check: Optional[bool] = None
+    chair_condition_obs: Optional[str] = None
+
+    desk_elbows_90_check: Optional[bool] = None
+    desk_elbows_90_obs: Optional[str] = None
+    desk_leg_space_check: Optional[bool] = None
+    desk_leg_space_obs: Optional[str] = None
+    desk_edges_check: Optional[bool] = None
+    desk_edges_obs: Optional[str] = None
+
+    monitor_eye_level_check: Optional[bool] = None
+    monitor_eye_level_obs: Optional[str] = None
+    monitor_distance_check: Optional[bool] = None
+    monitor_distance_obs: Optional[str] = None
+    monitor_glare_check: Optional[bool] = None
+    monitor_glare_obs: Optional[str] = None
+    laptop_setup_check: Optional[bool] = None
+    laptop_setup_obs: Optional[str] = None
+
+    keyboard_mouse_level_check: Optional[bool] = None
+    keyboard_mouse_level_obs: Optional[str] = None
+    wrist_rest_check: Optional[bool] = None
+    wrist_rest_obs: Optional[str] = None
+    wrists_neutral_check: Optional[bool] = None
+    wrists_neutral_obs: Optional[str] = None
+
+    lighting_reflection_check: Optional[bool] = None
+    lighting_reflection_obs: Optional[str] = None
+    feet_on_floor_check: Optional[bool] = None
+    feet_on_floor_obs: Optional[str] = None
+    active_breaks_check: Optional[bool] = None
+    active_breaks_obs: Optional[str] = None
+    no_pain_check: Optional[bool] = None
+    no_pain_obs: Optional[str] = None
+
+    pain_discomfort: Optional[bool] = None
+    pain_region: Optional[str] = None
+    pain_intensity: Optional[int] = None
+    report_description: Optional[str] = None
+    needs_medical_attention: Optional[bool] = None
+
+    status: Optional[str] = "PENDING"
+    sst_management_data: Optional[str] = None
+
+
+class ErgonomicSelfInspectionCreate(ErgonomicSelfInspectionBase):
+    worker_id: int
+    worker_signature: Optional[str] = None
+    sst_signature: Optional[str] = None
+
+
+class ErgonomicSelfInspection(ErgonomicSelfInspectionBase):
+    id: int
+    worker_id: int
+    worker_signature: Optional[str] = None
+    sst_signature: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    created_by: Optional[int] = None
+    worker: Optional[WorkerBasicInfo] = None
+
+    class Config:
+        from_attributes = True

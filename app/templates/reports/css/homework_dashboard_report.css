@@ -1,0 +1,306 @@
+/* ============================================================
+   Informe Gerencial – Análisis Autoevaluaciones Trabajo en Casa
+   SST Platform · ROWL UNITED COLOMBIA S.A.S.
+   ============================================================ */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+@page {
+    size: Letter;
+    margin: 1.3cm 1.2cm 1.8cm 1.2cm;
+    @bottom-center {
+        content: "Página " counter(page) " de " counter(pages);
+        font-size: 8pt;
+        color: #7f8c8d;
+    }
+    @bottom-right {
+        content: "Confidencial – SST";
+        font-size: 8pt;
+        color: #7f8c8d;
+    }
+}
+
+body {
+    font-family: 'Arial', 'Helvetica', sans-serif;
+    font-size: 10pt;
+    line-height: 1.45;
+    color: #2c3e50;
+    background: white;
+}
+
+/* ── Encabezado ─────────────────────────────────────────── */
+.document-header {
+    display: table;
+    width: 100%;
+    border-bottom: 3px solid #1565c0;
+    padding-bottom: 10px;
+    margin-bottom: 14px;
+}
+.logo-cell {
+    display: table-cell;
+    width: 18%;
+    vertical-align: middle;
+}
+.logo-cell img { max-width: 90px; max-height: 70px; }
+
+.title-cell {
+    display: table-cell;
+    width: 64%;
+    vertical-align: middle;
+    text-align: center;
+    padding: 0 10px;
+}
+.main-title {
+    font-size: 15pt;
+    font-weight: bold;
+    color: #1565c0;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 4px;
+}
+.subtitle { font-size: 10.5pt; color: #37474f; font-weight: 600; }
+.company-name { font-size: 10pt; color: #546e7a; margin-top: 3px; }
+
+.meta-cell {
+    display: table-cell;
+    width: 18%;
+    vertical-align: middle;
+    text-align: right;
+    font-size: 8.5pt;
+    color: #607d8b;
+    line-height: 1.6;
+}
+.meta-cell strong { color: #37474f; }
+
+/* ── Banda informativa ─────────────────────────────────── */
+.info-band {
+    background: #e3f2fd;
+    border-left: 5px solid #1565c0;
+    padding: 6px 12px;
+    margin-bottom: 14px;
+    font-size: 9pt;
+    color: #1a237e;
+}
+
+/* ── Secciones ─────────────────────────────────────────── */
+.section-heading {
+    font-size: 12pt;
+    font-weight: bold;
+    color: #1565c0;
+    border-bottom: 2px solid #bbdefb;
+    padding-bottom: 5px;
+    margin: 14px 0 8px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+/* ── KPI Cards ─────────────────────────────────────────── */
+.kpi-row {
+    display: table;
+    width: 100%;
+    margin-bottom: 14px;
+    border-collapse: separate;
+    border-spacing: 6px 0;
+}
+.kpi-card {
+    display: table-cell;
+    width: 25%;
+    border: 1.5px solid #bbdefb;
+    border-radius: 6px;
+    padding: 10px 12px;
+    text-align: center;
+    vertical-align: middle;
+    background: #f8fbff;
+}
+.kpi-card.alert { background: #fff8e1; border-color: #ffe082; }
+.kpi-card.danger { background: #fff3e0; border-color: #ffcc80; }
+.kpi-card.success { background: #e8f5e9; border-color: #a5d6a7; }
+
+.kpi-value {
+    font-size: 26pt;
+    font-weight: bold;
+    color: #1565c0;
+    line-height: 1.1;
+}
+.kpi-card.alert .kpi-value { color: #f57f17; }
+.kpi-card.danger .kpi-value { color: #e65100; }
+.kpi-card.success .kpi-value { color: #2e7d32; }
+
+.kpi-label {
+    font-size: 8.5pt;
+    color: #607d8b;
+    margin-top: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+/* ── Hallazgos row ─────────────────────────────────────── */
+.findings-row {
+    display: table;
+    width: 100%;
+    margin-bottom: 14px;
+    border-collapse: separate;
+    border-spacing: 6px 0;
+}
+.findings-cell {
+    display: table-cell;
+    width: 33.3%;
+    padding: 10px 14px;
+    border-radius: 6px;
+    text-align: center;
+    font-weight: bold;
+}
+.findings-cell.open   { background: #ffebee; border: 1.5px solid #ef9a9a; }
+.findings-cell.inprog { background: #fff8e1; border: 1.5px solid #ffe082; }
+.findings-cell.closed { background: #e8f5e9; border: 1.5px solid #a5d6a7; }
+.findings-num { font-size: 22pt; }
+.findings-cell.open   .findings-num { color: #c62828; }
+.findings-cell.inprog .findings-num { color: #f57f17; }
+.findings-cell.closed .findings-num { color: #2e7d32; }
+.findings-label { font-size: 8.5pt; color: #546e7a; font-weight: normal; margin-top: 2px; }
+
+/* ── Compliance table ──────────────────────────────────── */
+.compliance-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 14px;
+    font-size: 9.5pt;
+}
+.compliance-table thead { display: table-header-group; }
+.compliance-table tbody { display: table-row-group; }
+.compliance-table tr { page-break-inside: auto; }
+.compliance-table thead tr {
+    background: #1565c0;
+    color: white;
+}
+.compliance-table thead th {
+    padding: 7px 10px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 9pt;
+}
+.compliance-table tbody tr:nth-child(even) { background: #f5f9ff; }
+.compliance-table tbody td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #e3eaf5;
+    vertical-align: middle;
+}
+.pct-bar-cell { width: 160px; }
+.pct-bar-bg {
+    background: #eceff1;
+    border-radius: 4px;
+    height: 12px;
+    width: 100%;
+    position: relative;
+    display: block;
+}
+.pct-bar-fill {
+    display: block;
+    height: 12px;
+    border-radius: 4px;
+}
+.pct-label {
+    font-size: 9pt;
+    font-weight: bold;
+    text-align: right;
+    min-width: 38px;
+    display: inline-block;
+}
+.status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 8pt;
+    font-weight: bold;
+}
+.status-ok      { background: #e8f5e9; color: #2e7d32; }
+.status-warning { background: #fff8e1; color: #f57f17; }
+.status-danger  { background: #ffebee; color: #c62828; }
+.non-compliant-col { color: #c62828; font-weight: bold; }
+
+/* ── Action recommendations table ─────────────────────── */
+.action-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 14px;
+    font-size: 9.5pt;
+}
+.action-table thead { display: table-header-group; }
+.action-table tbody { display: table-row-group; }
+.action-table tr { page-break-inside: auto; }
+.action-table thead tr { background: #37474f; color: white; }
+.action-table thead th { padding: 7px 10px; text-align: left; font-size: 9pt; }
+.action-table tbody tr:nth-child(even) { background: #fafafa; }
+.action-table tbody td {
+    padding: 6px 10px;
+    border-bottom: 1px solid #eceff1;
+    vertical-align: top;
+}
+.action-table .priority-high   { border-left: 4px solid #c62828; }
+.action-table .priority-medium { border-left: 4px solid #f57f17; }
+.action-table .priority-low    { border-left: 4px solid #2e7d32; }
+.chip-pending {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #fff3e0;
+    border: 1px solid #ffcc80;
+    border-radius: 10px;
+    font-size: 8pt;
+    color: #e65100;
+}
+
+/* ── Conclusiones ──────────────────────────────────────── */
+.conclusions-box {
+    border: 1.5px solid #bbdefb;
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-bottom: 14px;
+    background: #f8fbff;
+    font-size: 9.5pt;
+    line-height: 1.6;
+}
+.conclusions-box p { margin-bottom: 6px; }
+
+/* ── Firmas ────────────────────────────────────────────── */
+.signature-section {
+    margin-top: 18px;
+    page-break-inside: avoid;
+}
+.signature-row { display: table; width: 100%; }
+.sig-cell {
+    display: table-cell;
+    width: 33.3%;
+    padding: 0 12px;
+    text-align: center;
+    vertical-align: bottom;
+}
+.sig-line {
+    border-top: 1.5px solid #37474f;
+    margin-top: 22px;
+    padding-top: 6px;
+    font-size: 9pt;
+    color: #37474f;
+}
+.sig-role {
+    font-size: 8.5pt;
+    color: #607d8b;
+    margin-top: 2px;
+}
+
+/* ── Footer ────────────────────────────────────────────── */
+.doc-footer {
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px solid #eceff1;
+    display: table;
+    width: 100%;
+    font-size: 8pt;
+    color: #90a4ae;
+}
+.footer-left  { display: table-cell; text-align: left; }
+.footer-right { display: table-cell; text-align: right; }
+
+/* ── Utilidades ────────────────────────────────────────── */
+.page-break { page-break-before: always; }
+.avoid-break { page-break-inside: avoid; }
+.text-muted  { color: #90a4ae; font-style: italic; }
