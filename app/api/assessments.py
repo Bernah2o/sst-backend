@@ -8,7 +8,7 @@ from app.utils.storage import storage_manager
 import re
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
-from datetime import datetime
+from datetime import datetime, date
 import json
 
 from app.database import get_db
@@ -293,6 +293,35 @@ def bulk_assign_homework_assessments(
         "skipped_details": skipped
     }
 
+
+def _deactivate_retired_workers(db: Session) -> None:
+    """
+    Inactiva automáticamente trabajadores con fecha de retiro vencida.
+    Esto evita que sigan apareciendo en reportes gerenciales activos.
+    """
+    today = date.today()
+    affected = db.query(Worker).filter(
+        Worker.is_active == True,
+        Worker.fecha_de_retiro != None,
+        Worker.fecha_de_retiro <= today
+    ).update({Worker.is_active: False}, synchronize_session=False)
+    if affected:
+        db.commit()
+
+
+def _active_homework_query(db: Session):
+    """Base query para autoevaluaciones de trabajadores activos."""
+    return db.query(HomeworkAssessment).join(
+        Worker, HomeworkAssessment.worker_id == Worker.id
+    ).filter(Worker.is_active == True)
+
+
+def _active_ergonomic_query(db: Session):
+    """Base query para autoinspecciones ergonómicas de trabajadores activos."""
+    return db.query(ErgonomicSelfInspection).join(
+        Worker, ErgonomicSelfInspection.worker_id == Worker.id
+    ).filter(Worker.is_active == True)
+
 @router.get("/homework/stats")
 def get_homework_stats(
     db: Session = Depends(get_db),
@@ -302,8 +331,11 @@ def get_homework_stats(
     Obtiene estadísticas agregadas de las autoevaluaciones de trabajo en casa
     para análisis de cumplimiento y áreas de mejora.
     """
-    total_count = db.query(HomeworkAssessment).count()
-    completed_count = db.query(HomeworkAssessment).filter(HomeworkAssessment.status == "COMPLETED").count()
+    _deactivate_retired_workers(db)
+    active_q = _active_homework_query(db)
+
+    total_count = active_q.count()
+    completed_count = active_q.filter(HomeworkAssessment.status == "COMPLETED").count()
     pending_count = total_count - completed_count
 
     if completed_count == 0:
@@ -338,7 +370,10 @@ def get_homework_stats(
     # Obtener sumas de cumplimiento (checks que son True)
     for field, label in categories:
         # Contar cuántos son True para este campo en evaluaciones COMPLETADAS
-        count_true = db.query(func.count(HomeworkAssessment.id)).filter(
+        count_true = db.query(func.count(HomeworkAssessment.id)).join(
+            Worker, HomeworkAssessment.worker_id == Worker.id
+        ).filter(
+            Worker.is_active == True,
             HomeworkAssessment.status == "COMPLETED",
             getattr(HomeworkAssessment, field) == True
         ).scalar()
@@ -355,7 +390,10 @@ def get_homework_stats(
     top_issues = sorted(compliance_data, key=lambda x: x["percentage"])[:5]
 
     # Resumen de estados de planes de acción (Seguimiento SST)
-    all_management = db.query(HomeworkAssessment.sst_management_data).filter(
+    all_management = db.query(HomeworkAssessment.sst_management_data).join(
+        Worker, HomeworkAssessment.worker_id == Worker.id
+    ).filter(
+        Worker.is_active == True,
         HomeworkAssessment.sst_management_data != None
     ).all()
     
@@ -411,8 +449,11 @@ async def generate_dashboard_pdf(
     from datetime import date as date_cls
 
     # ── Reutilizar la misma lógica del endpoint /stats ──────────────────────
-    total_count = db.query(HomeworkAssessment).count()
-    completed_count = db.query(HomeworkAssessment).filter(HomeworkAssessment.status == "COMPLETED").count()
+    _deactivate_retired_workers(db)
+    active_q = _active_homework_query(db)
+
+    total_count = active_q.count()
+    completed_count = active_q.filter(HomeworkAssessment.status == "COMPLETED").count()
     pending_count = total_count - completed_count
 
     categories = [
@@ -435,7 +476,10 @@ async def generate_dashboard_pdf(
     compliance_data = []
     if completed_count > 0:
         for field, label in categories:
-            count_true = db.query(func.count(HomeworkAssessment.id)).filter(
+            count_true = db.query(func.count(HomeworkAssessment.id)).join(
+                Worker, HomeworkAssessment.worker_id == Worker.id
+            ).filter(
+                Worker.is_active == True,
                 HomeworkAssessment.status == "COMPLETED",
                 getattr(HomeworkAssessment, field) == True
             ).scalar()
@@ -450,7 +494,10 @@ async def generate_dashboard_pdf(
     top_issues = sorted(compliance_data, key=lambda x: x["percentage"])[:5]
 
     action_stats = {"OPEN": 0, "IN_PROGRESS": 0, "CLOSED": 0}
-    for (m_data_str,) in db.query(HomeworkAssessment.sst_management_data).filter(
+    for (m_data_str,) in db.query(HomeworkAssessment.sst_management_data).join(
+        Worker, HomeworkAssessment.worker_id == Worker.id
+    ).filter(
+        Worker.is_active == True,
         HomeworkAssessment.sst_management_data != None
     ).all():
         try:
@@ -1008,10 +1055,11 @@ def get_ergonomic_self_inspection_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_supervisor_or_admin),
 ):
-    total_count = db.query(ErgonomicSelfInspection).count()
-    completed_count = db.query(ErgonomicSelfInspection).filter(
-        ErgonomicSelfInspection.status == "COMPLETED"
-    ).count()
+    _deactivate_retired_workers(db)
+    active_q = _active_ergonomic_query(db)
+
+    total_count = active_q.count()
+    completed_count = active_q.filter(ErgonomicSelfInspection.status == "COMPLETED").count()
     pending_count = total_count - completed_count
 
     if completed_count == 0:
@@ -1070,7 +1118,10 @@ def get_ergonomic_self_inspection_stats(
     for label, fields in groups:
         compliant_sum = 0
         for field in fields:
-            count_true = db.query(func.count(ErgonomicSelfInspection.id)).filter(
+            count_true = db.query(func.count(ErgonomicSelfInspection.id)).join(
+                Worker, ErgonomicSelfInspection.worker_id == Worker.id
+            ).filter(
+                Worker.is_active == True,
                 ErgonomicSelfInspection.status == "COMPLETED",
                 getattr(ErgonomicSelfInspection, field) == True,
             ).scalar()
@@ -1091,7 +1142,10 @@ def get_ergonomic_self_inspection_stats(
     top_issues = sorted(compliance_data, key=lambda x: x["percentage"])[:5]
 
     action_stats = {"OPEN": 0, "IN_PROGRESS": 0, "CLOSED": 0}
-    for (m_data_str,) in db.query(ErgonomicSelfInspection.sst_management_data).filter(
+    for (m_data_str,) in db.query(ErgonomicSelfInspection.sst_management_data).join(
+        Worker, ErgonomicSelfInspection.worker_id == Worker.id
+    ).filter(
+        Worker.is_active == True,
         ErgonomicSelfInspection.sst_management_data != None
     ).all():
         try:
